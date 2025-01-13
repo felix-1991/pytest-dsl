@@ -6,3 +6,5 @@ __pycache__/
 parser.out
 parsetab.py
 .venv/
+allure-report/
+allure-results/
