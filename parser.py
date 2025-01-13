@@ -74,7 +74,8 @@ def p_expression(p):
     '''expression : NUMBER
                   | STRING
                   | PLACEHOLDER
-                  | ID'''
+                  | ID
+                  | keyword_call'''
     p[0] = Node('Expression', value=p[1])
 
 def p_loop(p):
@@ -107,27 +108,31 @@ def p_error(p):
         print(f"Syntax error at token {p.type}, value: {p.value}, line: {p.lineno}, position: {p.lexpos}")
         # Error recovery: Skip until the next keyword or END token
         while True:
-            tok = parser.token()
+            tok = p.token()
             if not tok or tok.type in ['END', 'TEARDOWN_KEYWORD', 'LBRACKET']:
                 break
-        parser.errok()
+        p.errok()
     else:
         print("Syntax error at EOF")
 
 # AST printing function
-def print_ast(node, level=0):
+def print_ast(node: Node, level: int = 0) -> None:
+    indent = '  ' * level
     if node.value is not None:
         if isinstance(node.value, list):
-            print('  ' * level + f"{node.type}:")
+            print(f"{indent}{node.type}:")
             for item in node.value:
                 if isinstance(item, Node):
                     print_ast(item, level + 1)
                 else:
-                    print('  ' * (level + 1) + f"Non-node child: {item}")
+                    print(f"{indent}  Non-node child: {item}")
+        elif isinstance(node.value, Node):
+            print_ast(node.value, level + 1)
         else:
-            print('  ' * level + f"{node.type}: {node.value}")
+            print(f"{indent}{node.type}: {node.value}")
     else:
-        print('  ' * level + f"{node.type}:")
+        print(f"{indent}{node.type}:")
+    
     for child in node.children:
         if isinstance(child, Node):
             print_ast(child, level + 1)
@@ -136,10 +141,10 @@ def print_ast(node, level=0):
                 if isinstance(item, Node):
                     print_ast(item, level + 2)
                 else:
-                    print('  ' * (level + 2) + f"Non-node child: {item}")
+                    print(f"{indent}  Non-node child: {item}")
         else:
-            print('  ' * (level + 1) + f"Non-node child: {child}")
+            print(f"{indent}  Non-node child: {child}")
+
 
 def get_parser():
     return yacc.yacc()
-
