@@ -1,6 +1,6 @@
 import pytest
 import allure
-from main import get_lexer, get_parser, execute
+from execute import get_lexer, get_parser, execute
 
 def pytest_collect_file(parent, file_path):
     if file_path.suffix == ".auto":
