@@ -53,8 +53,12 @@ def t_ID(t):
     return t
 
 def t_STRING(t):
-    r'\'([^\']*)\'|\"([^\"]*)\"'
-    t.value = t.value[1:-1]
+    r"""(\'\'\'[\s\S]*?\'\'\'|\"\"\"[\s\S]*?\"\"\"|'[^']*'|\"[^\"]*\")"""
+    # 处理单引号和双引号的多行/单行字符串
+    if t.value.startswith("'''") or t.value.startswith('"""'):
+        t.value = t.value[3:-3]  # 去掉三引号
+    else:
+        t.value = t.value[1:-1]  # 去掉单引号或双引号
     return t
 
 # 定义以 @ 开头的关键字的 token 规则
