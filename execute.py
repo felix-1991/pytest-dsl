@@ -1,18 +1,10 @@
 from lexer import get_lexer
 from parser import get_parser, Node
+from keywords import keywords
 
-
-def print_api_call(**kwargs):
-    print(f"API接口调用: {kwargs}")
-
-
-keywords = {
-    '打印内容': lambda **kwargs: print(f"内容: {kwargs.get('内容')}"),
-    'API接口调用': lambda **kwargs: print_api_call(**kwargs), 
-    '返回结果': lambda **kwargs: 1
-}
 
 variables = {}
+
 
 def eval_expression(expr_node):
     if expr_node.type == 'Expression':
@@ -28,13 +20,15 @@ def eval_expression(expr_node):
         elif isinstance(value, str):
             # 处理字符串中的变量替换
             import re
+
             def replace_var(match):
                 var_name = match.group(1)
                 if var_name in variables:
                     return str(variables[var_name])
                 else:
                     raise Exception(f"变量未定义: {var_name}")
-            value = re.sub(r'\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}', replace_var, value)
+            value = re.sub(
+                r'\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}', replace_var, value)
             return value
         else:
             return value
@@ -65,18 +59,29 @@ def execute(node):
             variables[var_name] = i
             execute(node.children[2])
     elif node.type == 'KeywordCall':
+        # 查找关键字信息
         keyword_name = node.value
-        if keyword_name in keywords:
-            kwargs = {}
-            for param in node.children[0]:
-                param_name = param.value
-                param_value = eval_expression(param.children[0])
-                kwargs[param_name] = param_value
-            result = keywords[keyword_name](**kwargs)
-            if result is not None:
-                return result
-        else:
+        keyword_info = keywords.get(keyword_name)
+        if not keyword_info:
             raise Exception(f"未注册的关键字: {keyword_name}")
+        if 'mapping' not in keyword_info:
+            raise Exception(f"关键字 {keyword_name} 未定义参数映射")
+
+        # 解析参数
+        func = keyword_info['func']
+        mapping = keyword_info['mapping']
+        kwargs = {}
+        for param in node.children[0]:
+            param_name = param.value  # 中文参数名
+            if param_name not in mapping:
+                raise Exception(f"参数名 {param_name} 未定义映射关系")
+            english_param_name = mapping[param_name]
+            kwargs[english_param_name] = eval_expression(param.children[0])
+
+        # 执行关键字函数
+        result = func(**kwargs)
+        if result is not None:
+            return result
     elif node.type == 'ParameterItem':
         return {node.value: eval_expression(node.children[0])}
     elif node.type == 'Teardown':
