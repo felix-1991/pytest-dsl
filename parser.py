@@ -56,12 +56,14 @@ def p_statements(p):
     '''statements : statement statements
                   | statement'''
     if len(p) == 3:
-        p[0] = Node('Statements', [p[1]] + p[2].children )
+        p[0] = Node('Statements', [p[1]] + p[2].children)
     else:
         p[0] = Node('Statements', [p[1]])
 
+# Modified p_statement to include assignment_keyword_call
 def p_statement(p):
     '''statement : assignment
+                 | assignment_keyword_call
                  | loop
                  | keyword_call'''
     p[0] = p[1]
@@ -69,6 +71,11 @@ def p_statement(p):
 def p_assignment(p):
     '''assignment : ID EQUALS expression'''
     p[0] = Node('Assignment', value=p[1], children=[p[3]])
+
+# New rule for assignment with keyword call
+def p_assignment_keyword_call(p):
+    '''assignment_keyword_call : ID EQUALS keyword_call'''
+    p[0] = Node('AssignmentKeywordCall', [p[3]], p[1])  # p[1] is the variable name, p[3] is the keyword call node
 
 def p_expression(p):
     '''expression : NUMBER
@@ -102,7 +109,7 @@ def p_teardown(p):
     '''teardown : TEARDOWN_KEYWORD DO statements END'''
     p[0] = Node('Teardown', [p[3]])
 
-# Error handling
+# Error handling (unchanged)
 def p_error(p):
     if p:
         print(f"Syntax error at token {p.type}, value: {p.value}, line: {p.lineno}, position: {p.lexpos}")
@@ -115,7 +122,7 @@ def p_error(p):
     else:
         print("Syntax error at EOF")
 
-# AST printing function
+# AST printing function (unchanged)
 def print_ast(node: Node, level: int = 0) -> None:
     indent = '  ' * level
     if node.value is not None:
@@ -144,7 +151,6 @@ def print_ast(node: Node, level: int = 0) -> None:
                     print(f"{indent}  Non-node child: {item}")
         else:
             print(f"{indent}  Non-node child: {child}")
-
 
 def get_parser():
     return yacc.yacc()

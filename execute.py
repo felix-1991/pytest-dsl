@@ -51,6 +51,14 @@ def execute(node):
         var_name = node.value
         expr_value = eval_expression(node.children[0])
         variables[var_name] = expr_value
+    elif node.type == 'AssignmentKeywordCall':
+        var_name = node.value
+        keyword_call_node = node.children[0]  # 子节点是 KeywordCall
+        result = execute(keyword_call_node)  # 执行关键字调用
+        if result is not None:
+            variables[var_name] = result  # 将结果保存到变量中
+        else:
+            raise Exception(f"关键字 {keyword_call_node.value} 没有返回结果")
     elif node.type == 'ForLoop':
         var_name = node.value
         start = eval_expression(node.children[0])
@@ -80,8 +88,7 @@ def execute(node):
 
         # 执行关键字函数
         result = func(**kwargs)
-        if result is not None:
-            return result
+        return result
     elif node.type == 'ParameterItem':
         return {node.value: eval_expression(node.children[0])}
     elif node.type == 'Teardown':
