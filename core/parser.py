@@ -1,5 +1,5 @@
 import ply.yacc as yacc
-from parser.lexer import tokens
+from core.lexer import tokens
 
 
 class Node:

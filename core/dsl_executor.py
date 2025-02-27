@@ -1,6 +1,6 @@
 import allure
-from parser.lexer import get_lexer
-from parser.parser import get_parser, Node
+from core.lexer import get_lexer
+from core.parser import get_parser, Node
 from core.keyword_manager import keyword_manager
 
 
