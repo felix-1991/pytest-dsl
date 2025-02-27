@@ -16,25 +16,25 @@ ret_val = [返回结果],结果: 3
 [API接口调用],方法:GET,URL:'https://www.baidu.com/${number}/${ret_val}',请求头:'{"Content-Type": "application/json"}',请求参数:'{}',响应参数:'{"status_code": 200, "content": "success"}'
 
 @teardown do
-    [打印内容],内容:测试结束
-    [API请求],内容: """
-    request:
-        method: POST
-        url: /api/register
-        json:
-            username: "{{i18n.test_username}}"
-            email: "{{i18n.test_email}}"
-            password: "{{i18n.test_password}}"
-    export:
-        user_id: json.data.id
-        username: json.data.username
-    validate:
-        - eq: [status_code, 201]
-        - eq: [json.message, "User registered successfully"]
-        - contains: [json.data, "id"]
-        - contains: [json.data, "username"]
-        - contains: [json.data, "email"]
-    before_func: generate_test_data
-    """,函数文件: "test_data.py"
-    [API接口调用],方法:GET,URL:'https://www.baidu.com',请求头:'{"Content-Type": "application/json"}',请求参数:'{}',响应参数:'{"status_code": 200, "content": "success"}'
+[打印内容],内容:测试结束
+[API请求],内容: """
+request:
+    method: POST
+    url: /api/register
+    json:
+        username: "{{i18n.test_username}}"
+        email: "{{i18n.test_email}}"
+        password: "{{i18n.test_password}}"
+export:
+    user_id: json.data.id
+    username: json.data.username
+validate:
+    - eq: [status_code, 201]
+    - eq: [json.message, "User registered successfully"]
+    - contains: [json.data, "id"]
+    - contains: [json.data, "username"]
+    - contains: [json.data, "email"]
+before_func: generate_test_data
+""",函数文件: "test_data.py"
+[API接口调用],方法:GET,URL:'https://www.baidu.com',请求头:'{"Content-Type": "application/json"}',请求参数:'{}',响应参数:'{"status_code": 200, "content": "success"}'
 end

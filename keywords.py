@@ -21,6 +21,16 @@ def register_keyword(name, parameters):
         return func
     return decorator
 
+# 执行关键字函数
+def execute_keyword(keyword_name, **params):
+    """执行指定关键字的函数"""
+    keyword_info = keywords.get(keyword_name)
+    if not keyword_info:
+        raise Exception(f"未注册的关键字: {keyword_name}")
+    func = keyword_info['func']
+    return func(**params)
+
+
 # 1. [打印内容] 关键字
 @register_keyword('打印内容', [
     {'name': '内容', 'mapping': 'content', 'description': '要打印的文本内容，支持多行字符串'}
