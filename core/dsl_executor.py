@@ -1,3 +1,4 @@
+import re
 import allure
 from core.lexer import get_lexer
 from core.parser import get_parser, Node
@@ -28,10 +29,17 @@ class DSLExecutor:
         """处理表达式值的具体逻辑"""
         if isinstance(value, Node):
             return self.eval_expression(value)
-        elif isinstance(value, str) and value.startswith('${') and value.endswith('}'):
-            return self._get_variable(value[2:-1])
         elif isinstance(value, str):
-            return self._replace_variables_in_string(value)
+            # 定义变量引用模式
+            pattern = r'\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}'
+            # 检查整个字符串是否完全匹配单一变量引用模式
+            match = re.fullmatch(pattern, value)
+            if match:
+                var_name = match.group(1)
+                return self._get_variable(var_name)
+            else:
+                # 如果不是单一变量，则替换字符串中的所有变量引用
+                return self._replace_variables_in_string(value)
         return value
     
     def _get_variable(self, var_name):
@@ -42,25 +50,33 @@ class DSLExecutor:
     
     def _replace_variables_in_string(self, value):
         """替换字符串中的变量引用"""
-        import re
-        def replace_var(match):
-            return str(self._get_variable(match.group(1)))
-        return re.sub(r'\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}', replace_var, value)
+        # 使用更严格的变量名匹配模式
+        pattern = r'\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}'
+        result = value
+        matches = list(re.finditer(pattern, value))
+        
+        # 从后向前替换，避免前面的替换影响后面的索引位置
+        for match in reversed(matches):
+            var_name = match.group(1)
+            var_value = self._get_variable(var_name)  # 使用现有的_get_variable方法
+            result = result[:match.start()] + str(var_value) + result[match.end():]
+        
+        return result
 
     def _handle_start(self, node):
         """处理开始节点"""
-        teardown_node = None
         try:
             metadata = {}
+            teardown_node = None
+            
+            # 先处理元数据和找到teardown节点
             for child in node.children:
                 if child.type == 'Metadata':
                     for item in child.children:
                         metadata[item.type] = item.value
                 elif child.type == 'Teardown':
-                    # 保存 teardown 节点，稍后执行
                     teardown_node = child
-                    continue
-                        
+                    
             # 设置 Allure 报告信息
             if '@name' in metadata:
                 allure.dynamic.title(metadata['@name'])
@@ -70,24 +86,22 @@ class DSLExecutor:
                 for tag in metadata['@tags']:
                     allure.dynamic.tag(tag.value)
                     
-            # 执行除 teardown 外的所有子节点
+            # 执行所有非teardown节点
             for child in node.children:
                 if child.type != 'Teardown':
                     self.execute(child)
-                    
         finally:
-            # 在 finally 块中执行 teardown
             if teardown_node:
                 with allure.step("执行清理操作"):
                     try:
-                        self.execute(teardown_node.children[0])
+                        self.execute(teardown_node)
                     except Exception as e:
                         allure.attach(
                             f"清理操作执行失败: {str(e)}",
                             name="清理失败",
                             attachment_type=allure.attachment_type.TEXT
                         )
-                        raise
+
 
     def _handle_statements(self, node):
         """处理语句列表"""
