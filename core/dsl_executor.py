@@ -149,7 +149,6 @@ class DSLExecutor:
             with allure.step(f"循环轮次: {var_name} = {i}"):
                 self.execute(node.children[2])
 
-    @allure.step("执行关键字调用")
     def _execute_keyword_call(self, node):
         """执行关键字调用"""
         keyword_name = node.value
@@ -158,7 +157,42 @@ class DSLExecutor:
             raise Exception(f"未注册的关键字: {keyword_name}")
             
         kwargs = self._prepare_keyword_params(node, keyword_info)
-        return keyword_manager.execute(keyword_name, **kwargs)
+        
+        with allure.step(f"执行关键字: {keyword_name}"):
+            try:
+                result = keyword_manager.execute(keyword_name, **kwargs)
+                self._log_keyword_execution(keyword_name, kwargs, result)
+                return result
+            except Exception as e:
+                self._log_keyword_failure(keyword_name, kwargs, e)
+                raise
+
+    def _prepare_keyword_params(self, node, keyword_info):
+        """准备关键字调用参数"""
+        mapping = keyword_info.get('mapping', {})
+        kwargs = {}
+        for param in node.children[0]:
+            param_name = param.value
+            english_param_name = mapping.get(param_name, param_name)
+            kwargs[english_param_name] = self.eval_expression(param.children[0])
+        return kwargs
+
+    def _log_keyword_execution(self, keyword_name, kwargs, result):
+        """记录关键字执行结果"""
+        allure.attach(
+            f"关键字: {keyword_name}\n参数: {kwargs}\n返回值: {result}",
+            name="执行详情",
+            attachment_type=allure.attachment_type.TEXT
+        )
+
+    def _log_keyword_failure(self, keyword_name, kwargs, exception):
+        """记录关键字执行失败"""
+        allure.attach(
+            f"关键字: {keyword_name}\n参数: {kwargs}\n异常: {str(exception)}",
+            name="执行失败",
+            attachment_type=allure.attachment_type.TEXT
+        )
+
 
     def _prepare_keyword_params(self, node, keyword_info):
         """准备关键字调用参数"""

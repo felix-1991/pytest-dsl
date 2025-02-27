@@ -1,3 +1,4 @@
+import allure
 from core.keyword_manager import keyword_manager
 
 @keyword_manager.register('打印内容', [
@@ -11,4 +12,4 @@ def print_content(**kwargs):
     {'name': '结果', 'mapping': 'result', 'description': '要返回的结果值'}
 ])
 def return_result(**kwargs):
-    return kwargs.get('result') 
+    return kwargs.get('result')
