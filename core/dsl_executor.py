@@ -1,8 +1,8 @@
-# execute.py
 import allure
-from lexer import get_lexer
-from parser import get_parser, Node
-from keywords import keywords, execute_keyword
+from parser.lexer import get_lexer
+from parser.parser import get_parser, Node
+from core.keyword_manager import keyword_manager
+
 
 class DSLExecutor:
     def __init__(self):
@@ -117,19 +117,12 @@ class DSLExecutor:
     def _execute_keyword_call(self, node):
         """执行关键字调用"""
         keyword_name = node.value
-        keyword_info = keywords.get(keyword_name)
+        keyword_info = keyword_manager.get_keyword_info(keyword_name)
         if not keyword_info:
             raise Exception(f"未注册的关键字: {keyword_name}")
             
         kwargs = self._prepare_keyword_params(node, keyword_info)
-        
-        try:
-            result = execute_keyword(keyword_name, **kwargs)
-            self._log_keyword_execution(keyword_name, kwargs, result)
-            return result
-        except Exception as e:
-            self._log_keyword_failure(keyword_name, kwargs, e)
-            raise
+        return keyword_manager.execute(keyword_name, **kwargs)
 
     def _prepare_keyword_params(self, node, keyword_info):
         """准备关键字调用参数"""
@@ -184,15 +177,3 @@ def read_file(filename):
     """读取 DSL 文件内容"""
     with open(filename, 'r', encoding='utf-8') as f:
         return f.read()
-
-if __name__ == '__main__':
-    lexer = get_lexer()
-    parser = get_parser()
-    executor = DSLExecutor()
-    
-    try:
-        dsl_code = read_file('test.auto')
-        ast = parser.parse(dsl_code, lexer=lexer)
-        executor.execute(ast)
-    except Exception as e:
-        print(f"执行失败: {e}")
