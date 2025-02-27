@@ -2,6 +2,7 @@ import allure
 from core.lexer import get_lexer
 from core.parser import get_parser, Node
 from core.keyword_manager import keyword_manager
+import keywords
 
 
 class DSLExecutor:
@@ -48,24 +49,45 @@ class DSLExecutor:
 
     def _handle_start(self, node):
         """处理开始节点"""
-        metadata = {}
-        for child in node.children:
-            if child.type == 'Metadata':
-                for item in child.children:
-                    metadata[item.type] = item.value
+        teardown_node = None
+        try:
+            metadata = {}
+            for child in node.children:
+                if child.type == 'Metadata':
+                    for item in child.children:
+                        metadata[item.type] = item.value
+                elif child.type == 'Teardown':
+                    # 保存 teardown 节点，稍后执行
+                    teardown_node = child
+                    continue
+                        
+            # 设置 Allure 报告信息
+            if '@name' in metadata:
+                allure.dynamic.title(metadata['@name'])
+            if '@description' in metadata:
+                allure.dynamic.description(metadata['@description'])
+            if '@tags' in metadata:
+                for tag in metadata['@tags']:
+                    allure.dynamic.tag(tag.value)
                     
-        # 设置 Allure 报告信息
-        if '@name' in metadata:
-            allure.dynamic.title(metadata['@name'])
-        if '@description' in metadata:
-            allure.dynamic.description(metadata['@description'])
-        if '@tags' in metadata:
-            for tag in metadata['@tags']:
-                allure.dynamic.tag(tag.value)
-                
-        # 执行所有子节点
-        for child in node.children:
-            self.execute(child)
+            # 执行除 teardown 外的所有子节点
+            for child in node.children:
+                if child.type != 'Teardown':
+                    self.execute(child)
+                    
+        finally:
+            # 在 finally 块中执行 teardown
+            if teardown_node:
+                with allure.step("执行清理操作"):
+                    try:
+                        self.execute(teardown_node.children[0])
+                    except Exception as e:
+                        allure.attach(
+                            f"清理操作执行失败: {str(e)}",
+                            name="清理失败",
+                            attachment_type=allure.attachment_type.TEXT
+                        )
+                        raise
 
     def _handle_statements(self, node):
         """处理语句列表"""

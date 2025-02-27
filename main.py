@@ -1,8 +1,6 @@
 from core.lexer import get_lexer
 from core.parser import get_parser
 from core.dsl_executor import DSLExecutor
-# 导入所有关键字定义
-from keywords import api_keywords, system_keywords
 
 
 def read_file(filename):

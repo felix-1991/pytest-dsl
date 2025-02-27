@@ -1,13 +1,20 @@
 import pytest
 from pathlib import Path
-from execute import DSLExecutor, read_file, get_lexer, get_parser
+from core.dsl_executor import DSLExecutor
+from core.lexer import get_lexer
+from core.parser import get_parser
 
 lexer = get_lexer()
 parser = get_parser()
 
 
+def read_file(filename):
+    """读取 DSL 文件内容"""
+    with open(filename, 'r', encoding='utf-8') as f:
+        return f.read()
+
 def pytest_collect_file(parent, file_path):
-    if file_path.suffix == ".auto" and file_path.name.startswith("test"):
+    if file_path.suffix == ".auto":
         return AutoFile.from_parent(parent, path=file_path)
 
 class AutoFile(pytest.File):
