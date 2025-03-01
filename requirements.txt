@@ -1,3 +1,4 @@
 pytest>=7.0.0
 allure-pytest>=2.9.0
 ply>=3.11
+filelock>=3.17.0
