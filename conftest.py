@@ -6,6 +6,7 @@ from _pytest import nodes
 from typing import Iterable, Union, Optional
 import os
 from filelock import FileLock
+from core.global_context import global_context
 
 # 导入DSL相关组件
 from core.dsl_executor import DSLExecutor
@@ -150,6 +151,9 @@ def pytest_configure(config):
         if filename.startswith("pytest_dsl_teardown_") and filename.endswith(".lock.executed"):
             dir_hash = filename.replace("pytest_dsl_teardown_", "").replace(".lock.executed", "")
             _teardown_executed.add(f"hash_{dir_hash}")
+    
+    # 确保全局变量存储目录存在
+    os.makedirs(global_context._storage_dir, exist_ok=True)
 
 
 @pytest.hookimpl

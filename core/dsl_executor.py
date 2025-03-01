@@ -3,6 +3,7 @@ import allure
 from core.lexer import get_lexer
 from core.parser import get_parser, Node
 from core.keyword_manager import keyword_manager
+from core.global_context import global_context
 import keywords
 
 
@@ -43,9 +44,11 @@ class DSLExecutor:
         return value
     
     def _get_variable(self, var_name):
-        """获取变量值"""
+        """获取变量值，优先从本地变量获取，如果不存在则尝试从全局上下文获取"""
         if var_name in self.variables:
             return self.variables[var_name]
+        elif global_context.has_variable(var_name):
+            return global_context.get_variable(var_name)
         raise Exception(f"变量未定义: {var_name}")
     
     def _replace_variables_in_string(self, value):
