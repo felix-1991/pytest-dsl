@@ -8,24 +8,28 @@ class Node:
         self.children = children if children else []
         self.value = value
 
+
 # 定义优先级和结合性
 precedence = (
     ('left', 'COMMA'),
     ('right', 'EQUALS'),
 )
 
+
 def p_start(p):
     '''start : metadata statements teardown
              | metadata statements'''
-    
+
     if len(p) == 4:
         p[0] = Node('Start', [p[1], p[2], p[3]])
     else:
         p[0] = Node('Start', [p[1], p[2]])
 
+
 def p_metadata(p):
     '''metadata : metadata_items'''
     p[0] = Node('Metadata', p[1])
+
 
 def p_metadata_items(p):
     '''metadata_items : metadata_item metadata_items
@@ -34,6 +38,7 @@ def p_metadata_items(p):
         p[0] = [p[1]] + p[2]
     else:
         p[0] = [p[1]]
+
 
 def p_metadata_item(p):
     '''metadata_item : NAME_KEYWORD COLON metadata_value
@@ -46,10 +51,12 @@ def p_metadata_item(p):
     else:
         p[0] = Node(p[1], value=p[3])
 
+
 def p_metadata_value(p):
     '''metadata_value : STRING
                      | ID'''
     p[0] = p[1]
+
 
 def p_tags(p):
     '''tags : tag COMMA tags
@@ -59,10 +66,12 @@ def p_tags(p):
     else:
         p[0] = [p[1]]
 
+
 def p_tag(p):
     '''tag : STRING
            | ID'''
     p[0] = Node('Tag', value=p[1])
+
 
 def p_statements(p):
     '''statements : statement statements
@@ -72,11 +81,13 @@ def p_statements(p):
     else:
         p[0] = Node('Statements', [p[1]])
 
+
 def p_statement(p):
     '''statement : assignment
                 | keyword_call
                 | loop'''
     p[0] = p[1]
+
 
 def p_assignment(p):
     '''assignment : ID EQUALS expression
@@ -86,6 +97,7 @@ def p_assignment(p):
     else:
         p[0] = Node('Assignment', value=p[1], children=[p[3]])
 
+
 def p_expression(p):
     '''expression : NUMBER
                   | STRING
@@ -93,17 +105,21 @@ def p_expression(p):
                   | ID'''
     p[0] = Node('Expression', value=p[1])
 
+
 def p_loop(p):
     '''loop : FOR ID IN RANGE LPAREN expression COMMA expression RPAREN DO statements END'''
     p[0] = Node('ForLoop', [p[6], p[8], p[11]], p[2])
+
 
 def p_keyword_call(p):
     '''keyword_call : LBRACKET ID RBRACKET COMMA parameter_list'''
     p[0] = Node('KeywordCall', [p[5]], p[2])
 
+
 def p_parameter_list(p):
     '''parameter_list : parameter_items'''
     p[0] = p[1]
+
 
 def p_parameter_items(p):
     '''parameter_items : parameter_item COMMA parameter_items
@@ -113,19 +129,24 @@ def p_parameter_items(p):
     else:
         p[0] = [p[1]]
 
+
 def p_parameter_item(p):
     '''parameter_item : ID COLON expression'''
     p[0] = Node('ParameterItem', value=p[1], children=[p[3]])
+
 
 def p_teardown(p):
     '''teardown : TEARDOWN_KEYWORD DO statements END'''
     p[0] = Node('Teardown', [p[3]])
 
+
 def p_error(p):
     if p:
-        print(f"语法错误: 在第 {p.lineno} 行, 位置 {p.lexpos}, Token {p.type}, 值: {p.value}")
+        print(
+            f"语法错误: 在第 {p.lineno} 行, 位置 {p.lexpos}, Token {p.type}, 值: {p.value}")
     else:
         print("语法错误: 在文件末尾")
+
 
 def get_parser(debug=False):
     return yacc.yacc(debug=debug)

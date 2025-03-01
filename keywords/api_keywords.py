@@ -1,5 +1,6 @@
 from core.keyword_manager import keyword_manager
 
+
 @keyword_manager.register('API接口调用', [
     {'name': '方法', 'mapping': 'method', 'description': 'HTTP请求方法'},
     {'name': 'URL', 'mapping': 'url', 'description': '请求的URL地址'},
@@ -14,7 +15,8 @@ def api_call(**kwargs):
     headers = kwargs.get('headers')
     params = kwargs.get('params')
     response = kwargs.get('response')
-    print(f"API接口调用: method={method}, url={url}, headers={headers}, params={params}, response={response}")
+    print(
+        f"API接口调用: method={method}, url={url}, headers={headers}, params={params}, response={response}")
 
 
 @keyword_manager.register('API请求', [

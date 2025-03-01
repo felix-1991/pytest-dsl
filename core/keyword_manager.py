@@ -2,16 +2,18 @@ from typing import Dict, Any, Callable, List
 import functools
 import allure
 
+
 class Parameter:
     def __init__(self, name: str, mapping: str, description: str):
         self.name = name
         self.mapping = mapping
         self.description = description
 
+
 class KeywordManager:
     def __init__(self):
         self._keywords: Dict[str, Dict] = {}
-        
+
     def register(self, name: str, parameters: List[Dict]):
         """关键字注册装饰器"""
         def decorator(func: Callable) -> Callable:
@@ -25,7 +27,7 @@ class KeywordManager:
                     except Exception as e:
                         self._log_failure(name, kwargs, e)
                         raise
-            
+
             param_list = [Parameter(**p) for p in parameters]
             mapping = {p.name: p.mapping for p in param_list}
             self._keywords[name] = {
@@ -70,9 +72,11 @@ class KeywordManager:
             docs.append(f"关键字: {name}")
             docs.append("参数:")
             for param in info['parameters']:
-                docs.append(f"  {param.name} ({param.mapping}): {param.description}")
+                docs.append(
+                    f"  {param.name} ({param.mapping}): {param.description}")
             docs.append("")
         return "\n".join(docs)
+
 
 # 创建全局关键字管理器实例
 keyword_manager = KeywordManager()

@@ -43,14 +43,17 @@ t_EQUALS = r'='
 # 增加PLACEHOLDER规则，匹配 ${变量名} 格式
 t_PLACEHOLDER = r'\$\{[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*\}'
 
+
 def t_DATE(t):
     r'\d{4}-\d{2}-\d{2}(\s+\d{2}:\d{2}:\d{2})?'
     return t
+
 
 def t_ID(t):
     r'[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*'
     t.type = reserved.get(t.value, 'ID')
     return t
+
 
 def t_STRING(t):
     r"""(\'\'\'[\s\S]*?\'\'\'|\"\"\"[\s\S]*?\"\"\"|'[^']*'|\"[^\"]*\")"""
@@ -62,34 +65,43 @@ def t_STRING(t):
     return t
 
 # 定义以 @ 开头的关键字的 token 规则
+
+
 def t_NAME_KEYWORD(t):
     r'@name'
     return t
+
 
 def t_DESCRIPTION_KEYWORD(t):
     r'@description'
     return t
 
+
 def t_TAGS_KEYWORD(t):
     r'@tags'
     return t
+
 
 def t_AUTHOR_KEYWORD(t):
     r'@author'
     return t
 
+
 def t_DATE_KEYWORD(t):
     r'@date'
     return t
+
 
 def t_TEARDOWN_KEYWORD(t):
     r'@teardown'
     return t
 
+
 def t_NUMBER(t):
     r'\d+'
     t.value = int(t.value)
     return t
+
 
 # 忽略空格和制表符
 t_ignore = ' \t'
@@ -98,15 +110,21 @@ t_ignore = ' \t'
 t_ignore_COMMENT = r'\#.*'
 
 # 跟踪行号
+
+
 def t_newline(t):
     r'\n+'
     t.lexer.lineno += len(t.value)
 
 # 错误处理
+
+
 def t_error(t):
     print(f"非法字符 '{t.value[0]}' 在行 {t.lineno} 位置 {t.lexpos}")
     t.lexer.skip(1)
 
 # 模块接口
+
+
 def get_lexer():
     return lex.lex()
