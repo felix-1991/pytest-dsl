@@ -8,3 +8,4 @@ parsetab.py
 .venv/
 allure-report/
 allure-results/
+pytest-dsl.code-workspace
