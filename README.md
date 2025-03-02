@@ -1,8 +1,3 @@
-# pytest-dsl 项目介绍
-
-我将为您创建一个README.md文件，介绍您的pytest-dsl项目的DSL语法和使用方法。
-
-```markdown:/Users/chenshuanglin/code/python/pytest-dsl/README.md
 # pytest-dsl
 
 pytest-dsl是一个基于pytest的测试框架，它使用自定义的领域特定语言(DSL)来编写测试用例，使测试更加直观、易读和易维护。
