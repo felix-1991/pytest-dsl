@@ -9,3 +9,4 @@ parsetab.py
 allure-report/
 allure-results/
 pytest-dsl.code-workspace
+.vscode

@@ -116,12 +116,22 @@ class DSLExecutor:
         """处理赋值语句"""
         var_name = node.value
         expr_value = self.eval_expression(node.children[0])
-        self.variables[var_name] = expr_value
-        allure.attach(
-            f"变量: {var_name}\n值: {expr_value}",
-            name="赋值详情",
-            attachment_type=allure.attachment_type.TEXT
-        )
+        
+        # 检查变量名是否以g_开头，如果是则设置为全局变量
+        if var_name.startswith('g_'):
+            global_context.set_variable(var_name, expr_value)
+            allure.attach(
+                f"全局变量: {var_name}\n值: {expr_value}",
+                name="全局变量赋值",
+                attachment_type=allure.attachment_type.TEXT
+            )
+        else:
+            self.variables[var_name] = expr_value
+            allure.attach(
+                f"变量: {var_name}\n值: {expr_value}",
+                name="赋值详情",
+                attachment_type=allure.attachment_type.TEXT
+            )
 
     @allure.step("关键字调用赋值")
     def _handle_assignment_keyword_call(self, node):
@@ -131,12 +141,21 @@ class DSLExecutor:
         result = self.execute(keyword_call_node)
         
         if result is not None:
-            self.variables[var_name] = result
-            allure.attach(
-                f"变量: {var_name}\n值: {result}",
-                name="赋值详情",
-                attachment_type=allure.attachment_type.TEXT
-            )
+            # 检查变量名是否以g_开头，如果是则设置为全局变量
+            if var_name.startswith('g_'):
+                global_context.set_variable(var_name, result)
+                allure.attach(
+                    f"全局变量: {var_name}\n值: {result}",
+                    name="全局变量赋值",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+            else:
+                self.variables[var_name] = result
+                allure.attach(
+                    f"变量: {var_name}\n值: {result}",
+                    name="赋值详情",
+                    attachment_type=allure.attachment_type.TEXT
+                )
         else:
             raise Exception(f"关键字 {keyword_call_node.value} 没有返回结果")
 
