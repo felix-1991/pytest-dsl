@@ -2,8 +2,9 @@ import os
 import json
 import tempfile
 import allure
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from filelock import FileLock
+from .yaml_vars import yaml_vars
 
 
 class GlobalContext:
@@ -32,19 +33,30 @@ class GlobalContext:
         )
 
     def get_variable(self, name: str) -> Any:
-        """获取全局变量"""
+        """获取全局变量，优先从YAML变量中获取"""
+        # 首先尝试从YAML变量中获取
+        yaml_value = yaml_vars.get_variable(name)
+        if yaml_value is not None:
+            return yaml_value
+
+        # 如果YAML中没有，则从全局变量存储中获取
         with FileLock(self._lock_file):
             variables = self._load_variables()
             return variables.get(name)
 
     def has_variable(self, name: str) -> bool:
-        """检查全局变量是否存在"""
+        """检查全局变量是否存在（包括YAML变量）"""
+        # 首先检查YAML变量
+        if yaml_vars.get_variable(name) is not None:
+            return True
+
+        # 然后检查全局变量存储
         with FileLock(self._lock_file):
             variables = self._load_variables()
             return name in variables
 
     def delete_variable(self, name: str) -> None:
-        """删除全局变量"""
+        """删除全局变量（仅删除存储的变量，不影响YAML变量）"""
         with FileLock(self._lock_file):
             variables = self._load_variables()
             if name in variables:
@@ -58,9 +70,12 @@ class GlobalContext:
         )
 
     def clear_all(self) -> None:
-        """清除所有全局变量"""
+        """清除所有全局变量（包括YAML变量）"""
         with FileLock(self._lock_file):
             self._save_variables({})
+        
+        # 清除YAML变量
+        yaml_vars.clear()
 
         allure.attach(
             "清除所有全局变量",

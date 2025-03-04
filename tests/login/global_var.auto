@@ -7,4 +7,4 @@
 # 在另一个测试用例中，可以获取这个全局变量
 user_id = [获取全局变量],变量名:'user_id'
 [打印内容],内容:'获取到的全局用户ID: ${user_id}'
-[打印内容],内容: 'g_user_name = ${g_user_name}'
+[打印内容],内容: 'g_user_name = ${environment}, '

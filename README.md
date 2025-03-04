@@ -9,6 +9,7 @@ pytest-dsl是一个基于pytest的测试框架，它使用自定义的领域特�
 - 自动集成到pytest测试框架
 - 支持测试用例元数据管理（名称、描述、标签等）
 - 支持变量、循环等基本编程结构
+- 支持YAML格式的外部变量文件
 - 支持setup和teardown机制
 - 支持并行测试执行(pytest-xdist)
 - 集成Allure报告
@@ -52,7 +53,9 @@ end
 @date: 2023-01-01
 ```
 
-### 变量声明与使用
+### 变量管理
+
+#### DSL内变量声明与使用
 
 ```
 # 变量赋值
@@ -60,6 +63,54 @@ number = 5
 
 # 变量引用
 [打印内容],内容:${number}
+```
+
+#### YAML变量文件
+
+您可以使用YAML文件来管理测试变量，支持多文件和目录方式加载。YAML变量优先级高于DSL中定义的变量。
+
+##### YAML文件格式
+
+```yaml
+# vars.yaml
+test_data:
+  username: "testuser"
+  password: "password123"
+  
+api_config:
+  base_url: "https://api.example.com"
+  timeout: 30
+
+environment: "staging"
+```
+
+##### 使用YAML变量
+
+在DSL文件中可以直接引用YAML文件中定义的变量：
+
+```
+# test.auto
+[API接口调用],
+    URL:'${api_config.base_url}/login',
+    请求参数:'{"username":"${test_data.username}","password":"${test_data.password}"}'
+```
+
+##### 加载YAML变量文件
+
+可以通过命令行参数指定YAML变量文件：
+
+```bash
+# 加载单个变量文件
+pytest --yaml-vars vars.yaml
+
+# 加载多个变量文件（后加载的文件会覆盖先加载文件中的同名变量）
+pytest --yaml-vars common_vars.yaml --yaml-vars env_vars.yaml
+
+# 加载目录中的所有YAML文件
+pytest --yaml-vars-dir ./test_vars
+
+# 同时使用文件和目录
+pytest --yaml-vars-dir ./common_vars --yaml-vars specific_vars.yaml
 ```
 
 ### 循环结构
@@ -145,6 +196,11 @@ end
 ## 项目结构
 
 - `core/`: 核心实现，包括DSL解析器、执行器等
+  - `global_context.py`: 全局变量管理
+  - `yaml_vars.py`: YAML变量文件支持
+  - `dsl_executor.py`: DSL执行器
+  - `parser.py`: DSL解析器
+  - `lexer.py`: DSL词法分析器
 - `keywords/`: 内置关键字实现
 - `conftest.py`: pytest集成
 - `tests/`: 测试用例目录

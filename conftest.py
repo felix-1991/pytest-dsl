@@ -3,10 +3,11 @@ import types
 import sys
 from pathlib import Path
 from _pytest import nodes
-from typing import Iterable, Union, Optional
+from typing import Iterable, Union, Optional, List
 import os
 from filelock import FileLock
 from core.global_context import global_context
+from core.yaml_vars import yaml_vars
 
 # 导入DSL相关组件
 from core.dsl_executor import DSLExecutor
@@ -19,6 +20,41 @@ parser = get_parser()
 # 用于跟踪已执行的setup和teardown的目录
 _setup_executed = set()
 _teardown_executed = set()
+
+
+def pytest_addoption(parser):
+    """添加命令行参数选项"""
+    group = parser.getgroup('yaml-vars')
+    group.addoption(
+        '--yaml-vars',
+        action='append',
+        default=[],
+        help='YAML变量文件路径，可以指定多个文件 (例如: --yaml-vars vars1.yaml --yaml-vars vars2.yaml)'
+    )
+    group.addoption(
+        '--yaml-vars-dir',
+        action='store',
+        default=None,
+        help='YAML变量文件目录路径，将加载该目录下所有.yaml文件'
+    )
+
+
+def load_yaml_variables(config):
+    """加载YAML变量文件"""
+    # 加载单个YAML文件
+    yaml_files = config.getoption('--yaml-vars')
+    if yaml_files:
+        yaml_vars.load_yaml_files(yaml_files)
+        print(f"已加载YAML变量文件: {', '.join(yaml_files)}")
+
+    # 加载目录中的YAML文件
+    yaml_vars_dir = config.getoption('--yaml-vars-dir')
+    if yaml_vars_dir:
+        yaml_vars.load_from_directory(yaml_vars_dir)
+        print(f"已加载YAML变量目录: {yaml_vars_dir}")
+        loaded_files = yaml_vars.get_loaded_files()
+        if loaded_files:
+            print(f"目录中加载的文件: {', '.join(loaded_files)}")
 
 
 def read_file(filename):
@@ -140,20 +176,20 @@ class AutoDirectory(nodes.Directory):
 # 在测试会话开始时检查已执行的标记文件
 @pytest.hookimpl
 def pytest_configure(config):
-    """配置测试会话，加载已执行的setup/teardown信息"""
+    """配置测试会话，加载已执行的setup/teardown信息和YAML变量"""
     global _setup_executed, _teardown_executed
+
+    # 加载YAML变量文件
+    load_yaml_variables(config)
 
     # 扫描/tmp目录下的标记文件
     for filename in os.listdir("/tmp"):
         if filename.startswith("pytest_dsl_setup_") and filename.endswith(".lock.executed"):
-            dir_hash = filename.replace(
-                "pytest_dsl_setup_", "").replace(".lock.executed", "")
-            # 这里我们无法直接从哈希值恢复目录路径，但可以在执行时再次检查
+            dir_hash = filename.replace("pytest_dsl_setup_", "").replace(".lock.executed", "")
             _setup_executed.add(f"hash_{dir_hash}")
 
         if filename.startswith("pytest_dsl_teardown_") and filename.endswith(".lock.executed"):
-            dir_hash = filename.replace(
-                "pytest_dsl_teardown_", "").replace(".lock.executed", "")
+            dir_hash = filename.replace("pytest_dsl_teardown_", "").replace(".lock.executed", "")
             _teardown_executed.add(f"hash_{dir_hash}")
 
     # 确保全局变量存储目录存在
