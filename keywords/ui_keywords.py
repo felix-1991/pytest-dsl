@@ -52,9 +52,7 @@ def get_page(context, **kwargs):
         raise Exception(f"页面 '{page_name}' 不存在，请先使用 '打开页面' 关键字创建")
     return context.get(page_name)
 
-@keyword_manager.register('关闭浏览器', [
-    {'name': '浏览器名称', 'mapping': 'browser_name', 'description': '浏览器名称'}
-])
+@keyword_manager.register('关闭浏览器', [])
 def close_browser(context, **kwargs):
     """
     关闭浏览器并清理资源
@@ -71,4 +69,4 @@ def close_browser(context, **kwargs):
         playwright.stop()
         
     # 清理上下文中的浏览器相关对象
-    context.clear() 
+    context.clear()

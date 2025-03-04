@@ -198,10 +198,12 @@ class DSLExecutor:
         """准备关键字调用参数"""
         mapping = keyword_info.get('mapping', {})
         kwargs = {'context': self.test_context}  # 默认传入context参数
-        for param in node.children[0]:
-            param_name = param.value
-            english_param_name = mapping.get(param_name, param_name)
-            kwargs[english_param_name] = self.eval_expression(param.children[0])
+        # 检查是否有参数列表
+        if node.children[0]:
+            for param in node.children[0]:
+                param_name = param.value
+                english_param_name = mapping.get(param_name, param_name)
+                kwargs[english_param_name] = self.eval_expression(param.children[0])
         return kwargs
 
     def _log_keyword_execution(self, keyword_name, kwargs, result):

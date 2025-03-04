@@ -112,8 +112,12 @@ def p_loop(p):
 
 
 def p_keyword_call(p):
-    '''keyword_call : LBRACKET ID RBRACKET COMMA parameter_list'''
-    p[0] = Node('KeywordCall', [p[5]], p[2])
+    '''keyword_call : LBRACKET ID RBRACKET COMMA parameter_list
+                   | LBRACKET ID RBRACKET'''
+    if len(p) == 6:
+        p[0] = Node('KeywordCall', [p[5]], p[2])
+    else:
+        p[0] = Node('KeywordCall', [[]], p[2])
 
 
 def p_parameter_list(p):
