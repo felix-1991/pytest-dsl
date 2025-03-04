@@ -4,12 +4,14 @@ from core.lexer import get_lexer
 from core.parser import get_parser, Node
 from core.keyword_manager import keyword_manager
 from core.global_context import global_context
+from core.test_context import TestContext
 import keywords
 
 
 class DSLExecutor:
     def __init__(self):
         self.variables = {}
+        self.test_context = TestContext()
         
     def eval_expression(self, expr_node):
         """
@@ -69,6 +71,8 @@ class DSLExecutor:
     def _handle_start(self, node):
         """处理开始节点"""
         try:
+            # 清空上下文，确保每个测试用例都有一个新的上下文
+            self.test_context.clear()
             metadata = {}
             teardown_node = None
             
@@ -100,11 +104,12 @@ class DSLExecutor:
                         self.execute(teardown_node)
                     except Exception as e:
                         allure.attach(
-                            f"清理操作执行失败: {str(e)}",
+                            f"清理失败: {str(e)}",
                             name="清理失败",
                             attachment_type=allure.attachment_type.TEXT
                         )
-
+            # 测试用例执行完成后清空上下文
+            self.test_context.clear()
 
     def _handle_statements(self, node):
         """处理语句列表"""
@@ -192,34 +197,7 @@ class DSLExecutor:
     def _prepare_keyword_params(self, node, keyword_info):
         """准备关键字调用参数"""
         mapping = keyword_info.get('mapping', {})
-        kwargs = {}
-        for param in node.children[0]:
-            param_name = param.value
-            english_param_name = mapping.get(param_name, param_name)
-            kwargs[english_param_name] = self.eval_expression(param.children[0])
-        return kwargs
-
-    def _log_keyword_execution(self, keyword_name, kwargs, result):
-        """记录关键字执行结果"""
-        allure.attach(
-            f"关键字: {keyword_name}\n参数: {kwargs}\n返回值: {result}",
-            name="执行详情",
-            attachment_type=allure.attachment_type.TEXT
-        )
-
-    def _log_keyword_failure(self, keyword_name, kwargs, exception):
-        """记录关键字执行失败"""
-        allure.attach(
-            f"关键字: {keyword_name}\n参数: {kwargs}\n异常: {str(exception)}",
-            name="执行失败",
-            attachment_type=allure.attachment_type.TEXT
-        )
-
-
-    def _prepare_keyword_params(self, node, keyword_info):
-        """准备关键字调用参数"""
-        mapping = keyword_info.get('mapping', {})
-        kwargs = {}
+        kwargs = {'context': self.test_context}  # 默认传入context参数
         for param in node.children[0]:
             param_name = param.value
             english_param_name = mapping.get(param_name, param_name)
