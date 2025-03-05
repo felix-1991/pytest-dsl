@@ -4,7 +4,7 @@ from core.lexer import get_lexer
 from core.parser import get_parser, Node
 from core.keyword_manager import keyword_manager
 from core.global_context import global_context
-from core.test_context import TestContext
+from core.context import TestContext
 import keywords
 
 
