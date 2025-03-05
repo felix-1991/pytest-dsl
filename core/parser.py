@@ -45,9 +45,14 @@ def p_metadata_item(p):
                     | DESCRIPTION_KEYWORD COLON metadata_value
                     | TAGS_KEYWORD COLON LBRACKET tags RBRACKET
                     | AUTHOR_KEYWORD COLON metadata_value
-                    | DATE_KEYWORD COLON DATE'''
+                    | DATE_KEYWORD COLON DATE
+                    | DATA_KEYWORD COLON data_source'''
     if p[1] == '@tags':
         p[0] = Node(p[1], value=p[4])
+    elif p[1] == '@data':
+        # 对于数据驱动测试，将数据源信息存储在节点中
+        data_info = p[3]  # 这是一个包含 file 和 format 的字典
+        p[0] = Node(p[1], value=data_info, children=None)
     else:
         p[0] = Node(p[1], value=p[3])
 
@@ -142,6 +147,11 @@ def p_parameter_item(p):
 def p_teardown(p):
     '''teardown : TEARDOWN_KEYWORD DO statements END'''
     p[0] = Node('Teardown', [p[3]])
+
+
+def p_data_source(p):
+    '''data_source : STRING USING ID'''
+    p[0] = {'file': p[1], 'format': p[3]}
 
 
 def p_error(p):

@@ -6,7 +6,8 @@ reserved = {
     'end': 'END',
     'for': 'FOR',
     'in': 'IN',
-    'range': 'RANGE'
+    'range': 'RANGE',
+    'using': 'USING'  # Add new keyword for data-driven testing
 }
 
 # token 名称列表
@@ -29,6 +30,7 @@ tokens = [
     'AUTHOR_KEYWORD',
     'DATE_KEYWORD',
     'TEARDOWN_KEYWORD',
+    'DATA_KEYWORD',  # Add new token for @data keyword
 ] + list(reserved.values())
 
 # 正则表达式定义 token
@@ -94,6 +96,11 @@ def t_DATE_KEYWORD(t):
 
 def t_TEARDOWN_KEYWORD(t):
     r'@teardown'
+    return t
+
+
+def t_DATA_KEYWORD(t):
+    r'@data'
     return t
 
 

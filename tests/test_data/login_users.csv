@@ -1,0 +1,5 @@
+username,password,expected_status
+admin,admin123,200
+guest,guest123,200
+invalid,wrongpass,401
+blocked,block123,403 

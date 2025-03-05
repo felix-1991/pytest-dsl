@@ -1,5 +1,8 @@
 import re
 import allure
+import csv
+import os
+import pytest
 from core.lexer import get_lexer
 from core.parser import get_parser, Node
 from core.keyword_manager import keyword_manager
@@ -12,6 +15,44 @@ class DSLExecutor:
     def __init__(self):
         self.variables = {}
         self.test_context = TestContext()
+        
+    def set_current_data(self, data):
+        """设置当前测试数据集"""
+        if data:
+            self.variables.update(data)
+        
+    def _load_test_data(self, data_source):
+        """加载测试数据
+        
+        :param data_source: 数据源配置，包含 file 和 format 字段
+        :return: 包含测试数据的列表
+        """
+        if not data_source:
+            return [{}]  # 如果没有数据源，返回一个空的数据集
+            
+        file_path = data_source['file']
+        format_type = data_source['format']
+        
+        if not os.path.exists(file_path):
+            raise Exception(f"数据文件不存在: {file_path}")
+            
+        if format_type.lower() == 'csv':
+            return self._load_csv_data(file_path)
+        else:
+            raise Exception(f"不支持的数据格式: {format_type}")
+            
+    def _load_csv_data(self, file_path):
+        """加载CSV格式的测试数据
+        
+        :param file_path: CSV文件路径
+        :return: 包含测试数据的列表
+        """
+        data_sets = []
+        with open(file_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                data_sets.append(row)
+        return data_sets
         
     def eval_expression(self, expr_node):
         """
@@ -83,21 +124,34 @@ class DSLExecutor:
                         metadata[item.type] = item.value
                 elif child.type == 'Teardown':
                     teardown_node = child
-                    
+            
+            # 执行测试
+            self._execute_test_iteration(metadata, node, teardown_node)
+            
+        finally:
+            # 测试用例执行完成后清空上下文
+            self.test_context.clear()
+
+    def _execute_test_iteration(self, metadata, node, teardown_node):
+        """执行测试迭代"""
+        try:
             # 设置 Allure 报告信息
             if '@name' in metadata:
-                allure.dynamic.title(metadata['@name'])
+                test_name = metadata['@name']
+                allure.dynamic.title(test_name)
             if '@description' in metadata:
-                allure.dynamic.description(metadata['@description'])
+                description = metadata['@description']
+                allure.dynamic.description(description)
             if '@tags' in metadata:
                 for tag in metadata['@tags']:
                     allure.dynamic.tag(tag.value)
-                    
+                
             # 执行所有非teardown节点
             for child in node.children:
-                if child.type != 'Teardown':
+                if child.type != 'Teardown' and child.type != 'Metadata':
                     self.execute(child)
-        finally:
+                
+            # 执行teardown
             if teardown_node:
                 with allure.step("执行清理操作"):
                     try:
@@ -108,8 +162,9 @@ class DSLExecutor:
                             name="清理失败",
                             attachment_type=allure.attachment_type.TEXT
                         )
-            # 测试用例执行完成后清空上下文
-            self.test_context.clear()
+        finally:
+            # 清空变量，准备下一次迭代
+            self.variables.clear()
 
     def _handle_statements(self, node):
         """处理语句列表"""

@@ -9,7 +9,7 @@ from core.global_context import global_context
         {"name": "值", "mapping": "value", "description": "全局变量的值"}
     ]
 )
-def set_global_variable(name, value):
+def set_global_variable(name, value, context):
     """设置全局变量"""
     global_context.set_variable(name, value)
     return value
@@ -21,7 +21,7 @@ def set_global_variable(name, value):
         {"name": "变量名", "mapping": "name", "description": "全局变量的名称"}
     ]
 )
-def get_global_variable(name):
+def get_global_variable(name, context):
     """获取全局变量"""
     value = global_context.get_variable(name)
     if value is None:
@@ -35,7 +35,7 @@ def get_global_variable(name):
         {"name": "变量名", "mapping": "name", "description": "全局变量的名称"}
     ]
 )
-def delete_global_variable(name):
+def delete_global_variable(name, context):
     """删除全局变量"""
     global_context.delete_variable(name)
     return True
@@ -45,7 +45,7 @@ def delete_global_variable(name):
     name="清除所有全局变量",
     parameters=[]
 )
-def clear_all_global_variables():
+def clear_all_global_variables(context):
     """清除所有全局变量"""
     global_context.clear_all()
     return True

@@ -63,14 +63,15 @@ def read_file(filename):
         return f.read()
 
 
-def execute_dsl_file(file_path):
+def execute_dsl_file(file_path, executor=None):
     """执行DSL文件"""
     if not Path(file_path).exists():
         return
     print(f"执行DSL文件: {file_path}")
     dsl_code = read_file(file_path)
     ast = parser.parse(dsl_code, lexer=lexer)
-    executor = DSLExecutor()
+    if executor is None:
+        executor = DSLExecutor()
     executor.execute(ast)
 
 
@@ -144,9 +145,52 @@ class AutoDirectory(nodes.Directory):
             if auto_file.name not in ["setup.auto", "teardown.auto"]:
                 test_name = f"test_{auto_file.stem}"
 
-                # 创建测试函数
-                def test_function(auto_file=auto_file):
-                    execute_dsl_file(str(auto_file))
+                # 读取DSL文件内容并解析
+                dsl_code = read_file(str(auto_file))
+                ast = parser.parse(dsl_code, lexer=lexer)
+                
+                # 检查是否有数据驱动标记和测试名称
+                data_source = None
+                test_title = None
+                for child in ast.children:
+                    if child.type == 'Metadata':
+                        for item in child.children:
+                            if item.type == '@data':
+                                data_source = item.value
+                            elif item.type == '@name':
+                                test_title = item.value
+                        if data_source and test_title:
+                            break
+
+                if data_source:
+                    # 创建数据驱动的测试函数
+                    def test_function(test_data, auto_file=auto_file):
+                        executor = DSLExecutor()
+                        executor.set_current_data(test_data)
+                        # 使用同一个executor实例执行DSL文件
+                        execute_dsl_file(str(auto_file), executor)
+
+                    # 加载测试数据
+                    executor = DSLExecutor()
+                    test_data_list = executor._load_test_data(data_source)
+                    
+                    # 为每个数据集创建一个唯一的ID
+                    test_ids = []
+                    for i, data in enumerate(test_data_list, 1):
+                        # 创建一个可读的测试ID
+                        test_id = f"{test_title or auto_file.stem}-{'-'.join(f'{k}={v}' for k, v in data.items())}"
+                        test_ids.append(test_id)
+                    
+                    # 使用pytest.mark.parametrize装饰测试函数，添加ids参数
+                    test_function = pytest.mark.parametrize(
+                        'test_data',
+                        test_data_list,
+                        ids=test_ids
+                    )(test_function)
+                else:
+                    # 创建普通的测试函数
+                    def test_function(auto_file=auto_file):
+                        execute_dsl_file(str(auto_file))
 
                 # 将测试函数添加到模块
                 setattr(module, test_name, test_function)
