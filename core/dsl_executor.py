@@ -240,14 +240,13 @@ class DSLExecutor:
             
         kwargs = self._prepare_keyword_params(node, keyword_info)
         
-        with allure.step(f"执行关键字: {keyword_name}"):
-            try:
-                result = keyword_manager.execute(keyword_name, **kwargs)
-                self._log_keyword_execution(keyword_name, kwargs, result)
-                return result
-            except Exception as e:
-                self._log_keyword_failure(keyword_name, kwargs, e)
-                raise
+        try:
+            # 由于KeywordManager中的wrapper已经添加了allure.step和日志，这里不再重复添加
+            result = keyword_manager.execute(keyword_name, **kwargs)
+            return result
+        except Exception as e:
+            # 异常会在KeywordManager的wrapper中记录，这里只需要向上抛出
+            raise
 
     def _prepare_keyword_params(self, node, keyword_info):
         """准备关键字调用参数"""
@@ -260,22 +259,6 @@ class DSLExecutor:
                 english_param_name = mapping.get(param_name, param_name)
                 kwargs[english_param_name] = self.eval_expression(param.children[0])
         return kwargs
-
-    def _log_keyword_execution(self, keyword_name, kwargs, result):
-        """记录关键字执行结果"""
-        allure.attach(
-            f"关键字: {keyword_name}\n参数: {kwargs}\n返回值: {result}",
-            name="执行详情",
-            attachment_type=allure.attachment_type.TEXT
-        )
-
-    def _log_keyword_failure(self, keyword_name, kwargs, exception):
-        """记录关键字执行失败"""
-        allure.attach(
-            f"关键字: {keyword_name}\n参数: {kwargs}\n异常: {str(exception)}",
-            name="执行失败",
-            attachment_type=allure.attachment_type.TEXT
-        )
 
     @allure.step("执行清理操作")
     def _handle_teardown(self, node):
