@@ -35,7 +35,7 @@ def pytest_addoption(parser):
         '--yaml-vars-dir',
         action='store',
         default=None,
-        help='YAML变量文件目录路径，将加载该目录下所有.yaml文件'
+        help='YAML变量文件目录路径，将加载该目录下所有.yaml文件，默认为项目根目录下的config目录'
     )
 
 
@@ -49,12 +49,21 @@ def load_yaml_variables(config):
 
     # 加载目录中的YAML文件
     yaml_vars_dir = config.getoption('--yaml-vars-dir')
-    if yaml_vars_dir:
+    if yaml_vars_dir is None:
+        # 默认使用使用者项目根目录下的config目录
+        # 通过pytest的rootdir获取使用者的项目根目录
+        project_root = config.rootdir
+        yaml_vars_dir = str(project_root / 'config')
+        print(f"使用默认YAML变量目录: {yaml_vars_dir}")
+    
+    if Path(yaml_vars_dir).exists():
         yaml_vars.load_from_directory(yaml_vars_dir)
         print(f"已加载YAML变量目录: {yaml_vars_dir}")
         loaded_files = yaml_vars.get_loaded_files()
         if loaded_files:
             print(f"目录中加载的文件: {', '.join(loaded_files)}")
+    else:
+        print(f"YAML变量目录不存在: {yaml_vars_dir}")
 
 
 def read_file(filename):
