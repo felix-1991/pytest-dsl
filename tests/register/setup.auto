@@ -1,5 +1,14 @@
-@name: 注册测试前置
-@description: 注册测试的公共前置操作
-@tags: [setup]
+@name: 注册模块测试前置
+@description: 注册模块的前置操作
+@tags: [setup, register]
 
-[打印内容],内容: '开始执行注册测试用例' 
+# 打印日志表明register目录setup执行了
+[打印内容],内容: '=== register/目录的setup.auto已执行 ==='
+
+# 使用根目录定义的变量，并设置模块特定的变量
+register_api_path = '/register'
+register_url = '${g_root_base_url}${register_api_path}'
+
+# 打印继承的变量，验证父目录的setup.auto已执行
+[打印内容],内容: '从根目录继承的base_url: ${g_root_base_url}'
+[打印内容],内容: '模块特定的register_url: ${register_url}' 
