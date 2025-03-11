@@ -39,20 +39,3 @@ def pytest_configure(config):
     
     # 确保全局变量存储目录存在
     os.makedirs(global_context._storage_dir, exist_ok=True)
-
-
-@pytest.hookimpl
-def pytest_collect_directory(path, parent):
-    """使用自定义目录收集器处理包含.auto文件的目录
-    
-    Args:
-        path: 目录路径
-        parent: 父收集器
-        
-    Returns:
-        AutoDirectory或None: 如果目录包含.auto文件，则返回AutoDirectory实例，否则返回None
-    """
-    has_auto_files = any(p.suffix == ".auto" for p in path.glob("*.auto"))
-    if has_auto_files:
-        return AutoDirectory.from_parent(parent=parent, path=path)
-    return None

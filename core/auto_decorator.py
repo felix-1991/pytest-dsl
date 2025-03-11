@@ -1,0 +1,168 @@
+"""自动测试装饰器模块
+
+该模块提供装饰器功能，用于将指定目录下的.auto文件动态添加为测试方法到被装饰的类中。
+这种方式更贴合pytest的设计理念，可以充分利用pytest的fixture、参数化等功能。
+"""
+
+import os
+import inspect
+import functools
+from pathlib import Path
+import pytest
+from typing import Optional, Union, List, Dict, Any, Callable, Type
+
+from core.dsl_executor import DSLExecutor
+from core.dsl_executor_utils import read_file, execute_dsl_file, extract_metadata_from_ast
+from core.lexer import get_lexer
+from core.parser import get_parser
+from core.auto_directory import SETUP_FILE_NAME, TEARDOWN_FILE_NAME, execute_hook_file
+
+# 获取词法分析器和解析器实例
+lexer = get_lexer()
+parser = get_parser()
+
+
+def auto_dsl(directory: Union[str, Path]):
+    """
+    装饰器函数，用于将指定目录下的.auto文件动态添加为测试方法到被装饰的类中。
+    
+    Args:
+        directory: 包含.auto文件的目录路径，可以是相对路径或绝对路径
+        
+    Returns:
+        装饰器函数
+    """
+    directory_path = Path(directory)
+    if not directory_path.is_absolute():
+        # 如果是相对路径，则相对于调用者的文件位置
+        caller_frame = inspect.currentframe().f_back
+        caller_file = caller_frame.f_globals['__file__']
+        caller_dir = Path(caller_file).parent
+        directory_path = (caller_dir / directory_path).resolve()
+    
+    if not directory_path.exists() or not directory_path.is_dir():
+        raise ValueError(f"目录不存在或不是有效目录: {directory_path}")
+    
+    def decorator(cls):
+        # 检查setup.auto和teardown.auto文件
+        setup_file = directory_path / SETUP_FILE_NAME
+        teardown_file = directory_path / TEARDOWN_FILE_NAME
+        
+        # 添加setup和teardown方法
+        if setup_file.exists():
+            @classmethod
+            @pytest.fixture(scope="class", autouse=True)
+            def setup_class(cls, request):
+                execute_hook_file(setup_file, True, str(directory_path))
+                
+            setattr(cls, "setup_class", setup_class)
+        
+        if teardown_file.exists():
+            @classmethod
+            @pytest.fixture(scope="class", autouse=True)
+            def teardown_class(cls, request):
+                request.addfinalizer(lambda: execute_hook_file(teardown_file, False, str(directory_path)))
+                
+            setattr(cls, "teardown_class", teardown_class)
+        
+        # 处理目录中的测试文件
+        for auto_file in directory_path.glob("*.auto"):
+            if auto_file.name not in [SETUP_FILE_NAME, TEARDOWN_FILE_NAME]:
+                _add_test_method(cls, auto_file)
+        
+        return cls
+    
+    return decorator
+
+
+def _add_test_method(cls: Type, auto_file: Path) -> None:
+    """
+    为.auto文件创建测试方法并添加到类中
+    
+    Args:
+        cls: 要添加测试方法的类
+        auto_file: .auto文件路径
+    """
+    test_name = f"test_{auto_file.stem}"
+    
+    # 读取DSL文件内容并解析
+    dsl_code = read_file(str(auto_file))
+    ast = parser.parse(dsl_code, lexer=lexer)
+    
+    # 检查是否有数据驱动标记和测试名称
+    data_source, test_title = extract_metadata_from_ast(ast)
+    
+    if data_source:
+        test_method = _create_data_driven_test(auto_file, data_source, test_title)
+    else:
+        test_method = _create_simple_test(auto_file)
+    
+    # 将测试方法添加到类
+    setattr(cls, test_name, test_method)
+
+
+def _create_simple_test(auto_file: Path) -> Callable:
+    """
+    创建普通的测试方法
+    
+    Args:
+        auto_file: .auto文件路径
+        
+    Returns:
+        function: 测试方法
+    """
+    def test_method(self):
+        execute_dsl_file(str(auto_file))
+    
+    return test_method
+
+
+def _create_data_driven_test(auto_file: Path, data_source: Dict, test_title: Optional[str]) -> Callable:
+    """
+    创建数据驱动的测试方法
+    
+    Args:
+        auto_file: .auto文件路径
+        data_source: 数据源
+        test_title: 测试标题
+        
+    Returns:
+        function: 装饰后的测试方法
+    """
+    def test_method(self, test_data):
+        executor = DSLExecutor()
+        executor.set_current_data(test_data)
+        execute_dsl_file(str(auto_file), executor)
+    
+    # 加载测试数据
+    executor = DSLExecutor()
+    test_data_list = executor._load_test_data(data_source)
+    
+    # 为每个数据集创建一个唯一的ID
+    test_ids = _generate_test_ids(test_data_list, test_title or auto_file.stem)
+    
+    # 使用pytest.mark.parametrize装饰测试方法
+    return pytest.mark.parametrize(
+        'test_data',
+        test_data_list,
+        ids=test_ids
+    )(test_method)
+
+
+def _generate_test_ids(test_data_list: List[Dict[str, Any]], base_name: str) -> List[str]:
+    """
+    为数据驱动测试生成ID
+    
+    Args:
+        test_data_list: 测试数据列表
+        base_name: 基础名称
+        
+    Returns:
+        List[str]: 测试ID列表
+    """
+    test_ids = []
+    for data in test_data_list:
+        # 创建一个可读的测试ID
+        test_id = f"{base_name}-{'-'.join(f'{k}={v}' for k, v in data.items())}"
+        test_ids.append(test_id)
+    return test_ids
