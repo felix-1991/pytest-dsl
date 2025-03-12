@@ -11,6 +11,7 @@ from core.global_context import global_context
 
 # 导入模块化组件
 from core.yaml_loader import add_yaml_options, load_yaml_variables
+from core.plugin_discovery import load_all_plugins, scan_local_keywords
 
 
 def pytest_addoption(parser):
@@ -36,3 +37,9 @@ def pytest_configure(config):
 
     # 确保全局变量存储目录存在
     os.makedirs(global_context._storage_dir, exist_ok=True)
+
+    # 加载所有已安装的关键字插件
+    load_all_plugins()
+    
+    # 加载本地关键字（向后兼容）
+    scan_local_keywords()

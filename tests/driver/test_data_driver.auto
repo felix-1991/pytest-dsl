@@ -8,3 +8,5 @@
 # 执行登录操作
 [API接口调用],方法:POST,URL:'https://example.com/login',请求头:'{"Content-Type":"application/json"}',请求参数:'{"username":"${username}","password":"${password}"}'
 [打印内容],内容:${expected_status}
+sum = [计算加法],第一个数:3,第二个数:5
+[打印内容],内容:${sum}
