@@ -15,10 +15,69 @@ pytest-dsl是一个基于pytest的测试框架，它使用自定义的领域特�
 - 支持并行测试执行(pytest-xdist)
 - 集成Allure报告
 
-## 安装
+## 包安装与使用
+
+### 安装
+
+pytest-dsl 现在已经采用标准的 Python 包结构，支持使用 pip 或 uv 进行安装：
 
 ```bash
-pip install -r requirements.txt
+# 使用 uv 安装（推荐）
+uv pip install pytest-dsl
+
+# 或使用传统的 pip 安装
+pip install pytest-dsl
+```
+
+开发模式安装：
+
+```bash
+# 克隆仓库
+git clone https://github.com/yourusername/pytest-dsl.git
+cd pytest-dsl
+
+# 使用 uv 安装（推荐）
+uv pip install -e .
+
+# 或使用传统的 pip 安装
+pip install -e .
+```
+
+### 命令行工具
+
+安装后可以直接使用命令行工具执行 DSL 文件：
+
+```bash
+pytest-dsl your_test_file.auto
+```
+
+### 配置虚拟环境
+
+如果你是项目贡献者，可以使用提供的脚本快速设置开发环境：
+
+```bash
+bash setup_env.sh
+```
+
+## 项目结构
+
+```
+pytest-dsl/
+├── pytest_dsl/         # 主包目录
+│   ├── core/           # 核心模块（解析器、执行器等）
+│   ├── keywords/       # 关键字定义模块
+│   ├── examples/       # 示例代码
+│   ├── docs/           # 文档
+│   ├── __init__.py     # 包初始化文件
+│   ├── plugin.py       # pytest 插件入口
+│   └── cli.py          # 命令行工具入口
+├── tests/              # 测试目录
+│   ├── test_core/      # 核心模块测试
+│   └── test_keywords/  # 关键字模块测试
+├── pyproject.toml      # 项目元数据和构建配置
+├── setup.py            # 兼容旧版安装工具
+├── MANIFEST.in         # 包含非Python文件的配置
+└── README.md           # 项目说明文档
 ```
 
 ## DSL语法
@@ -199,8 +258,6 @@ pytest
 # 运行特定目录下的测试
 pytest tests/login/
 
-# 并行运行测试
-pytest -n 4
 ```
 
 ### 示例
@@ -208,44 +265,56 @@ pytest -n 4
 以下是一个完整的测试用例示例：
 
 ```
-@name: 登录功能测试
-@description: 验证用户登录功能
-@tags: [BVT, 自动化]
+@name: 断言关键字示例
+@description: 演示不同断言关键字的使用方法
+@tags: [断言, JSON, 示例]
 @author: 陈双麟
-@date: 2023-01-01
+@date: 2024-01-01
 
-# 设置测试数据
-username = "testuser"
-password = "password123"
+# 基本断言示例
+[断言],条件:'1 + 1 == 2',消息:'基本算术断言失败'
 
-# 执行登录操作
-[API接口调用],方法:POST,URL:'https://example.com/login',请求头:'{"Content-Type":"application/json"}',请求参数:'{"username":"${username}","password":"${password}"}'
+# 字符串断言
+str_value = "Hello, World!"
+[断言],条件:'${str_value} contains "Hello"',消息:'字符串包含断言失败'
 
-# 验证登录结果
-result = [获取响应状态码]
-[断言],条件:'${result} == 200',消息:'登录失败'
+# 数字比较
+num1 = 10
+num2 = 5
+[数据比较],实际值:${num1},预期值:${num2},操作符:'>',消息:'数字比较断言失败'
+
+# 类型断言
+[类型断言],值:${str_value},类型:'string',消息:'类型断言失败'
+[类型断言],值:${num1},类型:'number',消息:'类型断言失败'
+
+# JSON数据处理
+json_data = '{"user": {"name": "张三", "age": 30, "roles": ["admin", "user"], "address": {"city": "北京", "country": "中国"}}}'
+
+# JSON提取示例
+username = [JSON提取],JSON数据:${json_data},JSONPath:'$.user.name',变量名:'username'
+[断言],条件:'${username} == "张三"',消息:'JSON提取断言失败'
+
+# JSON断言示例
+[JSON断言],JSON数据:${json_data},JSONPath:'$.user.age',预期值:30,操作符:'==',消息:'JSON断言失败：年龄不匹配'
+
+[JSON断言],JSON数据:${json_data},JSONPath:'$.user.roles[0]',预期值:'admin',消息:'JSON断言失败：角色不匹配'
+
+# 复杂JSON断言
+[JSON断言],JSON数据:${json_data},JSONPath:'$.user.address.city',预期值:'北京',消息:'JSON断言失败：城市不匹配'
+
+# 布尔值断言
+bool_value = True
+[断言],条件:'${bool_value} == True',消息:'布尔值断言失败'
 
 @teardown do
-    [打印内容],内容:'测试结束，清理会话'
-    [API接口调用],方法:POST,URL:'https://example.com/logout'
-end
+    [打印内容],内容:'所有断言测试通过!'
+end 
 ```
 
 ## 扩展关键字
 
 您可以通过在`keywords`目录下添加新的Python模块来扩展关键字库。每个关键字需要使用`@keyword`装饰器注册。
 
-## 项目结构
-
-- `core/`: 核心实现，包括DSL解析器、执行器等
-  - `global_context.py`: 全局变量管理
-  - `yaml_vars.py`: YAML变量文件支持
-  - `dsl_executor.py`: DSL执行器
-  - `parser.py`: DSL解析器
-  - `lexer.py`: DSL词法分析器
-- `keywords/`: 内置关键字实现
-- `conftest.py`: pytest集成
-- `tests/`: 测试用例目录
 
 ## 测试上下文（Context）
 
@@ -275,102 +344,6 @@ def my_keyword(context, **kwargs):
         pass
 ```
 
-### 实际应用示例
-
-#### UI自动化测试
-
-在UI自动化测试中，上下文可以用来存储和共享浏览器、页面对象等：
-
-```
-# test_login.auto
-@name: 登录测试
-@description: 测试用户登录功能
-
-# 打开登录页面，自动将页面对象存储在上下文中
-[打开页面],地址:'https://example.com/login',页面名称:'登录页面'
-
-# 后续步骤可以直接获取已存在的页面对象
-page = [获取页面],页面名称:'登录页面'
-
-@teardown do
-    # 清理浏览器资源
-    [关闭浏览器]
-end
-```
-
-在这个例子中：
-1. `打开页面` 关键字会在上下文中存储：
-   - 浏览器实例 (`browser`)
-   - Playwright实例 (`playwright`)
-   - 页面对象 (使用指定的页面名称)
-
-2. `获取页面` 关键字可以从上下文中获取之前创建的页面对象
-3. `关闭浏览器` 关键字会清理上下文中的所有资源
-
-#### API测试中的会话管理
-
-在API测试中，上下文可以用来管理会话信息：
-
-```
-# test_api.auto
-@name: API测试
-@description: 测试API接口
-
-# 登录并将token存储在上下文中
-[登录],用户名:'admin',密码:'123456'
-
-# 后续请求使用上下文中的token
-[API接口调用],
-    方法:'GET',
-    URL:'https://api.example.com/data',
-    请求头:'{"Authorization": "${token}"}'
-```
-
-#### 数据库测试
-
-在数据库测试中，上下文可以用来共享数据库连接：
-
-```
-# test_db.auto
-@name: 数据库测试
-@description: 测试数据库操作
-
-# 创建数据库连接并存储在上下文中
-[连接数据库],
-    主机:'localhost',
-    端口:'5432',
-    数据库:'testdb'
-
-# 使用同一个数据库连接执行查询
-[执行查询],SQL:'SELECT * FROM users'
-
-@teardown do
-    # 关闭数据库连接
-    [关闭数据库连接]
-end
-```
-
-### 最佳实践
-
-1. **资源管理**
-   - 在测试开始时创建资源并存储在上下文中
-   - 在teardown中清理资源
-   - 使用有意义的键名存储对象
-
-2. **命名约定**
-   - 使用描述性的名称作为上下文键
-   - 对于页面对象，使用 `page_name` 作为标识
-   - 对于共享资源，使用统一的命名（如 `db_connection`, `api_client` 等）
-
-3. **错误处理**
-   - 在获取不存在的对象时提供清晰的错误信息
-   - 在资源创建失败时及时清理已创建的资源
-
-4. **性能考虑**
-   - 避免在上下文中存储过大的数据
-   - 及时清理不再需要的资源
-   - 复用已创建的资源（如浏览器实例）
-
 ### 注意事项
 
 1. 上下文对象在测试用例之间是相互隔离的
@@ -378,70 +351,7 @@ end
 3. 建议在 teardown 中主动清理重要资源
 4. 上下文中的数据仅在当前测试用例中有效
 
-## 包安装与使用
 
-### 安装
-
-pytest-dsl 现在已经采用标准的 Python 包结构，支持使用 pip 或 uv 进行安装：
-
-```bash
-# 使用 uv 安装（推荐）
-uv pip install pytest-dsl
-
-# 或使用传统的 pip 安装
-pip install pytest-dsl
-```
-
-开发模式安装：
-
-```bash
-# 克隆仓库
-git clone https://github.com/yourusername/pytest-dsl.git
-cd pytest-dsl
-
-# 使用 uv 安装（推荐）
-uv pip install -e .
-
-# 或使用传统的 pip 安装
-pip install -e .
-```
-
-### 命令行工具
-
-安装后可以直接使用命令行工具执行 DSL 文件：
-
-```bash
-pytest-dsl your_test_file.auto
-```
-
-### 配置虚拟环境
-
-如果你是项目贡献者，可以使用提供的脚本快速设置开发环境：
-
-```bash
-bash setup_env.sh
-```
-
-## 项目结构
-
-```
-pytest-dsl/
-├── pytest_dsl/         # 主包目录
-│   ├── core/           # 核心模块（解析器、执行器等）
-│   ├── keywords/       # 关键字定义模块
-│   ├── examples/       # 示例代码
-│   ├── docs/           # 文档
-│   ├── __init__.py     # 包初始化文件
-│   ├── plugin.py       # pytest 插件入口
-│   └── cli.py          # 命令行工具入口
-├── tests/              # 测试目录
-│   ├── test_core/      # 核心模块测试
-│   └── test_keywords/  # 关键字模块测试
-├── pyproject.toml      # 项目元数据和构建配置
-├── setup.py            # 兼容旧版安装工具
-├── MANIFEST.in         # 包含非Python文件的配置
-└── README.md           # 项目说明文档
-```
 
 ## 贡献
 
