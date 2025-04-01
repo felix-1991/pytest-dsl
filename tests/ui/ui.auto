@@ -1,9 +1,0 @@
-@name: 测试UI
-@description: 演示如何进行UI相关的测试
-@tags: [UI, 示例]
-@author: 陈双麟
-@date: 2025-03-04 21:30:00
-
-[打开页面],地址:'https://www.baidu.com',页面名称:'登录页面'
-page = [获取页面],页面名称:'登录页面'
-[关闭浏览器]

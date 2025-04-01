@@ -1,0 +1,44 @@
+@name: 断言关键字示例
+@description: 演示不同断言关键字的使用方法
+@tags: [断言, JSON, 示例]
+@author: 陈双麟
+@date: 2024-01-01
+
+# 基本断言示例
+[断言],条件:'1 + 1 == 2',消息:'基本算术断言失败'
+
+# 字符串断言
+str_value = "Hello, World!"
+[断言],条件:'${str_value} contains "Hello"',消息:'字符串包含断言失败'
+
+# 数字比较
+num1 = 10
+num2 = 5
+[数据比较],实际值:${num1},预期值:${num2},操作符:'>',消息:'数字比较断言失败'
+
+# 类型断言
+[类型断言],值:${str_value},类型:'string',消息:'类型断言失败'
+[类型断言],值:${num1},类型:'number',消息:'类型断言失败'
+
+# JSON数据处理
+json_data = '{"user": {"name": "张三", "age": 30, "roles": ["admin", "user"], "address": {"city": "北京", "country": "中国"}}}'
+
+# JSON提取示例
+username = [JSON提取],JSON数据:${json_data},JSONPath:'$.user.name',变量名:'username'
+[断言],条件:'${username} == "张三"',消息:'JSON提取断言失败'
+
+# JSON断言示例
+[JSON断言],JSON数据:${json_data},JSONPath:'$.user.age',预期值:30,操作符:'==',消息:'JSON断言失败：年龄不匹配'
+
+[JSON断言],JSON数据:${json_data},JSONPath:'$.user.roles[0]',预期值:'admin',消息:'JSON断言失败：角色不匹配'
+
+# 复杂JSON断言
+[JSON断言],JSON数据:${json_data},JSONPath:'$.user.address.city',预期值:'北京',消息:'JSON断言失败：城市不匹配'
+
+# 布尔值断言
+bool_value = True
+[断言],条件:'${bool_value} == True',消息:'布尔值断言失败'
+
+@teardown do
+    [打印内容],内容:'所有断言测试通过!'
+end 

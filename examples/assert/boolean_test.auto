@@ -1,0 +1,34 @@
+@name: 布尔值断言测试
+@description: 测试断言关键字中的布尔值处理功能
+@tags: [断言, 布尔值, 示例]
+@author: 陈双麟
+@date: 2024-01-01
+
+# 基本布尔值测试
+[断言],条件:'True == True',消息:'布尔值相等断言失败'
+[断言],条件:'False == False',消息:'布尔值相等断言失败'
+[断言],条件:'True != False',消息:'布尔值不等断言失败'
+
+# 字符串形式的布尔值测试
+true_string = 'True'
+false_string = 'False'
+[断言],条件:'${true_string} == True',消息:'字符串布尔值与布尔值相等断言失败'
+[断言],条件:'${false_string} == False',消息:'字符串布尔值与布尔值相等断言失败'
+
+# 使用数据比较关键字
+[数据比较],实际值:'True',预期值:True,消息:'布尔值数据比较失败'
+[数据比较],实际值:'false',预期值:False,消息:'小写布尔值数据比较失败'
+
+# 使用布尔值表达式
+[断言],条件:'True and True',消息:'布尔值AND表达式断言失败'
+[断言],条件:'True or False',消息:'布尔值OR表达式断言失败'
+[断言],条件:'not False',消息:'布尔值NOT表达式断言失败'
+
+# 变量布尔值表达式
+bool_true = True
+bool_false = False
+[断言],条件:'${bool_true} and not ${bool_false}',消息:'变量布尔值表达式断言失败'
+
+@teardown do
+    [打印内容],内容:'所有布尔值断言测试通过!'
+end 
