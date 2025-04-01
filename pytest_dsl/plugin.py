@@ -1,17 +1,16 @@
-"""pytest-dsl插件的主要配置文件
+"""pytest-dsl插件的主要入口文件
 
 该文件负责将DSL功能集成到pytest框架中，包括命令行参数处理、YAML变量加载、
 自定义目录收集器等功能。
 """
-
 import pytest
 import os
 from pathlib import Path
-from core.global_context import global_context
 
 # 导入模块化组件
-from core.yaml_loader import add_yaml_options, load_yaml_variables
-from core.plugin_discovery import load_all_plugins, scan_local_keywords
+from pytest_dsl.core.yaml_loader import add_yaml_options, load_yaml_variables
+from pytest_dsl.core.plugin_discovery import load_all_plugins, scan_local_keywords
+from pytest_dsl.core.global_context import global_context
 
 
 def pytest_addoption(parser):
@@ -42,4 +41,4 @@ def pytest_configure(config):
     load_all_plugins()
     
     # 加载本地关键字（向后兼容）
-    scan_local_keywords()
+    scan_local_keywords() 

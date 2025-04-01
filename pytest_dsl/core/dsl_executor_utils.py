@@ -4,9 +4,9 @@
 """
 
 from pathlib import Path
-from core.dsl_executor import DSLExecutor
-from core.lexer import get_lexer
-from core.parser import get_parser
+from pytest_dsl.core.dsl_executor import DSLExecutor
+from pytest_dsl.core.lexer import get_lexer
+from pytest_dsl.core.parser import get_parser
 
 # 获取词法分析器和解析器实例
 lexer = get_lexer()

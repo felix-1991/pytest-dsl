@@ -1,5 +1,5 @@
-from core.keyword_manager import keyword_manager
-from core.global_context import global_context
+from pytest_dsl.core.keyword_manager import keyword_manager
+from pytest_dsl.core.global_context import global_context
 
 
 @keyword_manager.register(

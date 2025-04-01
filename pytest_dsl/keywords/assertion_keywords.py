@@ -9,7 +9,7 @@ import re
 import allure
 from typing import Any, Dict, List, Union
 import jsonpath_ng.ext as jsonpath
-from core.keyword_manager import keyword_manager
+from pytest_dsl.core.keyword_manager import keyword_manager
 
 
 def _extract_jsonpath(json_data: Union[Dict, List], path: str) -> Any:

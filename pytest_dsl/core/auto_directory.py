@@ -13,10 +13,10 @@ from typing import Iterable, Union, Optional, List, Dict, Any
 import pytest
 from filelock import FileLock
 
-from core.dsl_executor import DSLExecutor
-from core.dsl_executor_utils import read_file, execute_dsl_file, extract_metadata_from_ast
-from core.lexer import get_lexer
-from core.parser import get_parser
+from pytest_dsl.core.dsl_executor import DSLExecutor
+from pytest_dsl.core.dsl_executor_utils import read_file, execute_dsl_file, extract_metadata_from_ast
+from pytest_dsl.core.lexer import get_lexer
+from pytest_dsl.core.parser import get_parser
 
 # 配置日志
 logger = logging.getLogger(__name__)

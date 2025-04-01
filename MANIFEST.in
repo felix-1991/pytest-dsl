@@ -1,0 +1,15 @@
+include LICENSE
+include README.md
+include pyproject.toml
+include MANIFEST.in
+
+recursive-include pytest_dsl/examples *.auto *.csv *.yaml *.yml
+recursive-include pytest_dsl/docs *.md *.rst *.txt *.png *.jpg
+recursive-include tests *.py *.auto *.csv *.yaml *.yml
+
+prune .venv
+prune .pytest_cache
+prune .vscode
+prune allure-results
+prune __pycache__
+prune */*/pycache__ 

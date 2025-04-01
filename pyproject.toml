@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytest-dsl"
+version = "0.1.0"
+description = "A DSL testing framework based on pytest"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Chen Shuanglin"}
+]
+classifiers = [
+    "Framework :: Pytest",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "pytest>=7.0.0",
+    "allure-pytest>=2.9.0",
+    "ply>=3.11",
+    "filelock>=3.17.0",
+    "PyYAML==6.0.2",
+    "jsonpath-ng>=1.5.0",
+]
+
+[project.entry-points.pytest11]
+pytest_dsl = "pytest_dsl.plugin"
+
+[project.scripts]
+pytest-dsl = "pytest_dsl.cli:main"
+
+[project.urls]
+"Homepage" = "https://github.com/yourusername/pytest-dsl"
+"Bug Tracker" = "https://github.com/yourusername/pytest-dsl/issues" 

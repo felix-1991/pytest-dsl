@@ -1,5 +1,5 @@
 import allure
-from core.keyword_manager import keyword_manager
+from pytest_dsl.core.keyword_manager import keyword_manager
 
 
 @keyword_manager.register('打印内容', [

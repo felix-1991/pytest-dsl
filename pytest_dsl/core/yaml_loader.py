@@ -5,7 +5,7 @@
 
 import os
 from pathlib import Path
-from core.yaml_vars import yaml_vars
+from pytest_dsl.core.yaml_vars import yaml_vars
 
 
 def add_yaml_options(parser):

@@ -1,13 +1,58 @@
-# Python compiled files
-*.pyc
+# Python相关
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Parser generated files
+# 编辑器和IDE相关
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 测试和覆盖率相关
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+.benchmarks/
+
+# 项目特定文件
 parser.out
 parsetab.py
 .venv/
 allure-report/
 allure-results/
 pytest-dsl.code-workspace
-.vscode
-*.egg-info/
+
+# uv相关
+.uv/
+
+# 迁移脚本生成的备份
+*.bak
+.DS_Store

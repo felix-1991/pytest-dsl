@@ -378,6 +378,85 @@ end
 3. 建议在 teardown 中主动清理重要资源
 4. 上下文中的数据仅在当前测试用例中有效
 
+## 包安装与使用
+
+### 安装
+
+pytest-dsl 现在已经采用标准的 Python 包结构，支持使用 pip 或 uv 进行安装：
+
+```bash
+# 使用 uv 安装（推荐）
+uv pip install pytest-dsl
+
+# 或使用传统的 pip 安装
+pip install pytest-dsl
+```
+
+开发模式安装：
+
+```bash
+# 克隆仓库
+git clone https://github.com/yourusername/pytest-dsl.git
+cd pytest-dsl
+
+# 使用 uv 安装（推荐）
+uv pip install -e .
+
+# 或使用传统的 pip 安装
+pip install -e .
+```
+
+### 命令行工具
+
+安装后可以直接使用命令行工具执行 DSL 文件：
+
+```bash
+pytest-dsl your_test_file.auto
+```
+
+### 配置虚拟环境
+
+如果你是项目贡献者，可以使用提供的脚本快速设置开发环境：
+
+```bash
+bash setup_env.sh
+```
+
+## 项目结构
+
+```
+pytest-dsl/
+├── pytest_dsl/         # 主包目录
+│   ├── core/           # 核心模块（解析器、执行器等）
+│   ├── keywords/       # 关键字定义模块
+│   ├── examples/       # 示例代码
+│   ├── docs/           # 文档
+│   ├── __init__.py     # 包初始化文件
+│   ├── plugin.py       # pytest 插件入口
+│   └── cli.py          # 命令行工具入口
+├── tests/              # 测试目录
+│   ├── test_core/      # 核心模块测试
+│   └── test_keywords/  # 关键字模块测试
+├── pyproject.toml      # 项目元数据和构建配置
+├── setup.py            # 兼容旧版安装工具
+├── MANIFEST.in         # 包含非Python文件的配置
+└── README.md           # 项目说明文档
+```
+
 ## 贡献
 
 欢迎提交问题和功能请求！
+
+### 开发流程
+
+1. Fork 存储库
+2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
+3. 提交更改 (`git commit -m 'Add some amazing feature'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 打开 Pull Request
+
+### 编码规范
+
+- 使用 [black](https://github.com/psf/black) 进行代码格式化
+- 使用 [isort](https://github.com/PyCQA/isort) 对导入语句排序
+- 编写适当的测试用例

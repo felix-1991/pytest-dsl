@@ -11,11 +11,11 @@ from pathlib import Path
 import pytest
 from typing import Optional, Union, List, Dict, Any, Callable, Type
 
-from core.dsl_executor import DSLExecutor
-from core.dsl_executor_utils import read_file, execute_dsl_file, extract_metadata_from_ast
-from core.lexer import get_lexer
-from core.parser import get_parser
-from core.auto_directory import SETUP_FILE_NAME, TEARDOWN_FILE_NAME, execute_hook_file
+from pytest_dsl.core.dsl_executor import DSLExecutor
+from pytest_dsl.core.dsl_executor_utils import read_file, execute_dsl_file, extract_metadata_from_ast
+from pytest_dsl.core.lexer import get_lexer
+from pytest_dsl.core.parser import get_parser
+from pytest_dsl.core.auto_directory import SETUP_FILE_NAME, TEARDOWN_FILE_NAME, execute_hook_file
 
 # 获取词法分析器和解析器实例
 lexer = get_lexer()

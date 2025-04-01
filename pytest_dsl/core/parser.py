@@ -1,5 +1,5 @@
 import ply.yacc as yacc
-from core.lexer import tokens
+from pytest_dsl.core.lexer import tokens, get_lexer
 
 
 class Node:

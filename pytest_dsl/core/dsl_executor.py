@@ -3,15 +3,21 @@ import allure
 import csv
 import os
 import pytest
-from core.lexer import get_lexer
-from core.parser import get_parser, Node
-from core.keyword_manager import keyword_manager
-from core.global_context import global_context
-from core.context import TestContext
-import keywords
+from pytest_dsl.core.lexer import get_lexer
+from pytest_dsl.core.parser import get_parser, Node
+from pytest_dsl.core.keyword_manager import keyword_manager
+from pytest_dsl.core.global_context import global_context
+from pytest_dsl.core.context import TestContext
+import pytest_dsl.keywords
 
 
 class DSLExecutor:
+    """DSL执行器，负责执行解析后的AST
+
+    环境变量控制:
+    - PYTEST_DSL_KEEP_VARIABLES=1: 执行完成后保留变量，用于单元测试中检查变量值
+    - PYTEST_DSL_KEEP_VARIABLES=0: (默认) 执行完成后清空变量，用于正常DSL执行
+    """
     def __init__(self):
         self.variables = {}
         self.test_context = TestContext()
@@ -163,8 +169,14 @@ class DSLExecutor:
                             attachment_type=allure.attachment_type.TEXT
                         )
         finally:
-            # 清空变量，准备下一次迭代
-            self.variables.clear()
+            # 使用环境变量控制是否清空变量
+            # 当 PYTEST_DSL_KEEP_VARIABLES=1 时，保留变量（用于单元测试）
+            # 否则清空变量（用于正常DSL执行）
+            import os
+            keep_variables = os.environ.get('PYTEST_DSL_KEEP_VARIABLES', '0') == '1'
+            
+            if not keep_variables:
+                self.variables.clear()
 
     def _handle_statements(self, node):
         """处理语句列表"""

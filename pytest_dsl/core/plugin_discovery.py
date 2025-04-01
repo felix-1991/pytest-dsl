@@ -10,7 +10,7 @@ import importlib.metadata
 import pkgutil
 from typing import List
 
-from core.keyword_manager import keyword_manager
+from pytest_dsl.core.keyword_manager import keyword_manager
 
 
 def discover_installed_plugins() -> List[str]:
