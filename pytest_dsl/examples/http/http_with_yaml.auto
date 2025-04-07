@@ -20,7 +20,7 @@
             - ["jsonpath", "$.id", "eq", ${api_test_data.user_id}]
     '''
 
-[打印内容],内容:'用户信息 - 用户名: ${username}, 邮箱: ${email}, 公司: ${company_name}'
+[打印],内容:'用户信息 - 用户名: ${username}, 邮箱: ${email}, 公司: ${company_name}'
 
 # 使用模板
 [HTTP请求],客户端:'jsonplaceholder',模板:'json_post',配置:'''
@@ -34,7 +34,7 @@
             new_post_id: ["jsonpath", "$.id"]
     '''
 
-[打印内容],内容:'使用模板创建的文章ID: ${new_post_id}'
+[打印],内容:'使用模板创建的文章ID: ${new_post_id}'
 
 # 使用默认客户端（httpbin.org）
 [HTTP请求],配置:'''
@@ -51,8 +51,8 @@
             - ["jsonpath", "$.args.user_id", "eq", "${api_test_data.user_id}"]
     '''
 
-[打印内容],内容:'请求参数: ${args}'
+[打印],内容:'请求参数: ${args}'
 
 @teardown do
-    [打印内容],内容:'YAML变量和模板测试完成!'
+    [打印],内容:'YAML变量和模板测试完成!'
 end 

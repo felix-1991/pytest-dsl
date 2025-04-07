@@ -16,7 +16,7 @@ def test_dsl_parser():
     @name: 测试用例
     @description: 这是一个测试
     
-    [打印内容],内容:'Hello World'
+    [打印],内容:'Hello World'
     number = 5
     """
     # 使用解析器将DSL字符串解析为AST节点

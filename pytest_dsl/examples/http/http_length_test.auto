@@ -22,10 +22,10 @@
     '''
 
 # 显示捕获结果
-[打印内容],内容:'用户总数: ${users_count}'
-[打印内容],内容:'第一个用户公司信息: ${first_user_company}'
-[打印内容],内容:'第一个用户名: ${first_user_name}'
-[打印内容],内容:'用户名长度: ${first_name_length}'
+[打印],内容:'用户总数: ${users_count}'
+[打印],内容:'第一个用户公司信息: ${first_user_company}'
+[打印],内容:'第一个用户名: ${first_user_name}'
+[打印],内容:'用户名长度: ${first_name_length}'
 
 # 测试捕获嵌套对象的字段数量
 [HTTP请求],客户端:'default',配置:'''
@@ -44,12 +44,12 @@
     '''
 
 # 显示捕获结果
-[打印内容],内容:'帖子字段数量: ${post_fields_count}'
-[打印内容],内容:'标题: ${title}'
-[打印内容],内容:'标题长度: ${title_length}'
-[打印内容],内容:'正文: ${body}'
-[打印内容],内容:'正文长度: ${body_length}'
+[打印],内容:'帖子字段数量: ${post_fields_count}'
+[打印],内容:'标题: ${title}'
+[打印],内容:'标题长度: ${title_length}'
+[打印],内容:'正文: ${body}'
+[打印],内容:'正文长度: ${body_length}'
 
 @teardown do
-    [打印内容],内容:'HTTP请求长度捕获测试完成!'
+    [打印],内容:'HTTP请求长度捕获测试完成!'
 end 

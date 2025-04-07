@@ -30,5 +30,5 @@ bool_false = False
 [断言],条件:'${bool_true} and not ${bool_false}',消息:'变量布尔值表达式断言失败'
 
 @teardown do
-    [打印内容],内容:'所有布尔值断言测试通过!'
+    [打印],内容:'所有布尔值断言测试通过!'
 end 

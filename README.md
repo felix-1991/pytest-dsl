@@ -122,7 +122,7 @@ end
 number = 5
 
 # 变量引用
-[打印内容],内容:${number}
+[打印],内容:${number}
 ```
 
 #### YAML变量文件
@@ -177,7 +177,7 @@ pytest --yaml-vars-dir ./common_vars --yaml-vars specific_vars.yaml
 
 ```
 for i in range(1, 5) do
-    [打印内容],内容:'第${i}次循环'
+    [打印],内容:'第${i}次循环'
 end
 ```
 
@@ -193,7 +193,7 @@ end
 
 ```
 @teardown do
-    [打印内容],内容:'测试结束，开始清理'
+    [打印],内容:'测试结束，开始清理'
     [删除文件],路径:'/tmp/test.txt'
 end
 ```
@@ -222,7 +222,7 @@ result = [获取响应状态码]
 [断言],条件:'${result} == 200',消息:'注册失败'
 
 @teardown do
-    [打印内容],内容:'清理用户数据'
+    [打印],内容:'清理用户数据'
 end
 ```
 
@@ -307,7 +307,7 @@ bool_value = True
 [断言],条件:'${bool_value} == True',消息:'布尔值断言失败'
 
 @teardown do
-    [打印内容],内容:'所有断言测试通过!'
+    [打印],内容:'所有断言测试通过!'
 end 
 ```
 

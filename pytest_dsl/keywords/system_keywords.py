@@ -2,7 +2,7 @@ import allure
 from pytest_dsl.core.keyword_manager import keyword_manager
 
 
-@keyword_manager.register('打印内容', [
+@keyword_manager.register('打印', [
     {'name': '内容', 'mapping': 'content', 'description': '要打印的文本内容'}
 ])
 def print_content(**kwargs):

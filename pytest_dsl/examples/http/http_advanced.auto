@@ -30,7 +30,7 @@
             - ["jsonpath", "$.cookies.user", "eq", "testuser"]
     '''
 
-[打印内容],内容:'会话Cookie - session_id: ${session_id}, user: ${user}'
+[打印],内容:'会话Cookie - session_id: ${session_id}, user: ${user}'
 
 # 使用请求头
 [HTTP请求],配置:'''
@@ -47,7 +47,7 @@
             - ["jsonpath", "$.headers.Custom-Header", "eq", "test-value"]
     '''
 
-[打印内容],内容:'请求头 - Custom-Header: ${custom_header}, User-Agent: ${user_agent}'
+[打印],内容:'请求头 - Custom-Header: ${custom_header}, User-Agent: ${user_agent}'
 
 # 使用响应对象
 [HTTP请求],配置:'''
@@ -72,7 +72,7 @@
             - ["regex", "<h1>(.*?)</h1>", "matches", ".*Melville.*"]
     '''
 
-[打印内容],内容:'HTML标题: ${title}'
+[打印],内容:'HTML标题: ${title}'
 
 # XPath提取示例
 [HTTP请求],配置:'''
@@ -84,8 +84,8 @@
             - ["status", "eq", 200]
     '''
 
-[打印内容],内容:'段落文本: ${p_text}'
+[打印],内容:'段落文本: ${p_text}'
 
 @teardown do
-    [打印内容],内容:'HTTP高级测试完成!'
+    [打印],内容:'HTTP高级测试完成!'
 end 

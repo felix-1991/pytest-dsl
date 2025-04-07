@@ -40,5 +40,5 @@ bool_value = True
 [断言],条件:'${bool_value} == True',消息:'布尔值断言失败'
 
 @teardown do
-    [打印内容],内容:'所有断言测试通过!'
+    [打印],内容:'所有断言测试通过!'
 end 

@@ -13,13 +13,13 @@
 @author: 陈双麟
 @date: 2021-08-10 14:30:00
 
-function 打印内容 (内容) do
+function 打印 (内容) do
     [打印],输出:${内容}
 end
 
 number = 5
 for i in range(1, ${number}) do
-    [打印内容],内容: '第${i}次循环'
+    [打印],内容: '第${i}次循环'
 end
 
 [API接口调用],方法:GET,URL:'https://www.baidu.com/1',请求头:'{"Content-Type": "application/json"}',请求参数:'{}',响应参数:'{"status_code": 200, "content": "success"}'
@@ -27,7 +27,7 @@ end
 [API接口调用],方法:GET,URL:'https://www.baidu.com/3',请求头:'{"Content-Type": "application/json"}',请求参数:'{}',响应参数:'{"status_code": 200, "content": "success"}'
 
 @teardown do
-    [打印内容],内容:测试结束
+    [打印],内容:测试结束
     [API接口调用],方法:GET,URL:'https://www.baidu.com',请求头:'{"Content-Type": "application/json"}',请求参数:'{}',响应参数:'{"status_code": 200, "content": "success"}'
 end
 ```
@@ -85,7 +85,7 @@ end
 示例：
 
 ```
-[打印内容],内容: 第${i}次循环
+[打印],内容: 第${i}次循环
 ```
 
 ## **收尾清理（`Teardown`）**
@@ -98,7 +98,7 @@ end
 
 ```
 @teardown do
-    [打印内容],内容:测试结束
+    [打印],内容:测试结束
     ...
 end
 
@@ -112,7 +112,7 @@ end
 
 ## **可读性**
 
-• 采用中文关键字（如：`打印内容`、`API接口调用`）和参数描述，使得语法更加直观易懂。
+• 采用中文关键字（如：`打印`、`API接口调用`）和参数描述，使得语法更加直观易懂。
 
 ### **结构化**
 
