@@ -1,0 +1,71 @@
+@name: HTTP请求关键字示例
+@description: 演示HTTP请求关键字的基本用法
+@tags: [HTTP, API, 示例]
+@author: 陈双麟
+@date: 2024-04-01
+
+# 基本GET请求示例
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://jsonplaceholder.typicode.com/posts/1
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.id", "eq", 1]
+            - ["jsonpath", "$.title", "exists"]
+    '''
+
+# 带参数的GET请求
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://jsonplaceholder.typicode.com/posts
+        request:
+            params:
+                userId: 1
+        captures:
+            first_post_id: ["jsonpath", "$.0.id"]
+            posts_count: ["jsonpath", "$", "length"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$", "type", "array"]
+            - ["jsonpath", "$", "length", 10]
+    '''
+
+# 显示捕获的变量
+[打印内容],内容:'第一篇文章ID: ${first_post_id}, 文章总数: ${posts_count}'
+
+# POST请求示例
+[HTTP请求],客户端:'default',配置:'''
+        method: POST
+        url: https://jsonplaceholder.typicode.com/posts
+        request:
+            headers:
+                Content-Type: application/json
+            json:
+                title: 测试标题
+                body: 测试内容
+                userId: 1
+        captures:
+            new_post_id: ["jsonpath", "$.id"]
+        asserts:
+            - ["status", "eq", 201]
+            - ["jsonpath", "$.title", "eq", "测试标题"]
+            - ["jsonpath", "$.id", "exists"]
+    '''
+
+[打印内容],内容:'新创建的文章ID: ${new_post_id}'
+
+# 使用响应时间断言
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://jsonplaceholder.typicode.com/posts
+        captures:
+            response_time: ["response_time"]
+        asserts:
+            - ["response_time", "lt", 3000]  # 响应时间小于3000ms
+    '''
+
+[打印内容],内容:'请求响应时间: ${response_time}ms'
+
+@teardown do
+    [打印内容],内容:'HTTP请求测试完成!'
+end 

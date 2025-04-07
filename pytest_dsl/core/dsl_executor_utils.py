@@ -26,26 +26,35 @@ def read_file(filename):
         return f.read()
 
 
-def execute_dsl_file(file_path, executor=None):
+def execute_dsl_file(filename: str) -> None:
     """执行DSL文件
     
-    解析并执行指定的DSL文件。如果没有提供执行器实例，将创建一个新的实例。
-    
     Args:
-        file_path: DSL文件路径
-        executor: 可选的DSLExecutor实例，如果不提供则创建新实例
-        
-    Returns:
-        None
+        filename: DSL文件路径
     """
-    if not Path(file_path).exists():
-        return
-    print(f"执行DSL文件: {file_path}")
-    dsl_code = read_file(file_path)
-    ast = parser.parse(dsl_code, lexer=lexer)
-    if executor is None:
+    try:
+        # 读取文件内容
+        with open(filename, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        # 创建词法分析器和语法分析器
+        lexer = get_lexer()
+        parser = get_parser()
+        
+        # 解析DSL文件
+        ast = parser.parse(content, lexer=lexer)
+        
+        # 创建执行器并执行
         executor = DSLExecutor()
-    executor.execute(ast)
+        executor.execute(ast)
+        
+    except Exception as e:
+        # 如果是语法错误，记录并抛出
+        if "语法错误" in str(e):
+            print(f"DSL语法错误: {str(e)}")
+            raise
+        # 其他错误直接抛出
+        raise
 
 
 def extract_metadata_from_ast(ast):

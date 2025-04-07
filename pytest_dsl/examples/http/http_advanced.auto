@@ -1,0 +1,91 @@
+@name: HTTP请求关键字高级示例
+@description: "展示HTTP请求关键字的高级用法包括会话管理，和客户端配置"
+@tags: [HTTP, API, 高级, 示例]
+@author: 陈双麟
+@date: 2024-04-01
+
+# 本例使用httpbin.org作为测试API
+
+# 创建并使用会话示例
+[HTTP请求],会话:'test_session',配置:'''
+        method: GET
+        url: https://httpbin.org/cookies/set
+        request:
+            params:
+                session_id: abcd1234
+                user: testuser
+        asserts:
+            - ["status", "eq", 200]
+    '''
+
+# 验证会话中的Cookie已保存
+[HTTP请求],会话:'test_session',配置:'''
+        method: GET
+        url: https://httpbin.org/cookies
+        captures:
+            session_id: ["jsonpath", "$.cookies.session_id"]
+            user: ["jsonpath", "$.cookies.user"]
+        asserts:
+            - ["jsonpath", "$.cookies.session_id", "eq", "abcd1234"]
+            - ["jsonpath", "$.cookies.user", "eq", "testuser"]
+    '''
+
+[打印内容],内容:'会话Cookie - session_id: ${session_id}, user: ${user}'
+
+# 使用请求头
+[HTTP请求],配置:'''
+        method: GET
+        url: https://httpbin.org/headers
+        request:
+            headers:
+                Custom-Header: test-value
+                User-Agent: pytest-dsl-client
+        captures:
+            custom_header: ["jsonpath", "$.headers.Custom-Header"]
+            user_agent: ["jsonpath", "$.headers.User-Agent"]
+        asserts:
+            - ["jsonpath", "$.headers.Custom-Header", "eq", "test-value"]
+    '''
+
+[打印内容],内容:'请求头 - Custom-Header: ${custom_header}, User-Agent: ${user_agent}'
+
+# 使用响应对象
+[HTTP请求],配置:'''
+        method: POST
+        url: https://httpbin.org/anything
+        request:
+            json:
+                message: 测试消息
+                timestamp: 1234567890
+        captures:
+            json_data: ["jsonpath", "$.json"]
+        save_response: full_response
+    '''
+
+# 正则表达式提取示例
+[HTTP请求],配置:'''
+        method: GET
+        url: https://httpbin.org/html
+        captures:
+            title: ["regex", "<h1>(.*?)</h1>"]
+        asserts:
+            - ["regex", "<h1>(.*?)</h1>", "matches", ".*Melville.*"]
+    '''
+
+[打印内容],内容:'HTML标题: ${title}'
+
+# XPath提取示例
+[HTTP请求],配置:'''
+        method: GET
+        url: https://httpbin.org/html
+        captures:
+            p_text: ["xpath", "//p/text()"]
+        asserts:
+            - ["status", "eq", 200]
+    '''
+
+[打印内容],内容:'段落文本: ${p_text}'
+
+@teardown do
+    [打印内容],内容:'HTTP高级测试完成!'
+end 

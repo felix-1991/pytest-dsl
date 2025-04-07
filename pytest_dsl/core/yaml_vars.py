@@ -11,6 +11,17 @@ class YAMLVariableManager:
         self._loaded_files: List[str] = []
         self._variables: Dict[str, Any] = {}
 
+    def has_variable(self, name: str) -> bool:
+        """检查变量是否存在
+        
+        Args:
+            name: 变量名
+            
+        Returns:
+            bool: 变量是否存在
+        """
+        return name in self._variables
+
     def load_yaml_file(self, file_path: str) -> None:
         """加载单个YAML文件中的变量"""
         if not os.path.exists(file_path):

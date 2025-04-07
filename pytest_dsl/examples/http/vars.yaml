@@ -1,14 +1,3 @@
-# vars.yaml
-test_data:
-  username: "testuser"
-  password: "password123"
-  
-api_config:
-  base_url: "https://api.example.com"
-  timeout: 30
-
-environment: "staging"
-
 # HTTP客户端配置
 http_clients:
   default:  # 默认客户端配置

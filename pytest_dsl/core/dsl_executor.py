@@ -9,6 +9,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.core.global_context import global_context
 from pytest_dsl.core.context import TestContext
 import pytest_dsl.keywords
+from pytest_dsl.core.yaml_vars import yaml_vars
 
 
 class DSLExecutor:
@@ -96,9 +97,18 @@ class DSLExecutor:
         """获取变量值，优先从本地变量获取，如果不存在则尝试从全局上下文获取"""
         if var_name in self.variables:
             return self.variables[var_name]
-        elif global_context.has_variable(var_name):
+        
+        # 从YAML变量中获取
+        yaml_value = yaml_vars.get_variable(var_name)
+        if yaml_value is not None:
+            return yaml_value
+            
+        # 从全局上下文获取
+        if global_context.has_variable(var_name):
             return global_context.get_variable(var_name)
-        raise Exception(f"变量未定义: {var_name}")
+            
+        # 如果变量不存在，返回变量引用本身，而不是抛出异常
+        return f"${{{var_name}}}"
     
     def _replace_variables_in_string(self, value):
         """替换字符串中的变量引用"""
@@ -134,6 +144,17 @@ class DSLExecutor:
             # 执行测试
             self._execute_test_iteration(metadata, node, teardown_node)
             
+        except Exception as e:
+            # 如果是断言错误，直接抛出
+            if isinstance(e, AssertionError):
+                raise
+            # 如果是语法错误，记录并抛出
+            if "语法错误" in str(e):
+                print(f"DSL语法错误: {str(e)}")
+                raise
+            # 其他错误，记录并抛出
+            print(f"测试执行错误: {str(e)}")
+            raise
         finally:
             # 测试用例执行完成后清空上下文
             self.test_context.clear()
