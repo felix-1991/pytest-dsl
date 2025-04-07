@@ -129,7 +129,14 @@ class HTTPRequest:
             
             extractor_type = capture_spec[0]
             extraction_path = capture_spec[1] if len(capture_spec) > 1 else None
-            default_value = capture_spec[2] if len(capture_spec) > 2 else None
+            
+            # 检查是否有length参数
+            is_length_capture = False
+            if len(capture_spec) > 2 and capture_spec[2] == "length":
+                is_length_capture = True
+                default_value = capture_spec[3] if len(capture_spec) > 3 else None
+            else:
+                default_value = capture_spec[2] if len(capture_spec) > 2 else None
             
             # 替换提取路径中的变量引用
             if isinstance(extraction_path, str) and '${' in extraction_path:
@@ -141,15 +148,38 @@ class HTTPRequest:
                 from pytest_dsl.keywords.http_keywords import _replace_variables_in_string
                 default_value = _replace_variables_in_string(default_value)
             
+            # 提取值
             captured_value = self._extract_value(extractor_type, extraction_path, default_value)
-            self.captured_values[var_name] = captured_value
             
-            # 记录捕获到Allure
-            allure.attach(
-                f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n提取值: {str(captured_value)}",
-                name=f"捕获变量: {var_name}",
-                attachment_type=allure.attachment_type.TEXT
-            )
+            # 特殊处理length
+            if is_length_capture:
+                try:
+                    original_value = captured_value
+                    captured_value = len(captured_value)
+                    
+                    # 记录长度到Allure
+                    allure.attach(
+                        f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n原始值: {str(original_value)}\n长度: {captured_value}",
+                        name=f"捕获长度: {var_name}",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                except Exception as e:
+                    # 如果无法计算长度，记录错误但不抛出异常
+                    allure.attach(
+                        f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n错误: 无法计算长度: {str(e)}",
+                        name=f"捕获长度失败: {var_name}",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    captured_value = 0  # 默认长度
+            else:
+                # 记录捕获到Allure
+                allure.attach(
+                    f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n提取值: {str(captured_value)}",
+                    name=f"捕获变量: {var_name}",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+            
+            self.captured_values[var_name] = captured_value
         
         return self.captured_values
     
@@ -176,14 +206,35 @@ class HTTPRequest:
                 extraction_path = assertion[1]
                 assertion_type = "exists"
                 expected_value = None
+                compare_operator = "eq"  # 默认比较操作符
             elif len(assertion) == 3:  # 简单断言 ["status", "eq", 200]
-                extraction_path = assertion[1] if extractor_type != "status" and extractor_type != "body" and extractor_type != "response_time" else None
-                assertion_type = assertion[1] if extractor_type in ["status", "body", "response_time"] else assertion[2]
-                expected_value = assertion[2] if extractor_type in ["status", "body", "response_time"] else None
-            else:  # 完整断言 ["jsonpath", "$.message", "contains", "created"]
+                if extractor_type in ["status", "body", "response_time"]:
+                    extraction_path = None
+                    assertion_type = "value"  # 标记为简单值比较
+                    compare_operator = assertion[1]  # 比较操作符
+                    expected_value = assertion[2]  # 预期值
+                else:
+                    extraction_path = assertion[1]
+                    assertion_type = assertion[2]
+                    compare_operator = "eq"  # 默认比较操作符
+                    expected_value = None
+            elif len(assertion) == 4:  # 带操作符的断言 ["jsonpath", "$.id", "eq", 1]
+                extraction_path = assertion[1]
+                if assertion[2] in ["eq", "neq", "lt", "lte", "gt", "gte"]:
+                    # 这是带比较操作符的断言
+                    assertion_type = "value"  # 标记为值比较
+                    compare_operator = assertion[2]  # 比较操作符
+                    expected_value = assertion[3]  # 预期值
+                else:
+                    # 其他类型的断言，比如特殊断言
+                    assertion_type = assertion[2]
+                    compare_operator = "eq"  # 默认比较操作符
+                    expected_value = assertion[3]
+            else:  # 5个参数，例如 ["jsonpath", "$", "length", "eq", 10]
                 extraction_path = assertion[1]
                 assertion_type = assertion[2]
-                expected_value = assertion[3]
+                compare_operator = assertion[3]
+                expected_value = assertion[4]
             
             # 替换expected_value中的变量引用
             if isinstance(expected_value, str) and '${' in expected_value:
@@ -193,16 +244,25 @@ class HTTPRequest:
             # 提取实际值
             actual_value = self._extract_value(extractor_type, extraction_path)
             
+            # 特殊处理"length"断言类型
+            original_actual_value = actual_value
+            if assertion_type == "length" and extractor_type != "response_time" and extractor_type != "status" and extractor_type != "body":
+                try:
+                    actual_value = len(actual_value)
+                except:
+                    actual_value = None
+            
             # 执行断言
-            result = self._perform_assertion(assertion_type, actual_value, expected_value)
+            result = self._perform_assertion(assertion_type, compare_operator, actual_value, expected_value)
             
             # 记录断言结果
             assertion_result = {
                 'extractor': extractor_type,
                 'path': extraction_path,
                 'type': assertion_type,
+                'operator': compare_operator,
                 'expected': expected_value,
-                'actual': actual_value,
+                'actual': original_actual_value if assertion_type == "length" else actual_value,
                 'result': result
             }
             assert_results.append(assertion_result)
@@ -210,17 +270,17 @@ class HTTPRequest:
             # 记录断言到Allure
             if result:
                 allure.attach(
-                    f"提取器: {extractor_type}\n路径: {extraction_path}\n断言类型: {assertion_type}\n预期值: {expected_value}\n实际值: {actual_value}",
+                    f"提取器: {extractor_type}\n路径: {extraction_path}\n断言类型: {assertion_type}\n操作符: {compare_operator}\n预期值: {expected_value}\n实际值: {original_actual_value if assertion_type == 'length' else actual_value}" + (f"\n长度: {actual_value}" if assertion_type == "length" else ""),
                     name=f"断言成功: {extractor_type} {assertion_type}",
                     attachment_type=allure.attachment_type.TEXT
                 )
             else:
                 allure.attach(
-                    f"提取器: {extractor_type}\n路径: {extraction_path}\n断言类型: {assertion_type}\n预期值: {expected_value}\n实际值: {actual_value}",
+                    f"提取器: {extractor_type}\n路径: {extraction_path}\n断言类型: {assertion_type}\n操作符: {compare_operator}\n预期值: {expected_value}\n实际值: {original_actual_value if assertion_type == 'length' else actual_value}" + (f"\n长度: {actual_value}" if assertion_type == "length" else ""),
                     name=f"断言失败: {extractor_type} {assertion_type}",
                     attachment_type=allure.attachment_type.TEXT
                 )
-                raise AssertionError(f"断言失败: {extractor_type}({extraction_path}) {assertion_type} {expected_value}, 实际值: {actual_value}")
+                raise AssertionError(f"断言失败: {extractor_type}({extraction_path}) {assertion_type} {compare_operator} {expected_value}, 实际值: {original_actual_value if assertion_type == 'length' else actual_value}" + (f", 长度: {actual_value}" if assertion_type == "length" else ""))
         
         return assert_results
     
@@ -374,11 +434,12 @@ class HTTPRequest:
         cookie = self.response.cookies.get(cookie_name)
         return cookie if cookie is not None else default_value
     
-    def _perform_assertion(self, assertion_type: str, actual_value: Any, expected_value: Any = None) -> bool:
+    def _perform_assertion(self, assertion_type: str, operator: str, actual_value: Any, expected_value: Any = None) -> bool:
         """执行断言
         
         Args:
             assertion_type: 断言类型
+            operator: 比较操作符
             actual_value: 实际值
             expected_value: 预期值
             
@@ -386,7 +447,7 @@ class HTTPRequest:
             断言结果
         """
         # 类型转换
-        if assertion_type in ["eq", "neq", "lt", "lte", "gt", "gte"] and expected_value is not None:
+        if operator in ["eq", "neq", "lt", "lte", "gt", "gte"] and expected_value is not None:
             if isinstance(expected_value, str) and expected_value.isdigit():
                 expected_value = int(expected_value)
             elif isinstance(expected_value, str) and expected_value.replace('.', '', 1).isdigit():
@@ -397,11 +458,28 @@ class HTTPRequest:
             elif isinstance(actual_value, str) and actual_value.replace('.', '', 1).isdigit():
                 actual_value = float(actual_value)
         
-        # 执行断言
-        if assertion_type == "eq":
-            return actual_value == expected_value
-        elif assertion_type == "neq":
-            return actual_value != expected_value
+        # 基于断言类型执行断言
+        if assertion_type == "value" or assertion_type == "length":
+            # 直接使用操作符进行比较
+            return self._compare_values(actual_value, expected_value, operator)
+        elif assertion_type == "exists":
+            return actual_value is not None
+        elif assertion_type == "not_exists":
+            return actual_value is None
+        elif assertion_type == "type":
+            if expected_value == "string":
+                return isinstance(actual_value, str)
+            elif expected_value == "number":
+                return isinstance(actual_value, (int, float))
+            elif expected_value == "boolean":
+                return isinstance(actual_value, bool)
+            elif expected_value == "array":
+                return isinstance(actual_value, list)
+            elif expected_value == "object":
+                return isinstance(actual_value, dict)
+            elif expected_value == "null":
+                return actual_value is None
+            return False
         elif assertion_type == "contains":
             if isinstance(actual_value, str) and isinstance(expected_value, str):
                 return expected_value in actual_value
@@ -419,37 +497,6 @@ class HTTPRequest:
                 return bool(re.search(expected_value, str(actual_value)))
             except:
                 return False
-        elif assertion_type == "lt":
-            return actual_value < expected_value
-        elif assertion_type == "lte":
-            return actual_value <= expected_value
-        elif assertion_type == "gt":
-            return actual_value > expected_value
-        elif assertion_type == "gte":
-            return actual_value >= expected_value
-        elif assertion_type == "exists":
-            return actual_value is not None
-        elif assertion_type == "not_exists":
-            return actual_value is None
-        elif assertion_type == "length":
-            try:
-                return len(actual_value) == expected_value
-            except:
-                return False
-        elif assertion_type == "type":
-            if expected_value == "string":
-                return isinstance(actual_value, str)
-            elif expected_value == "number":
-                return isinstance(actual_value, (int, float))
-            elif expected_value == "boolean":
-                return isinstance(actual_value, bool)
-            elif expected_value == "array":
-                return isinstance(actual_value, list)
-            elif expected_value == "object":
-                return isinstance(actual_value, dict)
-            elif expected_value == "null":
-                return actual_value is None
-            return False
         elif assertion_type == "in":
             return actual_value in expected_value
         elif assertion_type == "not_in":
@@ -463,6 +510,48 @@ class HTTPRequest:
                 return False
         else:
             raise ValueError(f"不支持的断言类型: {assertion_type}")
+    
+    def _compare_values(self, actual_value: Any, expected_value: Any, operator: str) -> bool:
+        """比较两个值
+        
+        Args:
+            actual_value: 实际值
+            expected_value: 预期值
+            operator: 比较操作符
+            
+        Returns:
+            比较结果
+        """
+        if operator == "eq":
+            return actual_value == expected_value
+        elif operator == "neq":
+            return actual_value != expected_value
+        elif operator == "lt":
+            return actual_value < expected_value
+        elif operator == "lte":
+            return actual_value <= expected_value
+        elif operator == "gt":
+            return actual_value > expected_value
+        elif operator == "gte":
+            return actual_value >= expected_value
+        elif operator == "in":
+            return actual_value in expected_value
+        elif operator == "not_in":
+            return actual_value not in expected_value
+        elif operator == "contains":
+            if isinstance(actual_value, str) and isinstance(expected_value, str):
+                return expected_value in actual_value
+            elif isinstance(actual_value, (list, tuple, dict)):
+                return expected_value in actual_value
+            return False
+        elif operator == "not_contains":
+            if isinstance(actual_value, str) and isinstance(expected_value, str):
+                return expected_value not in actual_value
+            elif isinstance(actual_value, (list, tuple, dict)):
+                return expected_value not in actual_value
+            return True
+        else:
+            raise ValueError(f"不支持的比较操作符: {operator}")
     
     def _log_request_to_allure(self, method: str, url: str, request_kwargs: Dict[str, Any]) -> None:
         """使用Allure记录请求信息

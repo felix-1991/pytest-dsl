@@ -165,6 +165,12 @@ def context_has_variable(var_name):
     if yaml_vars.get_variable(var_name) is not None:
         return True
     
+    # 检查测试上下文
+    from pytest_dsl.core.keyword_manager import keyword_manager
+    current_context = getattr(keyword_manager, 'current_context', None)
+    if current_context and current_context.has(var_name):
+        return True
+    
     # 再检查全局上下文
     return global_context.has_variable(var_name)
 
@@ -176,6 +182,12 @@ def get_variable(var_name):
     yaml_value = yaml_vars.get_variable(var_name)
     if yaml_value is not None:
         return yaml_value
+    
+    # 检查测试上下文
+    from pytest_dsl.core.keyword_manager import keyword_manager
+    current_context = getattr(keyword_manager, 'current_context', None)
+    if current_context and current_context.has(var_name):
+        return current_context.get(var_name)
     
     # 再从全局上下文获取
     if global_context.has_variable(var_name):

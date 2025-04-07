@@ -13,6 +13,7 @@ class Parameter:
 class KeywordManager:
     def __init__(self):
         self._keywords: Dict[str, Dict] = {}
+        self.current_context = None
 
     def register(self, name: str, parameters: List[Dict]):
         """关键字注册装饰器"""
@@ -21,6 +22,10 @@ class KeywordManager:
             def wrapper(**kwargs):
                 with allure.step(f"执行关键字: {name}"):
                     try:
+                        # 保存当前上下文引用
+                        # if 'context' in kwargs:
+                        #     self.current_context = kwargs['context']
+                            
                         result = func(**kwargs)
                         self._log_execution(name, kwargs, result)
                         return result

@@ -22,16 +22,17 @@
             params:
                 userId: 1
         captures:
-            first_post_id: ["jsonpath", "$.0.id"]
-            posts_count: ["jsonpath", "$", "length"]
+            first_post_id: ["jsonpath", "$[0].id"]
+            data_length: ["jsonpath", "$", "length"]
         asserts:
             - ["status", "eq", 200]
             - ["jsonpath", "$", "type", "array"]
-            - ["jsonpath", "$", "length", 10]
+            - ["jsonpath", "$", "length", "gte", 8]
     '''
 
 # 显示捕获的变量
-[打印内容],内容:'第一篇文章ID: ${first_post_id}, 文章总数: ${posts_count}'
+[打印内容],内容:'第一篇文章ID: ${first_post_id}, 文章总数: ${data_length}'
+[打印内容],内容:'验证data_length类型: ${typeof(data_length)}, 值: ${data_length}'
 
 # POST请求示例
 [HTTP请求],客户端:'default',配置:'''

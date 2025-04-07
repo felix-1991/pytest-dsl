@@ -22,53 +22,66 @@ lexer = get_lexer()
 parser = get_parser()
 
 
-def auto_dsl(directory: Union[str, Path]):
+def auto_dsl(directory: Union[str, Path], is_file: bool = False):
     """
     装饰器函数，用于将指定目录下的.auto文件动态添加为测试方法到被装饰的类中。
     
     Args:
         directory: 包含.auto文件的目录路径，可以是相对路径或绝对路径
+        is_file: 是否是文件路径而不是目录路径
         
     Returns:
         装饰器函数
     """
-    directory_path = Path(directory)
-    if not directory_path.is_absolute():
+    path = Path(directory)
+    if not path.is_absolute():
         # 如果是相对路径，则相对于调用者的文件位置
         caller_frame = inspect.currentframe().f_back
         caller_file = caller_frame.f_globals['__file__']
         caller_dir = Path(caller_file).parent
-        directory_path = (caller_dir / directory_path).resolve()
+        path = (caller_dir / path).resolve()
     
-    if not directory_path.exists() or not directory_path.is_dir():
-        raise ValueError(f"目录不存在或不是有效目录: {directory_path}")
+    if is_file:
+        # 路径是文件
+        if not path.exists() or not path.is_file():
+            raise ValueError(f"文件不存在或不是有效文件: {path}")
+        file_path = path
+    else:
+        # 路径是目录
+        if not path.exists() or not path.is_dir():
+            raise ValueError(f"目录不存在或不是有效目录: {path}")
+        directory_path = path
     
     def decorator(cls):
-        # 检查setup.auto和teardown.auto文件
-        setup_file = directory_path / SETUP_FILE_NAME
-        teardown_file = directory_path / TEARDOWN_FILE_NAME
-        
-        # 添加setup和teardown方法
-        if setup_file.exists():
-            @classmethod
-            @pytest.fixture(scope="class", autouse=True)
-            def setup_class(cls, request):
-                execute_hook_file(setup_file, True, str(directory_path))
-                
-            setattr(cls, "setup_class", setup_class)
-        
-        if teardown_file.exists():
-            @classmethod
-            @pytest.fixture(scope="class", autouse=True)
-            def teardown_class(cls, request):
-                request.addfinalizer(lambda: execute_hook_file(teardown_file, False, str(directory_path)))
-                
-            setattr(cls, "teardown_class", teardown_class)
-        
-        # 处理目录中的测试文件
-        for auto_file in directory_path.glob("*.auto"):
-            if auto_file.name not in [SETUP_FILE_NAME, TEARDOWN_FILE_NAME]:
-                _add_test_method(cls, auto_file)
+        if is_file:
+            # 如果是文件路径，只添加这个文件的测试方法
+            _add_test_method(cls, file_path)
+        else:
+            # 检查setup.auto和teardown.auto文件
+            setup_file = directory_path / SETUP_FILE_NAME
+            teardown_file = directory_path / TEARDOWN_FILE_NAME
+            
+            # 添加setup和teardown方法
+            if setup_file.exists():
+                @classmethod
+                @pytest.fixture(scope="class", autouse=True)
+                def setup_class(cls, request):
+                    execute_hook_file(setup_file, True, str(directory_path))
+                    
+                setattr(cls, "setup_class", setup_class)
+            
+            if teardown_file.exists():
+                @classmethod
+                @pytest.fixture(scope="class", autouse=True)
+                def teardown_class(cls, request):
+                    request.addfinalizer(lambda: execute_hook_file(teardown_file, False, str(directory_path)))
+                    
+                setattr(cls, "teardown_class", teardown_class)
+            
+            # 处理目录中的测试文件
+            for auto_file in directory_path.glob("*.auto"):
+                if auto_file.name not in [SETUP_FILE_NAME, TEARDOWN_FILE_NAME]:
+                    _add_test_method(cls, auto_file)
         
         return cls
     

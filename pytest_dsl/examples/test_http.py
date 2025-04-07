@@ -14,3 +14,12 @@ class TestHttp:
     该类使用auto_dsl装饰器，测试http目录下的.auto文件。
     """
     pass
+
+# 特定测试长度捕获功能的测试类
+@auto_dsl("./http/http_length_test.auto", is_file=True)
+class TestHttpLengthCapture:
+    """HTTP长度捕获测试类
+    
+    该类专门测试HTTP请求中的长度捕获功能。
+    """
+    pass

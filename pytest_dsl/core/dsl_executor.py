@@ -98,6 +98,10 @@ class DSLExecutor:
         if var_name in self.variables:
             return self.variables[var_name]
         
+        # 从测试上下文中获取
+        if self.test_context.has(var_name):
+            return self.test_context.get(var_name)
+        
         # 从YAML变量中获取
         yaml_value = yaml_vars.get_variable(var_name)
         if yaml_value is not None:
