@@ -30,6 +30,34 @@ class AuthProvider(abc.ABC):
         """
         pass
     
+    def clean_auth_state(self, request_kwargs: Dict[str, Any] = None) -> Dict[str, Any]:
+        """清理认证状态
+        
+        此方法用于清理认证状态，例如移除认证头、清空会话Cookie等。
+        子类可以覆盖此方法以提供自定义的清理逻辑。
+        
+        Args:
+            request_kwargs: 请求参数字典
+            
+        Returns:
+            更新后的请求参数字典
+        """
+        # 默认实现：移除基本的认证头
+        if request_kwargs is None:
+            return {}
+            
+        if "headers" in request_kwargs:
+            auth_headers = [
+                'Authorization', 'X-API-Key', 'X-Api-Key', 'api-key', 'Api-Key',
+            ]
+            for header in auth_headers:
+                request_kwargs["headers"].pop(header, None)
+                
+        # 移除认证参数
+        request_kwargs.pop('auth', None)
+            
+        return request_kwargs
+    
     @property
     def name(self) -> str:
         """返回认证提供者名称"""

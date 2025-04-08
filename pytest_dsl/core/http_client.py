@@ -66,6 +66,25 @@ class HTTPClient:
         if self.use_session and self.default_headers:
             self._session.headers.update(self.default_headers)
     
+    def reset_session(self):
+        """完全重置会话对象，创建一个新的会话实例
+        
+        当需要彻底清除所有会话状态（例如认证信息、cookies等）时使用
+        """
+        if self.use_session:
+            # 关闭当前会话
+            if self._session:
+                self._session.close()
+            
+            # 创建新会话
+            self._session = requests.Session()
+            
+            # 重新应用默认头
+            if self.default_headers:
+                self._session.headers.update(self.default_headers)
+            
+            logger.debug(f"会话已完全重置: {self.name}")
+    
     def make_request(self, method: str, url: str, **request_kwargs) -> requests.Response:
         """发送HTTP请求
 
@@ -84,17 +103,26 @@ class HTTPClient:
         # 处理认证
         disable_auth = request_kwargs.pop('disable_auth', False)
         if disable_auth:
-            # 移除所有认证相关的头
-            auth_headers = ['Authorization', 'X-API-Key', 'X-Api-Key', 'api-key', 'Api-Key']
-            if 'headers' in request_kwargs:
-                for header in auth_headers:
-                    request_kwargs['headers'].pop(header, None)
-            # 移除认证参数
-            request_kwargs['auth'] = None
-            # 如果使用会话，也移除会话中的认证头
-            if self.use_session:
-                for header in auth_headers:
-                    self._session.headers.pop(header, None)
+            # 如果有认证提供者，使用其清理逻辑
+            if self.auth_provider:
+                request_kwargs = self.auth_provider.clean_auth_state(request_kwargs)
+            else:
+                # 默认清理逻辑：移除所有认证相关的头
+                auth_headers = [
+                    'Authorization', 'X-API-Key', 'X-Api-Key', 'api-key', 'Api-Key',
+                    'X-Csrf-Token', 'X-CSRF-Token', 'csrf-token', 'CSRF-Token',  # CSRF相关头
+                    'X-WX-OPENID', 'X-WX-SESSION-KEY'  # 微信相关认证头
+                ]
+                if 'headers' in request_kwargs:
+                    for header in auth_headers:
+                        request_kwargs['headers'].pop(header, None)
+                # 移除认证参数
+                request_kwargs.pop('auth', None)
+            
+            # 如果使用会话，并且认证提供者没有自己的会话管理，则使用默认的会话重置
+            if self.use_session and not hasattr(self.auth_provider, 'manage_session'):
+                self.reset_session()
+                
         elif self.auth_provider and 'auth' not in request_kwargs:
             # 应用认证提供者
             request_kwargs = self.auth_provider.apply_auth(request_kwargs)
@@ -102,11 +130,39 @@ class HTTPClient:
             if self.use_session and 'headers' in request_kwargs:
                 self._session.headers.update(request_kwargs['headers'])
 
+        # 记录请求详情
+        logger.debug(f"=== HTTP请求详情 ===")
+        logger.debug(f"方法: {method}")
+        logger.debug(f"URL: {url}")
+        if 'headers' in request_kwargs:
+            safe_headers = {k: '***' if k.lower() in ['authorization', 'x-api-key', 'token'] else v 
+                          for k, v in request_kwargs['headers'].items()}
+            logger.debug(f"请求头: {json.dumps(safe_headers, indent=2, ensure_ascii=False)}")
+        if 'params' in request_kwargs:
+            logger.debug(f"查询参数: {json.dumps(request_kwargs['params'], indent=2, ensure_ascii=False)}")
+        if 'json' in request_kwargs:
+            logger.debug(f"JSON请求体: {json.dumps(request_kwargs['json'], indent=2, ensure_ascii=False)}")
+        if 'data' in request_kwargs:
+            logger.debug(f"表单数据: {request_kwargs['data']}")
+
         # 发送请求
         if self.use_session:
             response = self._session.request(method, url, **request_kwargs)
         else:
             response = requests.request(method, url, **request_kwargs)
+
+        # 记录响应详情
+        logger.debug(f"\n=== HTTP响应详情 ===")
+        logger.debug(f"状态码: {response.status_code}")
+        logger.debug(f"响应头: {json.dumps(dict(response.headers), indent=2, ensure_ascii=False)}")
+        try:
+            if 'application/json' in response.headers.get('Content-Type', ''):
+                logger.debug(f"响应体 (JSON): {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
+            else:
+                logger.debug(f"响应体: {response.text}")
+        except Exception as e:
+            logger.debug(f"解析响应体失败: {str(e)}")
+            logger.debug(f"原始响应体: {response.text}")
 
         return response
     
