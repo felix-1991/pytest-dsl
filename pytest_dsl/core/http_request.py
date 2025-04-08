@@ -8,7 +8,6 @@ from requests import Response
 import allure
 
 from pytest_dsl.core.http_client import http_client_manager
-from pytest_dsl.core.variable_utils import VariableReplacer
 
 
 class HTTPRequest:
@@ -30,7 +29,6 @@ class HTTPRequest:
         self.session_name = session_name
         self.response = None
         self.captured_values = {}
-        self.variable_replacer = VariableReplacer()
         
         # 解析YAML配置
         if isinstance(config, str):
@@ -58,10 +56,6 @@ class HTTPRequest:
         method = self.config.get('method', 'GET').upper()
         url = self.config.get('url', '')
         
-        # 替换URL中可能存在的变量引用
-        if isinstance(url, str) and '${' in url:
-            url = self.variable_replacer.replace_in_string(url)
-        
         # 配置中是否禁用认证
         disable_auth = disable_auth or self.config.get('disable_auth', False)
         
@@ -83,9 +77,6 @@ class HTTPRequest:
             'proxies': request_config.get('proxies'),
             'disable_auth': disable_auth  # 传递禁用认证标志
         }
-        
-        # 替换请求参数中的变量引用
-        request_kwargs = self.variable_replacer.replace_in_value(request_kwargs)
         
         # 过滤掉None值
         request_kwargs = {k: v for k, v in request_kwargs.items() if v is not None}
@@ -129,14 +120,6 @@ class HTTPRequest:
                 default_value = capture_spec[3] if len(capture_spec) > 3 else None
             else:
                 default_value = capture_spec[2] if len(capture_spec) > 2 else None
-            
-            # 替换提取路径中的变量引用
-            if isinstance(extraction_path, str) and '${' in extraction_path:
-                extraction_path = self.variable_replacer.replace_in_string(extraction_path)
-                
-            # 替换默认值中的变量引用
-            if isinstance(default_value, str) and '${' in default_value:
-                default_value = self.variable_replacer.replace_in_string(default_value)
             
             # 提取值
             captured_value = self._extract_value(extractor_type, extraction_path, default_value)
@@ -225,10 +208,6 @@ class HTTPRequest:
                 assertion_type = assertion[2]
                 compare_operator = assertion[3]
                 expected_value = assertion[4]
-            
-            # 替换expected_value中的变量引用
-            if isinstance(expected_value, str) and '${' in expected_value:
-                expected_value = self.variable_replacer.replace_in_string(expected_value)
             
             # 提取实际值
             actual_value = self._extract_value(extractor_type, extraction_path)

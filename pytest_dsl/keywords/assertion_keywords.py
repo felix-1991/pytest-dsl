@@ -10,7 +10,6 @@ import allure
 from typing import Any, Dict, List, Union
 import jsonpath_ng.ext as jsonpath
 from pytest_dsl.core.keyword_manager import keyword_manager
-from pytest_dsl.core.variable_utils import VariableReplacer
 
 
 def _extract_jsonpath(json_data: Union[Dict, List], path: str) -> Any:
@@ -43,86 +42,17 @@ def _extract_jsonpath(json_data: Union[Dict, List], path: str) -> Any:
         raise ValueError(f"JSONPath提取错误: {str(e)}")
 
 
-def _compare_values(actual: Any, expected: Any, operator: str = "==", context=None, local_variables=None) -> bool:
+def _compare_values(actual: Any, expected: Any, operator: str = "==") -> bool:
     """比较两个值
     
     Args:
-        actual: 实际值（可以是表达式字符串）
+        actual: 实际值
         expected: 预期值
-        operator: 比较运算符 (==, !=, >, <, >=, <=, contains, not_contains, matches)
-        context: 测试上下文
-        local_variables: 本地变量字典
+        operator: 比较运算符 (==, !=, >, <, >=, <=, contains, not_contains, matches, and, or, not)
         
     Returns:
         比较结果 (True/False)
     """
-    # 如果actual是字符串，先进行变量替换
-    if isinstance(actual, str):
-        # 替换变量引用
-        variable_replacer = VariableReplacer(local_variables=local_variables, test_context=context)
-        actual = variable_replacer.replace_in_string(actual)
-        
-        # 检查是否是表达式
-        if any(op in actual for op in ['+', '-', '*', '/', '%', '(', ')']):
-            try:
-                # 尝试计算表达式
-                actual = eval(actual)
-                allure.attach(
-                    f"表达式: {actual}\n计算结果: {actual}",
-                    name="表达式计算",
-                    attachment_type=allure.attachment_type.TEXT
-                )
-            except Exception as e:
-                # 如果无法计算，保持原样
-                allure.attach(
-                    f"表达式: {actual}\n计算失败: {str(e)}",
-                    name="表达式计算失败",
-                    attachment_type=allure.attachment_type.TEXT
-                )
-                pass
-    
-    # 将字符串形式的值转换为适当的类型
-    if isinstance(expected, str) and expected.lower() in ['true', 'false']:
-        if expected.lower() == 'true':
-            expected = True
-        else:
-            expected = False
-    
-    # 如果实际值是字符串形式的布尔值，也要转换
-    if isinstance(actual, str) and actual.lower() in ['true', 'false']:
-        if actual.lower() == 'true':
-            actual = True
-        else:
-            actual = False
-            
-    # 尝试将字符串转换为数字
-    if isinstance(expected, str) and expected.replace('.', '', 1).isdigit():
-        try:
-            if '.' in expected:
-                expected = float(expected)
-            else:
-                expected = int(expected)
-        except (ValueError, TypeError):
-            pass
-            
-    # 如果实际值是字符串但预期是数字，尝试转换实际值
-    if isinstance(expected, (int, float)) and isinstance(actual, str):
-        try:
-            if '.' in actual or isinstance(expected, float):
-                actual = float(actual)
-            else:
-                actual = int(actual)
-        except (ValueError, TypeError):
-            pass
-            
-    # 布尔值特殊处理：如果预期是布尔值且实际值是字符串表示的布尔值
-    if isinstance(expected, bool) and isinstance(actual, str):
-        actual_lower = actual.lower()
-        if actual_lower == 'true':
-            actual = True
-        elif actual_lower == 'false':
-            actual = False
-    
     # 执行比较
     if operator == "==":
         return actual == expected
@@ -155,6 +85,12 @@ def _compare_values(actual: Any, expected: Any, operator: str = "==", context=No
             except re.error:
                 raise ValueError(f"无效的正则表达式: {expected}")
         return False
+    elif operator == "and":
+        return bool(actual) and bool(expected)
+    elif operator == "or":
+        return bool(actual) or bool(expected)
+    elif operator == "not":
+        return not bool(actual)
     else:
         raise ValueError(f"不支持的比较运算符: {operator}")
 
@@ -172,7 +108,7 @@ def assert_condition(**kwargs):
         
     Returns:
         断言结果 (True/False)
-    
+        
     Raises:
         AssertionError: 如果断言失败
     """
@@ -180,18 +116,9 @@ def assert_condition(**kwargs):
     message = kwargs.get('message', '断言失败')
     context = kwargs.get('context')
     
-    # 获取本地变量
-    local_variables = {}
-    if hasattr(context, 'executor'):
-        local_variables = context.executor.variables
-    
-    # 先进行变量替换
-    variable_replacer = VariableReplacer(local_variables=local_variables, test_context=context)
-    condition = variable_replacer.replace_in_string(condition)
-    
-    # 简单解析表达式，支持 ==, !=, >, <, >=, <=, contains, not_contains, matches
-    # 格式: "${value} operator expected" 或 "expression operator expected"
-    operators = ["==", "!=", ">", "<", ">=", "<=", "contains", "not_contains", "matches"]
+    # 简单解析表达式，支持 ==, !=, >, <, >=, <=, contains, not_contains, matches, in, and, or, not
+    # 格式: "left_value operator right_value" 或 "boolean_expression"
+    operators = ["==", "!=", ">", "<", ">=", "<=", "contains", "not_contains", "matches", "in", "and", "or", "not"]
     
     # 先检查是否包含这些操作符
     operator_used = None
@@ -201,26 +128,20 @@ def assert_condition(**kwargs):
             break
     
     if not operator_used:
-        # 尝试评估表达式条件
+        # 如果没有找到操作符，尝试作为布尔表达式直接求值
         try:
+            # 对条件进行变量替换
+            if '${' in condition:
+                condition = context.executor.variable_replacer.replace_in_string(condition)
+            # 尝试直接求值
             result = eval(condition)
-            # 记录执行结果
-            allure.attach(
-                f"条件: {condition}\n结果: {result}",
-                name="表达式计算",
-                attachment_type=allure.attachment_type.TEXT
-            )
-            
+            if not isinstance(result, bool):
+                raise ValueError(f"表达式结果不是布尔值: {result}")
             if not result:
-                allure.attach(
-                    f"条件: {condition}\n结果: {result}",
-                    name="断言失败",
-                    attachment_type=allure.attachment_type.TEXT
-                )
-                raise AssertionError(message)
+                raise AssertionError(f"{message}. 布尔表达式求值为假: {condition}")
             return True
         except Exception as e:
-            raise AssertionError(f"{message}. 执行条件时出错: {str(e)}")
+            raise AssertionError(f"{message}. 无法解析条件表达式: {condition}. 错误: {str(e)}")
     
     # 解析左值和右值
     left_value, right_value = condition.split(f" {operator_used} ", 1)
@@ -228,22 +149,194 @@ def assert_condition(**kwargs):
     right_value = right_value.strip()
     
     # 移除引号（如果有）
+    if left_value.startswith('"') and left_value.endswith('"'):
+        left_value = left_value[1:-1]
+    elif left_value.startswith("'") and left_value.endswith("'"):
+        left_value = left_value[1:-1]
+        
     if right_value.startswith('"') and right_value.endswith('"'):
         right_value = right_value[1:-1]
     elif right_value.startswith("'") and right_value.endswith("'"):
         right_value = right_value[1:-1]
     
-    # 比较值（left_value可能包含表达式）
-    result = _compare_values(left_value, right_value, operator_used, context, local_variables)
+    # 记录原始值（用于调试）
+    allure.attach(
+        f"原始左值: {left_value}\n原始右值: {right_value}\n操作符: {operator_used}",
+        name="表达式解析",
+        attachment_type=allure.attachment_type.TEXT
+    )
+    
+    # 对左值进行变量替换和表达式计算
+    try:
+        # 如果左值包含变量引用，先进行变量替换
+        if '${' in left_value:
+            left_value = context.executor.variable_replacer.replace_in_string(left_value)
+        
+        # 检查是否需要计算表达式
+        if any(op in str(left_value) for op in ['+', '-', '*', '/', '%', '(', ')']):
+            try:
+                # 确保数字类型的变量可以参与计算
+                if isinstance(left_value, (int, float)):
+                    left_value = str(left_value)
+                # 尝试计算表达式
+                left_value = eval(str(left_value))
+            except Exception as e:
+                allure.attach(
+                    f"表达式计算错误: {str(e)}\n表达式: {left_value}",
+                    name="表达式计算错误",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+                raise ValueError(f"表达式计算错误: {str(e)}")
+        
+        # 处理布尔值字符串和数字字符串
+        if isinstance(left_value, str):
+            if left_value.lower() in ('true', 'false'):
+                left_value = left_value.lower() == 'true'
+            elif left_value.lower() in ('yes', 'no', '1', '0', 't', 'f', 'y', 'n'):
+                left_value = left_value.lower() in ('yes', '1', 't', 'y')
+            else:
+                # 尝试转换为数字
+                try:
+                    if '.' in left_value:
+                        left_value = float(left_value)
+                    else:
+                        left_value = int(left_value)
+                except ValueError:
+                    pass  # 如果不是数字，保持原样
+    except Exception as e:
+        allure.attach(
+            f"左值处理异常: {str(e)}\n左值: {left_value}",
+            name="左值处理异常",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        raise
+    
+    # 对右值进行变量替换和表达式计算
+    try:
+        # 如果右值包含变量引用，先进行变量替换
+        if '${' in right_value:
+            right_value = context.executor.variable_replacer.replace_in_string(right_value)
+        
+        # 检查是否需要计算表达式
+        if any(op in str(right_value) for op in ['+', '-', '*', '/', '%', '(', ')']):
+            try:
+                # 确保数字类型的变量可以参与计算
+                if isinstance(right_value, (int, float)):
+                    right_value = str(right_value)
+                # 尝试计算表达式
+                right_value = eval(str(right_value))
+            except Exception as e:
+                allure.attach(
+                    f"表达式计算错误: {str(e)}\n表达式: {right_value}",
+                    name="表达式计算错误",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+                raise ValueError(f"表达式计算错误: {str(e)}")
+        
+        # 处理布尔值字符串
+        if isinstance(right_value, str):
+            if right_value.lower() in ('true', 'false'):
+                right_value = right_value.lower() == 'true'
+            elif right_value.lower() in ('yes', 'no', '1', '0', 't', 'f', 'y', 'n'):
+                right_value = right_value.lower() in ('yes', '1', 't', 'y')
+    except Exception as e:
+        allure.attach(
+            f"右值处理异常: {str(e)}\n右值: {right_value}",
+            name="右值处理异常",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        raise
+    
+    # 类型转换和特殊处理
+    if operator_used == "contains":
+        # 特殊处理字符串包含操作
+        if isinstance(left_value, str) and isinstance(right_value, str):
+            result = right_value in left_value
+        elif isinstance(left_value, (list, tuple, dict)):
+            result = right_value in left_value
+        elif isinstance(left_value, (int, float, bool)):
+            # 将左值转换为字符串进行比较
+            result = str(right_value) in str(left_value)
+        else:
+            result = False
+    elif operator_used == "not_contains":
+        # 特殊处理字符串不包含操作
+        if isinstance(left_value, str) and isinstance(right_value, str):
+            result = right_value not in left_value
+        elif isinstance(left_value, (list, tuple, dict)):
+            result = right_value not in left_value
+        elif isinstance(left_value, (int, float, bool)):
+            # 将左值转换为字符串进行比较
+            result = str(right_value) not in str(left_value)
+        else:
+            result = True
+    elif operator_used == "matches":
+        # 特殊处理正则表达式匹配
+        try:
+            if isinstance(left_value, str) and isinstance(right_value, str):
+                result = bool(re.match(right_value, left_value))
+            else:
+                result = False
+        except re.error:
+            raise ValueError(f"无效的正则表达式: {right_value}")
+    elif operator_used == "in":
+        # 特殊处理 in 操作符
+        try:
+            # 尝试将右值解析为列表或字典
+            if isinstance(right_value, str):
+                right_value = eval(right_value)
+            
+            # 如果是字典，检查键
+            if isinstance(right_value, dict):
+                result = left_value in right_value.keys()
+            else:
+                result = left_value in right_value
+        except Exception as e:
+            allure.attach(
+                f"in 操作符处理异常: {str(e)}\n左值: {left_value}\n右值: {right_value}",
+                name="in 操作符处理异常",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            raise ValueError(f"in 操作符处理异常: {str(e)}")
+    else:
+        # 其他操作符需要类型转换
+        if isinstance(left_value, str) and isinstance(right_value, (int, float)):
+            try:
+                left_value = float(left_value)
+            except:
+                pass
+        elif isinstance(right_value, str) and isinstance(left_value, (int, float)):
+            try:
+                right_value = float(right_value)
+            except:
+                pass
+        
+        # 记录类型转换后的值（用于调试）
+        allure.attach(
+            f"类型转换后左值: {left_value} ({type(left_value).__name__})\n类型转换后右值: {right_value} ({type(right_value).__name__})",
+            name="类型转换",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        
+        # 执行比较
+        result = _compare_values(left_value, right_value, operator_used)
     
     # 记录和处理断言结果
     if not result:
+        error_details = f"""
+        断言失败详情:
+        条件: {condition}
+        实际值: {left_value} ({type(left_value).__name__})
+        预期值: {right_value} ({type(right_value).__name__})
+        操作符: {operator_used}
+        消息: {message}
+        """
         allure.attach(
-            f"实际值: {left_value}\n预期值: {right_value}\n操作符: {operator_used}",
-            name="断言失败",
+            error_details,
+            name="断言失败详情",
             attachment_type=allure.attachment_type.TEXT
         )
-        raise AssertionError(message)
+        raise AssertionError(error_details)
     
     # 记录成功的断言
     allure.attach(
@@ -283,15 +376,6 @@ def assert_json(**kwargs):
     expected_value = kwargs.get('expected_value')
     operator = kwargs.get('operator', '==')
     message = kwargs.get('message', 'JSON断言失败')
-    context = kwargs.get('context')
-    
-    # 替换变量
-    if isinstance(json_data, str):
-        local_vars = {}
-        if context and hasattr(context, 'executor'):
-            local_vars = context.executor.variables
-        replacer = VariableReplacer(local_variables=local_vars, test_context=context)
-        json_data = replacer.replace_in_string(json_data)
     
     # 解析JSON（如果需要）
     if isinstance(json_data, str):
@@ -353,15 +437,6 @@ def extract_json(**kwargs):
     json_data = kwargs.get('json_data')
     path = kwargs.get('jsonpath')
     variable = kwargs.get('variable')
-    context = kwargs.get('context')
-
-    # 替换变量
-    if isinstance(json_data, str):
-        local_vars = {}
-        if context and hasattr(context, 'executor'):
-            local_vars = context.executor.variables
-        replacer = VariableReplacer(local_variables=local_vars, test_context=context)
-        json_data = replacer.replace_in_string(json_data)
 
     # 解析JSON（如果需要）
     if isinstance(json_data, str):
@@ -406,16 +481,6 @@ def assert_type(**kwargs):
     value = kwargs.get('value')
     expected_type = kwargs.get('type')
     message = kwargs.get('message', '类型断言失败')
-    context = kwargs.get('context')
-    
-    # 获取本地变量
-    local_variables = {}
-    if hasattr(context, 'executor'):
-        local_variables = context.executor.variables
-    
-    # 替换变量
-    variable_replacer = VariableReplacer(local_variables=local_variables, test_context=context)
-    value = variable_replacer.replace_in_string(value)
     
     # 检查类型
     if expected_type == 'string':
@@ -488,15 +553,44 @@ def compare_values(**kwargs):
     expected = kwargs.get('expected')
     operator = kwargs.get('operator', '==')
     message = kwargs.get('message', '数据比较失败')
-    context = kwargs.get('context')
     
-    # 获取本地变量
-    local_variables = {}
-    if hasattr(context, 'executor'):
-        local_variables = context.executor.variables
+    # 处理布尔值字符串和表达式
+    if isinstance(actual, str):
+        # 检查是否需要计算表达式
+        if any(op in actual for op in ['+', '-', '*', '/', '%', '(', ')']):
+            try:
+                actual = eval(actual)
+            except Exception as e:
+                allure.attach(
+                    f"表达式计算错误: {str(e)}\n表达式: {actual}",
+                    name="表达式计算错误",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+                raise ValueError(f"表达式计算错误: {str(e)}")
+        elif actual.lower() in ('true', 'false'):
+            actual = actual.lower() == 'true'
+        elif actual.lower() in ('yes', 'no', '1', '0', 't', 'f', 'y', 'n'):
+            actual = actual.lower() in ('yes', '1', 't', 'y')
+    
+    if isinstance(expected, str):
+        # 检查是否需要计算表达式
+        if any(op in expected for op in ['+', '-', '*', '/', '%', '(', ')']):
+            try:
+                expected = eval(expected)
+            except Exception as e:
+                allure.attach(
+                    f"表达式计算错误: {str(e)}\n表达式: {expected}",
+                    name="表达式计算错误",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+                raise ValueError(f"表达式计算错误: {str(e)}")
+        elif expected.lower() in ('true', 'false'):
+            expected = expected.lower() == 'true'
+        elif expected.lower() in ('yes', 'no', '1', '0', 't', 'f', 'y', 'n'):
+            expected = expected.lower() in ('yes', '1', 't', 'y')
     
     # 比较值
-    result = _compare_values(actual, expected, operator, context, local_variables)
+    result = _compare_values(actual, expected, operator)
     
     # 记录和处理比较结果
     if not result:

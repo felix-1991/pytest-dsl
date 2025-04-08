@@ -74,7 +74,9 @@ class DSLExecutor:
         :raises Exception: 当遇到未定义变量或无法求值的类型时抛出异常
         """
         if expr_node.type == 'Expression':
-            return self._eval_expression_value(expr_node.value)
+            value = self._eval_expression_value(expr_node.value)
+            # 统一处理变量替换
+            return self.variable_replacer.replace_in_value(value)
         elif expr_node.type == 'KeywordCall':
             return self.execute(expr_node)
         else:
@@ -91,10 +93,10 @@ class DSLExecutor:
             match = re.fullmatch(pattern, value)
             if match:
                 var_name = match.group(1)
-                return self._get_variable(var_name)
+                return self.variable_replacer.get_variable(var_name)
             else:
                 # 如果不是单一变量，则替换字符串中的所有变量引用
-                return self._replace_variables_in_string(value)
+                return self.variable_replacer.replace_in_string(value)
         return value
     
     def _get_variable(self, var_name):
@@ -199,7 +201,7 @@ class DSLExecutor:
                 attachment_type=allure.attachment_type.TEXT
             )
         else:
-            self.variables[var_name] = expr_value
+            self.variable_replacer.local_variables[var_name] = expr_value
             allure.attach(
                 f"变量: {var_name}\n值: {expr_value}",
                 name="赋值详情",
@@ -223,7 +225,7 @@ class DSLExecutor:
                     attachment_type=allure.attachment_type.TEXT
                 )
             else:
-                self.variables[var_name] = result
+                self.variable_replacer.local_variables[var_name] = result
                 allure.attach(
                     f"变量: {var_name}\n值: {result}",
                     name="赋值详情",
@@ -240,7 +242,7 @@ class DSLExecutor:
         end = self.eval_expression(node.children[1])
         
         for i in range(int(start), int(end)):
-            self.variables[var_name] = i
+            self.variable_replacer.local_variables[var_name] = i
             with allure.step(f"循环轮次: {var_name} = {i}"):
                 self.execute(node.children[2])
 
@@ -265,12 +267,16 @@ class DSLExecutor:
         """准备关键字调用参数"""
         mapping = keyword_info.get('mapping', {})
         kwargs = {'context': self.test_context}  # 默认传入context参数
+        
         # 检查是否有参数列表
         if node.children[0]:
             for param in node.children[0]:
                 param_name = param.value
                 english_param_name = mapping.get(param_name, param_name)
-                kwargs[english_param_name] = self.eval_expression(param.children[0])
+                # 对参数值进行变量替换
+                param_value = self.eval_expression(param.children[0])
+                kwargs[english_param_name] = param_value
+                
         return kwargs
 
     @allure.step("执行清理操作")

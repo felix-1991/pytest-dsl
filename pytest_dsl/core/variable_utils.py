@@ -1,4 +1,5 @@
 import re
+import json
 from typing import Any, Dict, List, Union
 from pytest_dsl.core.global_context import global_context
 from pytest_dsl.core.context import TestContext
@@ -29,27 +30,55 @@ class VariableReplacer:
             var_name: 变量名
             
         Returns:
-            变量值，如果变量不存在则返回变量引用本身
+            变量值，如果变量不存在则抛出 KeyError
+            
+        Raises:
+            KeyError: 当变量不存在时
         """
         # 从本地变量获取
         if var_name in self.local_variables:
-            return self.local_variables[var_name]
+            value = self.local_variables[var_name]
+            return self._convert_value(value)
         
         # 从测试上下文中获取
         if self.test_context.has(var_name):
-            return self.test_context.get(var_name)
+            value = self.test_context.get(var_name)
+            return self._convert_value(value)
         
         # 从YAML变量中获取
         yaml_value = yaml_vars.get_variable(var_name)
         if yaml_value is not None:
-            return yaml_value
+            return self._convert_value(yaml_value)
             
         # 从全局上下文获取
         if global_context.has_variable(var_name):
-            return global_context.get_variable(var_name)
+            value = global_context.get_variable(var_name)
+            return self._convert_value(value)
             
-        # 如果变量不存在，返回变量引用本身
-        return f"${{{var_name}}}"
+        # 如果变量不存在，抛出异常
+        raise KeyError(f"变量 '{var_name}' 不存在")
+    
+    def _convert_value(self, value: Any) -> Any:
+        """转换值为正确的类型
+        
+        Args:
+            value: 要转换的值
+            
+        Returns:
+            转换后的值
+        """
+        if isinstance(value, str):
+            # 处理布尔值
+            if value.lower() in ('true', 'false'):
+                return value.lower() == 'true'
+            # 处理数字
+            try:
+                if '.' in value:
+                    return float(value)
+                return int(value)
+            except (ValueError, TypeError):
+                pass
+        return value
     
     def replace_in_string(self, value: str) -> str:
         """替换字符串中的变量引用
@@ -59,18 +88,40 @@ class VariableReplacer:
             
         Returns:
             替换后的字符串
+            
+        Raises:
+            KeyError: 当变量不存在时
         """
         if not isinstance(value, str) or '${' not in value:
             return value
             
-        pattern = r'\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}'
-        result = value
-        matches = list(re.finditer(pattern, value))
+        # 处理变量引用模式: ${variable} 或 ${variable.field.subfield}
+        pattern = r'\$\{([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)\}'
         
-        # 从后向前替换，避免前面的替换影响后面的索引位置
+        result = value
+        matches = list(re.finditer(pattern, result))
+        
+        # 从后向前替换，避免位置偏移
         for match in reversed(matches):
-            var_name = match.group(1)
-            var_value = self.get_variable(var_name)
+            var_ref = match.group(1)  # 例如: "api_test_data.user_id" 或 "variable"
+            parts = var_ref.split('.')
+            
+            # 获取根变量
+            root_var_name = parts[0]
+            try:
+                root_var = self.get_variable(root_var_name)
+            except KeyError:
+                raise KeyError(f"变量 '{root_var_name}' 不存在")
+            
+            # 递归访问嵌套属性
+            var_value = root_var
+            for part in parts[1:]:
+                if isinstance(var_value, dict) and part in var_value:
+                    var_value = var_value[part]
+                else:
+                    raise KeyError(f"无法访问属性 '{part}'，变量 '{root_var_name}' 的类型是 {type(var_value).__name__}")
+            
+            # 替换变量引用
             result = result[:match.start()] + str(var_value) + result[match.end():]
         
         return result
@@ -83,11 +134,22 @@ class VariableReplacer:
             
         Returns:
             替换后的字典
+            
+        Raises:
+            KeyError: 当变量不存在时
         """
         if not isinstance(data, dict):
             return data
             
-        return {k: self.replace_in_value(v) for k, v in data.items()}
+        result = {}
+        for key, value in data.items():
+            # 替换键中的变量
+            new_key = self.replace_in_string(key) if isinstance(key, str) else key
+            # 替换值中的变量
+            new_value = self.replace_in_value(value)
+            result[new_key] = new_value
+            
+        return result
     
     def replace_in_list(self, data: List[Any]) -> List[Any]:
         """递归替换列表中的变量引用
@@ -97,6 +159,9 @@ class VariableReplacer:
             
         Returns:
             替换后的列表
+            
+        Raises:
+            KeyError: 当变量不存在时
         """
         if not isinstance(data, list):
             return data
@@ -111,6 +176,9 @@ class VariableReplacer:
             
         Returns:
             替换后的值
+            
+        Raises:
+            KeyError: 当变量不存在时
         """
         if isinstance(value, str):
             return self.replace_in_string(value)
@@ -118,5 +186,68 @@ class VariableReplacer:
             return self.replace_in_dict(value)
         elif isinstance(value, list):
             return self.replace_in_list(value)
+        elif isinstance(value, (int, float, bool, type(None))):
+            return value
         else:
-            return value 
+            # 对于其他类型，尝试转换为字符串后替换
+            try:
+                str_value = str(value)
+                if '${' in str_value:
+                    replaced = self.replace_in_string(str_value)
+                    # 尝试将替换后的字符串转换回原始类型
+                    if isinstance(value, (int, float)):
+                        return type(value)(replaced)
+                    elif isinstance(value, bool):
+                        return replaced.lower() == 'true'
+                    return replaced
+                return value
+            except:
+                return value
+    
+    def replace_in_json(self, json_str: str) -> str:
+        """替换JSON字符串中的变量引用
+        
+        Args:
+            json_str: 包含变量引用的JSON字符串
+            
+        Returns:
+            替换后的JSON字符串
+            
+        Raises:
+            KeyError: 当变量不存在时
+            json.JSONDecodeError: 当JSON解析失败时
+        """
+        try:
+            # 先解析JSON
+            data = json.loads(json_str)
+            # 替换变量
+            replaced_data = self.replace_in_value(data)
+            # 重新序列化为JSON
+            return json.dumps(replaced_data, ensure_ascii=False)
+        except json.JSONDecodeError:
+            # 如果JSON解析失败，直接作为字符串处理
+            return self.replace_in_string(json_str)
+    
+    def replace_in_yaml(self, yaml_str: str) -> str:
+        """替换YAML字符串中的变量引用
+        
+        Args:
+            yaml_str: 包含变量引用的YAML字符串
+            
+        Returns:
+            替换后的YAML字符串
+            
+        Raises:
+            KeyError: 当变量不存在时
+        """
+        try:
+            import yaml
+            # 先解析YAML
+            data = yaml.safe_load(yaml_str)
+            # 替换变量
+            replaced_data = self.replace_in_value(data)
+            # 重新序列化为YAML
+            return yaml.dump(replaced_data, allow_unicode=True)
+        except:
+            # 如果YAML解析失败，直接作为字符串处理
+            return self.replace_in_string(yaml_str) 
