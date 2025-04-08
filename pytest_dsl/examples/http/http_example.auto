@@ -32,7 +32,6 @@
 
 # 显示捕获的变量
 [打印],内容:'第一篇文章ID: ${first_post_id}, 文章总数: ${data_length}'
-[打印],内容:'验证data_length类型: ${typeof(data_length)}, 值: ${data_length}'
 
 # POST请求示例
 [HTTP请求],客户端:'default',配置:'''

@@ -10,6 +10,7 @@ from pytest_dsl.core.global_context import global_context
 from pytest_dsl.core.context import TestContext
 import pytest_dsl.keywords
 from pytest_dsl.core.yaml_vars import yaml_vars
+from pytest_dsl.core.variable_utils import VariableReplacer
 
 
 class DSLExecutor:
@@ -22,6 +23,7 @@ class DSLExecutor:
     def __init__(self):
         self.variables = {}
         self.test_context = TestContext()
+        self.variable_replacer = VariableReplacer(self.variables, self.test_context)
         
     def set_current_data(self, data):
         """设置当前测试数据集"""
@@ -95,39 +97,11 @@ class DSLExecutor:
     
     def _get_variable(self, var_name):
         """获取变量值，优先从本地变量获取，如果不存在则尝试从全局上下文获取"""
-        if var_name in self.variables:
-            return self.variables[var_name]
-        
-        # 从测试上下文中获取
-        if self.test_context.has(var_name):
-            return self.test_context.get(var_name)
-        
-        # 从YAML变量中获取
-        yaml_value = yaml_vars.get_variable(var_name)
-        if yaml_value is not None:
-            return yaml_value
-            
-        # 从全局上下文获取
-        if global_context.has_variable(var_name):
-            return global_context.get_variable(var_name)
-            
-        # 如果变量不存在，返回变量引用本身，而不是抛出异常
-        return f"${{{var_name}}}"
+        return self.variable_replacer.get_variable(var_name)
     
     def _replace_variables_in_string(self, value):
         """替换字符串中的变量引用"""
-        # 使用更严格的变量名匹配模式
-        pattern = r'\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}'
-        result = value
-        matches = list(re.finditer(pattern, value))
-        
-        # 从后向前替换，避免前面的替换影响后面的索引位置
-        for match in reversed(matches):
-            var_name = match.group(1)
-            var_value = self._get_variable(var_name)  # 使用现有的_get_variable方法
-            result = result[:match.start()] + str(var_value) + result[match.end():]
-        
-        return result
+        return self.variable_replacer.replace_in_string(value)
 
     def _handle_start(self, node):
         """处理开始节点"""

@@ -8,6 +8,7 @@ from requests import Response
 import allure
 
 from pytest_dsl.core.http_client import http_client_manager
+from pytest_dsl.core.variable_utils import VariableReplacer
 
 
 class HTTPRequest:
@@ -29,6 +30,7 @@ class HTTPRequest:
         self.session_name = session_name
         self.response = None
         self.captured_values = {}
+        self.variable_replacer = VariableReplacer()
         
         # 解析YAML配置
         if isinstance(config, str):
@@ -58,8 +60,7 @@ class HTTPRequest:
         
         # 替换URL中可能存在的变量引用
         if isinstance(url, str) and '${' in url:
-            from pytest_dsl.keywords.http_keywords import _replace_variables_in_string
-            url = _replace_variables_in_string(url)
+            url = self.variable_replacer.replace_in_string(url)
         
         # 配置中是否禁用认证
         disable_auth = disable_auth or self.config.get('disable_auth', False)
@@ -84,23 +85,7 @@ class HTTPRequest:
         }
         
         # 替换请求参数中的变量引用
-        from pytest_dsl.keywords.http_keywords import _replace_variables_in_string
-        
-        # 处理JSON数据中的变量
-        if 'json' in request_kwargs and request_kwargs['json']:
-            request_kwargs['json'] = self._replace_variables_in_dict(request_kwargs['json'])
-            
-        # 处理查询参数中的变量
-        if 'params' in request_kwargs and request_kwargs['params']:
-            request_kwargs['params'] = self._replace_variables_in_dict(request_kwargs['params'])
-            
-        # 处理表单数据中的变量
-        if 'data' in request_kwargs and request_kwargs['data']:
-            request_kwargs['data'] = self._replace_variables_in_dict(request_kwargs['data'])
-            
-        # 处理请求头中的变量
-        if 'headers' in request_kwargs and request_kwargs['headers']:
-            request_kwargs['headers'] = self._replace_variables_in_dict(request_kwargs['headers'])
+        request_kwargs = self.variable_replacer.replace_in_value(request_kwargs)
         
         # 过滤掉None值
         request_kwargs = {k: v for k, v in request_kwargs.items() if v is not None}
@@ -147,13 +132,11 @@ class HTTPRequest:
             
             # 替换提取路径中的变量引用
             if isinstance(extraction_path, str) and '${' in extraction_path:
-                from pytest_dsl.keywords.http_keywords import _replace_variables_in_string
-                extraction_path = _replace_variables_in_string(extraction_path)
+                extraction_path = self.variable_replacer.replace_in_string(extraction_path)
                 
             # 替换默认值中的变量引用
             if isinstance(default_value, str) and '${' in default_value:
-                from pytest_dsl.keywords.http_keywords import _replace_variables_in_string
-                default_value = _replace_variables_in_string(default_value)
+                default_value = self.variable_replacer.replace_in_string(default_value)
             
             # 提取值
             captured_value = self._extract_value(extractor_type, extraction_path, default_value)
@@ -245,8 +228,7 @@ class HTTPRequest:
             
             # 替换expected_value中的变量引用
             if isinstance(expected_value, str) and '${' in expected_value:
-                from pytest_dsl.keywords.http_keywords import _replace_variables_in_string
-                expected_value = _replace_variables_in_string(expected_value)
+                expected_value = self.variable_replacer.replace_in_string(expected_value)
             
             # 提取实际值
             actual_value = self._extract_value(extractor_type, extraction_path)
@@ -655,24 +637,4 @@ class HTTPRequest:
             "\n".join(response_details),
             name=f"HTTP响应: {response_summary}",
             attachment_type=allure.attachment_type.TEXT
-        )
-    
-    def _replace_variables_in_dict(self, data):
-        """递归替换字典中的变量引用
-        
-        Args:
-            data: 包含变量引用的字典、列表或字符串
-            
-        Returns:
-            替换变量后的数据
-        """
-        from pytest_dsl.keywords.http_keywords import _replace_variables_in_string
-        
-        if isinstance(data, dict):
-            return {k: self._replace_variables_in_dict(v) for k, v in data.items()}
-        elif isinstance(data, list):
-            return [self._replace_variables_in_dict(item) for item in data]
-        elif isinstance(data, str) and '${' in data:
-            return _replace_variables_in_string(data)
-        else:
-            return data 
+        ) 
