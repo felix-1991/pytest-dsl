@@ -16,4 +16,8 @@ class TestContext:
 
     def clear(self) -> None:
         """清空上下文"""
-        self._data.clear() 
+        self._data.clear()
+
+    def get_local_variables(self) -> dict:
+        """获取所有本地变量"""
+        return self._data 

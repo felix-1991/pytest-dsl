@@ -21,8 +21,10 @@ class DSLExecutor:
     - PYTEST_DSL_KEEP_VARIABLES=0: (默认) 执行完成后清空变量，用于正常DSL执行
     """
     def __init__(self):
+        """初始化DSL执行器"""
         self.variables = {}
         self.test_context = TestContext()
+        self.test_context.executor = self  # 让 test_context 能够访问到 executor
         self.variable_replacer = VariableReplacer(self.variables, self.test_context)
         
     def set_current_data(self, data):

@@ -10,6 +10,7 @@ import allure
 from typing import Any, Dict, List, Union
 import jsonpath_ng.ext as jsonpath
 from pytest_dsl.core.keyword_manager import keyword_manager
+from pytest_dsl.core.variable_utils import VariableReplacer
 
 
 def _extract_jsonpath(json_data: Union[Dict, List], path: str) -> Any:
@@ -42,19 +43,25 @@ def _extract_jsonpath(json_data: Union[Dict, List], path: str) -> Any:
         raise ValueError(f"JSONPath提取错误: {str(e)}")
 
 
-def _compare_values(actual: Any, expected: Any, operator: str = "==") -> bool:
+def _compare_values(actual: Any, expected: Any, operator: str = "==", context=None, local_variables=None) -> bool:
     """比较两个值
     
     Args:
         actual: 实际值（可以是表达式字符串）
         expected: 预期值
         operator: 比较运算符 (==, !=, >, <, >=, <=, contains, not_contains, matches)
+        context: 测试上下文
+        local_variables: 本地变量字典
         
     Returns:
         比较结果 (True/False)
     """
-    # 尝试计算表达式（如果actual是字符串表达式）
+    # 如果actual是字符串，先进行变量替换
     if isinstance(actual, str):
+        # 替换变量引用
+        variable_replacer = VariableReplacer(local_variables=local_variables, test_context=context)
+        actual = variable_replacer.replace_in_string(actual)
+        
         # 检查是否是表达式
         if any(op in actual for op in ['+', '-', '*', '/', '%', '(', ')']):
             try:
@@ -171,6 +178,16 @@ def assert_condition(**kwargs):
     """
     condition = kwargs.get('condition')
     message = kwargs.get('message', '断言失败')
+    context = kwargs.get('context')
+    
+    # 获取本地变量
+    local_variables = {}
+    if hasattr(context, 'executor'):
+        local_variables = context.executor.variables
+    
+    # 先进行变量替换
+    variable_replacer = VariableReplacer(local_variables=local_variables, test_context=context)
+    condition = variable_replacer.replace_in_string(condition)
     
     # 简单解析表达式，支持 ==, !=, >, <, >=, <=, contains, not_contains, matches
     # 格式: "${value} operator expected" 或 "expression operator expected"
@@ -217,7 +234,7 @@ def assert_condition(**kwargs):
         right_value = right_value[1:-1]
     
     # 比较值（left_value可能包含表达式）
-    result = _compare_values(left_value, right_value, operator_used)
+    result = _compare_values(left_value, right_value, operator_used, context, local_variables)
     
     # 记录和处理断言结果
     if not result:
@@ -266,6 +283,15 @@ def assert_json(**kwargs):
     expected_value = kwargs.get('expected_value')
     operator = kwargs.get('operator', '==')
     message = kwargs.get('message', 'JSON断言失败')
+    context = kwargs.get('context')
+    
+    # 替换变量
+    if isinstance(json_data, str):
+        local_vars = {}
+        if context and hasattr(context, 'executor'):
+            local_vars = context.executor.variables
+        replacer = VariableReplacer(local_variables=local_vars, test_context=context)
+        json_data = replacer.replace_in_string(json_data)
     
     # 解析JSON（如果需要）
     if isinstance(json_data, str):
@@ -327,7 +353,16 @@ def extract_json(**kwargs):
     json_data = kwargs.get('json_data')
     path = kwargs.get('jsonpath')
     variable = kwargs.get('variable')
-    
+    context = kwargs.get('context')
+
+    # 替换变量
+    if isinstance(json_data, str):
+        local_vars = {}
+        if context and hasattr(context, 'executor'):
+            local_vars = context.executor.variables
+        replacer = VariableReplacer(local_variables=local_vars, test_context=context)
+        json_data = replacer.replace_in_string(json_data)
+
     # 解析JSON（如果需要）
     if isinstance(json_data, str):
         try:
@@ -371,14 +406,35 @@ def assert_type(**kwargs):
     value = kwargs.get('value')
     expected_type = kwargs.get('type')
     message = kwargs.get('message', '类型断言失败')
+    context = kwargs.get('context')
+    
+    # 获取本地变量
+    local_variables = {}
+    if hasattr(context, 'executor'):
+        local_variables = context.executor.variables
+    
+    # 替换变量
+    variable_replacer = VariableReplacer(local_variables=local_variables, test_context=context)
+    value = variable_replacer.replace_in_string(value)
     
     # 检查类型
     if expected_type == 'string':
         result = isinstance(value, str)
     elif expected_type == 'number':
         result = isinstance(value, (int, float))
+        # 如果是字符串，尝试转换为数字
+        if not result and isinstance(value, str):
+            try:
+                float(value)  # 尝试转换为数字
+                result = True
+            except ValueError:
+                pass
     elif expected_type == 'boolean':
         result = isinstance(value, bool)
+        # 如果是字符串，检查是否是布尔值字符串
+        if not result and isinstance(value, str):
+            value_lower = value.lower()
+            result = value_lower in ['true', 'false']
     elif expected_type == 'list':
         result = isinstance(value, list)
     elif expected_type == 'object':
@@ -432,9 +488,15 @@ def compare_values(**kwargs):
     expected = kwargs.get('expected')
     operator = kwargs.get('operator', '==')
     message = kwargs.get('message', '数据比较失败')
+    context = kwargs.get('context')
+    
+    # 获取本地变量
+    local_variables = {}
+    if hasattr(context, 'executor'):
+        local_variables = context.executor.variables
     
     # 比较值
-    result = _compare_values(actual, expected, operator)
+    result = _compare_values(actual, expected, operator, context, local_variables)
     
     # 记录和处理比较结果
     if not result:
