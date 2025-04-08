@@ -37,9 +37,12 @@ class HTTPRequest:
             except yaml.YAMLError as e:
                 raise ValueError(f"无效的YAML配置: {str(e)}")
     
-    def execute(self) -> Response:
+    def execute(self, disable_auth: bool = False) -> Response:
         """执行HTTP请求
         
+        Args:
+            disable_auth: 是否禁用认证
+            
         Returns:
             Response对象
         """
@@ -58,13 +61,16 @@ class HTTPRequest:
             from pytest_dsl.keywords.http_keywords import _replace_variables_in_string
             url = _replace_variables_in_string(url)
         
+        # 配置中是否禁用认证
+        disable_auth = disable_auth or self.config.get('disable_auth', False)
+        
         request_config = self.config.get('request', {})
         
         # 构建请求参数
         request_kwargs = {
             'params': request_config.get('params'),
             'headers': request_config.get('headers'),
-            'json_data': request_config.get('json'),
+            'json': request_config.get('json'),
             'data': request_config.get('data'),
             'files': request_config.get('files'),
             'cookies': request_config.get('cookies'),
@@ -73,15 +79,16 @@ class HTTPRequest:
             'allow_redirects': request_config.get('allow_redirects'),
             'verify': request_config.get('verify'),
             'cert': request_config.get('cert'),
-            'proxies': request_config.get('proxies')
+            'proxies': request_config.get('proxies'),
+            'disable_auth': disable_auth  # 传递禁用认证标志
         }
         
         # 替换请求参数中的变量引用
         from pytest_dsl.keywords.http_keywords import _replace_variables_in_string
         
         # 处理JSON数据中的变量
-        if 'json_data' in request_kwargs and request_kwargs['json_data']:
-            request_kwargs['json_data'] = self._replace_variables_in_dict(request_kwargs['json_data'])
+        if 'json' in request_kwargs and request_kwargs['json']:
+            request_kwargs['json'] = self._replace_variables_in_dict(request_kwargs['json'])
             
         # 处理查询参数中的变量
         if 'params' in request_kwargs and request_kwargs['params']:
@@ -314,7 +321,7 @@ class HTTPRequest:
             elif extractor_type == "body":
                 return self.response.text
             elif extractor_type == "response_time":
-                return self.response.elapsed_ms
+                return self.response.elapsed.total_seconds() * 1000
             else:
                 raise ValueError(f"不支持的提取器类型: {extractor_type}")
         except Exception as e:
@@ -587,12 +594,12 @@ class HTTPRequest:
                 request_details.append(f"  {key}: {value}")
         
         # 添加请求体
-        if "json_data" in request_kwargs and request_kwargs["json_data"]:
+        if "json" in request_kwargs and request_kwargs["json"]:
             request_details.append("JSON Body:")
             try:
-                request_details.append(json.dumps(request_kwargs["json_data"], indent=2, ensure_ascii=False))
+                request_details.append(json.dumps(request_kwargs["json"], indent=2, ensure_ascii=False))
             except:
-                request_details.append(str(request_kwargs["json_data"]))
+                request_details.append(str(request_kwargs["json"]))
         elif "data" in request_kwargs and request_kwargs["data"]:
             request_details.append("Form Data:")
             for key, value in request_kwargs["data"].items():
@@ -618,12 +625,12 @@ class HTTPRequest:
             response: 响应对象
         """
         # 创建响应信息摘要
-        response_summary = f"{response.status_code} {response.reason} ({response.elapsed_ms:.2f}ms)"
+        response_summary = f"{response.status_code} {response.reason} ({response.elapsed.total_seconds() * 1000:.2f}ms)"
         
         # 创建详细响应信息
         response_details = [
             f"Status: {response.status_code} {response.reason}",
-            f"Response Time: {response.elapsed_ms:.2f}ms"
+            f"Response Time: {response.elapsed.total_seconds() * 1000:.2f}ms"
         ]
         
         # 添加响应头

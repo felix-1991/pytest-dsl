@@ -1,0 +1,48 @@
+http_clients:
+  hmac_auth:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-client/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+    auth:
+      type: custom
+      provider_name: hmac_aws_auth
+  
+  jwt_auth:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-client/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+    auth:
+      type: custom
+      provider_name: jwt_refresh_auth
+  
+  wechat_auth:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-client/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+    auth:
+      type: custom
+      provider_name: wechat_miniapp_auth
+  
+  multi_step_auth:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-client/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+    auth:
+      type: custom
+      provider_name: multi_step_auth 

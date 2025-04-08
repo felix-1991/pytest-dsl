@@ -1,0 +1,79 @@
+@name: 内置认证测试
+@description: 演示内置认证提供者的使用
+@tags: [HTTP, API, 授权, 示例]
+@author: 陈双麟
+@date: 2024-05-01
+
+# 内置认证测试示例
+# 演示内置认证提供者的使用
+
+# 测试Basic认证
+[HTTP请求],客户端:'basic_auth',配置:'''
+        method: GET
+        url: /headers
+        captures:
+            auth_header: ["jsonpath", "$.headers.Authorization"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.headers.Authorization", "startswith", "Basic "]
+    '''
+
+[打印],内容:'Basic认证头: ${auth_header}'
+
+# 测试Token认证
+[HTTP请求],客户端:'token_auth',配置:'''
+        method: GET
+        url: /headers
+        captures:
+            auth_header: ["jsonpath", "$.headers.Authorization"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.headers.Authorization", "eq", "Bearer test_token"]
+    '''
+
+[打印],内容:'Token认证头: ${auth_header}'
+
+# 测试API Key认证 (Header)
+[HTTP请求],客户端:'api_key_auth',配置:'''
+        method: GET
+        url: /headers
+        captures:
+            api_key: ["jsonpath", "$.headers.X-Api-Key"]
+            all_headers: ["jsonpath", "$.headers"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.headers.X-Api-Key", "eq", "test_api_key"]
+    '''
+
+[打印],内容:'API Key认证头: ${api_key}'
+[打印],内容:'所有响应头: ${all_headers}'
+
+# 测试API Key认证 (Query)
+[HTTP请求],客户端:'api_key_query_auth',配置:'''
+        method: GET
+        url: /anything
+        captures:
+            api_key: ["jsonpath", "$.args.api_key"]
+            all_args: ["jsonpath", "$.args"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.args.api_key", "eq", "test_api_key"]
+    '''
+
+[打印],内容:'API Key查询参数: ${api_key}'
+[打印],内容:'所有查询参数: ${all_args}'
+
+# 测试禁用认证
+[HTTP请求],客户端:'basic_auth',配置:'''
+        method: GET
+        url: /headers
+        disable_auth: true
+        captures:
+            all_headers: ["jsonpath", "$.headers"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.headers.Authorization", "not_exists"]
+    '''
+
+[打印],内容:'禁用认证后的响应头: ${all_headers}'
+[打印],内容:'内置认证测试完成' 

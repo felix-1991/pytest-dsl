@@ -7,6 +7,7 @@ import requests
 from requests.exceptions import RequestException
 from urllib.parse import urljoin
 from pytest_dsl.core.yaml_vars import yaml_vars
+from pytest_dsl.core.auth_provider import AuthProvider, create_auth_provider
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,8 @@ class HTTPClient:
                  verify_ssl: bool = True,
                  session: bool = True,
                  retry: Dict[str, Any] = None,
-                 proxies: Dict[str, str] = None):
+                 proxies: Dict[str, str] = None,
+                 auth_config: Dict[str, Any] = None):
         """初始化HTTP客户端
         
         Args:
@@ -37,6 +39,7 @@ class HTTPClient:
             session: 是否启用会话
             retry: 重试配置
             proxies: 代理配置
+            auth_config: 认证配置
         """
         self.name = name
         self.base_url = base_url
@@ -51,157 +54,61 @@ class HTTPClient:
         }
         self.proxies = proxies or {}
         
+        # 处理认证配置
+        self.auth_provider = None
+        if auth_config:
+            self.auth_provider = create_auth_provider(auth_config)
+            if not self.auth_provider:
+                logger.warning(f"无法创建认证提供者: {auth_config}")
+        
         # 创建会话
         self._session = requests.Session() if self.use_session else None
         if self.use_session and self.default_headers:
             self._session.headers.update(self.default_headers)
     
-    def make_request(self, 
-                     method: str, 
-                     url: str, 
-                     params: Dict[str, Any] = None,
-                     headers: Dict[str, str] = None,
-                     json_data: Dict[str, Any] = None,
-                     data: Dict[str, Any] = None,
-                     files: Dict[str, Any] = None,
-                     cookies: Dict[str, str] = None,
-                     auth: Tuple[str, str] = None,
-                     timeout: int = None,
-                     allow_redirects: bool = True,
-                     verify: bool = None,
-                     cert: str = None,
-                     proxies: Dict[str, str] = None,
-                     retry_count: int = None,
-                     retry_interval: int = None) -> requests.Response:
+    def make_request(self, method: str, url: str, **request_kwargs) -> requests.Response:
         """发送HTTP请求
-        
+
         Args:
-            method: HTTP方法 (GET, POST, PUT, DELETE等)
-            url: 请求URL (相对或绝对URL)
-            params: URL查询参数
-            headers: 请求头
-            json_data: JSON请求体
-            data: 表单数据
-            files: 文件上传
-            cookies: Cookie
-            auth: 基本认证 (username, password)
-            timeout: 超时时间(秒)
-            allow_redirects: 是否允许重定向
-            verify: 是否验证SSL证书
-            cert: 客户端证书
-            proxies: 代理设置
-            retry_count: 重试次数
-            retry_interval: 重试间隔(秒)
-            
+            method: HTTP方法
+            url: 请求URL
+            **request_kwargs: 请求参数
+
         Returns:
-            requests.Response对象
+            requests.Response: 响应对象
         """
-        # 处理文件路径
-        if files:
-            processed_files = {}
-            for key, file_path in files.items():
-                if isinstance(file_path, str) and os.path.exists(file_path):
-                    processed_files[key] = open(file_path, 'rb')
-                else:
-                    processed_files[key] = file_path
-            files = processed_files
-            
-        # 合并请求头
-        request_headers = self.default_headers.copy()
-        if headers:
-            request_headers.update(headers)
-            
         # 构建完整URL
         if not url.startswith(('http://', 'https://')):
-            url = urljoin(self.base_url, url)
-            
-        # 设置默认值
-        timeout_value = timeout if timeout is not None else self.timeout
-        verify_value = verify if verify is not None else self.verify_ssl
-        proxies_value = proxies if proxies is not None else self.proxies
-        
-        # 设置重试参数
-        max_retries = retry_count if retry_count is not None else self.retry_config.get("max_retries", 0)
-        retry_interval_value = retry_interval if retry_interval is not None else self.retry_config.get("retry_interval", 1)
-        retry_on_status = self.retry_config.get("retry_on_status", [500, 502, 503, 504])
-        
-        # 构建请求参数
-        request_kwargs = {
-            "params": params,
-            "headers": request_headers,
-            "cookies": cookies,
-            "auth": auth,
-            "timeout": timeout_value,
-            "allow_redirects": allow_redirects,
-            "verify": verify_value,
-            "proxies": proxies_value
-        }
-        
-        # 设置请求体
-        if json_data is not None:
-            request_kwargs["json"] = json_data
-        if data is not None:
-            request_kwargs["data"] = data
-        if files is not None:
-            request_kwargs["files"] = files
-        if cert is not None:
-            request_kwargs["cert"] = cert
-            
-        # 记录请求信息
-        self._log_request(method, url, request_kwargs)
-        
-        # 发送请求并处理重试
-        attempts = 0
-        last_exception = None
-        
-        while attempts <= max_retries:
-            try:
-                start_time = time.time()
-                
-                # 使用会话或直接请求
-                if self.use_session:
-                    response = self._session.request(method, url, **request_kwargs)
-                else:
-                    response = requests.request(method, url, **request_kwargs)
-                
-                # 计算响应时间
-                response_time = (time.time() - start_time) * 1000
-                response.elapsed_ms = response_time  # 添加自定义属性
-                
-                # 记录响应信息
-                self._log_response(response)
-                
-                # 检查是否需要重试
-                if response.status_code in retry_on_status and attempts < max_retries:
-                    logger.warning(f"请求返回状态码 {response.status_code}，将在 {retry_interval_value} 秒后重试 ({attempts+1}/{max_retries})")
-                    time.sleep(retry_interval_value)
-                    attempts += 1
-                    continue
-                    
-                return response
-                
-            except RequestException as e:
-                last_exception = e
-                if attempts < max_retries:
-                    logger.warning(f"请求失败: {str(e)}，将在 {retry_interval_value} 秒后重试 ({attempts+1}/{max_retries})")
-                    time.sleep(retry_interval_value)
-                    attempts += 1
-                else:
-                    logger.error(f"请求失败，已达到最大重试次数: {str(e)}")
-                    raise
-            finally:
-                # 关闭文件句柄
-                if files:
-                    for file_obj in processed_files.values():
-                        if hasattr(file_obj, 'close'):
-                            file_obj.close()
-        
-        # 如果所有重试都失败，抛出最后一个异常
-        if last_exception:
-            raise last_exception
-            
-        # 这一行通常不会执行，因为上面会返回响应或引发异常
-        raise RequestException("未知错误，无法完成请求")
+            url = urljoin(self.base_url, url.lstrip('/'))
+
+        # 处理认证
+        disable_auth = request_kwargs.pop('disable_auth', False)
+        if disable_auth:
+            # 移除所有认证相关的头
+            auth_headers = ['Authorization', 'X-API-Key', 'X-Api-Key', 'api-key', 'Api-Key']
+            if 'headers' in request_kwargs:
+                for header in auth_headers:
+                    request_kwargs['headers'].pop(header, None)
+            # 移除认证参数
+            request_kwargs['auth'] = None
+            # 如果使用会话，也移除会话中的认证头
+            if self.use_session:
+                for header in auth_headers:
+                    self._session.headers.pop(header, None)
+        elif self.auth_provider and 'auth' not in request_kwargs:
+            # 应用认证提供者
+            request_kwargs = self.auth_provider.apply_auth(request_kwargs)
+            # 如果使用会话，更新会话头
+            if self.use_session and 'headers' in request_kwargs:
+                self._session.headers.update(request_kwargs['headers'])
+
+        # 发送请求
+        if self.use_session:
+            response = self._session.request(method, url, **request_kwargs)
+        else:
+            response = requests.request(method, url, **request_kwargs)
+
+        return response
     
     def _log_request(self, method: str, url: str, request_kwargs: Dict[str, Any]) -> None:
         """记录请求信息
@@ -296,7 +203,8 @@ class HTTPClientManager:
             verify_ssl=config.get("verify_ssl", True),
             session=config.get("session", True),
             retry=config.get("retry", None),
-            proxies=config.get("proxies", None)
+            proxies=config.get("proxies", None),
+            auth_config=config.get("auth", None)  # 获取认证配置
         )
         return client
     

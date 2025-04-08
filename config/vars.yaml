@@ -33,6 +33,111 @@ http_clients:
       retry_interval: 1
       retry_on_status: [500, 502, 503, 504]
 
+  # 自定义认证客户端配置
+  hmac_auth:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-client/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+    auth:
+      type: custom
+      provider_name: hmac_aws_auth
+  
+  jwt_auth:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-client/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+    auth:
+      type: custom
+      provider_name: jwt_refresh_auth
+  
+  wechat_auth:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-client/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+    auth:
+      type: custom
+      provider_name: wechat_miniapp_auth
+  
+  multi_step_auth:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-client/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+    auth:
+      type: custom
+      provider_name: multi_step_auth
+
+  # 内置认证客户端配置
+  basic_auth:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-client/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+    auth:
+      type: basic
+      username: test_user
+      password: test_pass
+
+  token_auth:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-client/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+    auth:
+      type: token
+      token: test_token
+      scheme: Bearer
+
+  api_key_auth:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-client/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+    auth:
+      type: api_key
+      api_key: test_api_key
+      key_name: X-Api-Key
+      in_header: true
+
+  api_key_query_auth:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-client/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+    auth:
+      type: api_key
+      api_key: test_api_key
+      in_header: false
+      in_query: true
+      query_param_name: api_key
+
 # HTTP请求模板
 http_templates:
   json_post:

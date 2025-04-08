@@ -1,0 +1,76 @@
+@name: 自定义授权测试
+@description: 演示自定义授权提供者的使用
+@tags: [HTTP, API, 授权, 示例]
+@author: 陈双麟
+@date: 2024-05-01
+
+# 自定义授权测试示例
+# 演示自定义授权提供者的使用
+
+# 测试HMAC签名授权
+[HTTP请求],客户端:'hmac_auth',配置:'''
+        method: GET
+        url: /headers
+        captures:
+            auth_header: ["jsonpath", "$.headers.Authorization"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.headers.Authorization", "exists"]
+            - ["jsonpath", "$.headers.X-Amz-Date", "exists"]
+    '''
+
+[打印],内容:'HMAC授权头: ${auth_header}'
+
+# 测试JWT刷新令牌授权
+[HTTP请求],客户端:'jwt_auth',配置:'''
+        method: GET
+        url: /headers
+        captures:
+            auth_header: ["jsonpath", "$.headers.Authorization"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.headers.Authorization", "startswith", "Bearer "]
+    '''
+
+[打印],内容:'JWT授权头: ${auth_header}'
+
+# 测试微信小程序授权
+[HTTP请求],客户端:'wechat_auth',配置:'''
+        method: GET
+        url: /headers
+        captures:
+            openid: ["jsonpath", "$.headers.X-Wx-Openid"]
+            session_key: ["jsonpath", "$.headers.X-Wx-Session-Key"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.headers.X-Wx-Openid", "exists"]
+            - ["jsonpath", "$.headers.X-Wx-Session-Key", "exists"]
+    '''
+
+[打印],内容:'微信OpenID: ${openid}'
+[打印],内容:'微信Session Key: ${session_key}'
+
+# 测试多步骤授权
+[HTTP请求],客户端:'multi_step_auth',配置:'''
+        method: GET
+        url: /headers
+        captures:
+            auth_header: ["jsonpath", "$.headers.Authorization"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.headers.Authorization", "startswith", "Bearer "]
+    '''
+
+[打印],内容:'多步骤授权头: ${auth_header}'
+
+# 测试禁用授权
+[HTTP请求],客户端:'multi_step_auth',配置:'''
+        method: GET
+        url: /headers
+        disable_auth: true
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.headers.Authorization", "not_exists"]
+    '''
+
+[打印],内容:'自定义授权测试完成' 

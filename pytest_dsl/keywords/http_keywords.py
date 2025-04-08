@@ -21,7 +21,7 @@ from pytest_dsl.core.global_context import global_context
     {'name': '保存响应', 'mapping': 'save_response', 'description': '将完整响应保存到指定变量名中'},
     {'name': '重试次数', 'mapping': 'retry_count', 'description': '请求失败时的重试次数'},
     {'name': '重试间隔', 'mapping': 'retry_interval', 'description': '重试间隔时间（秒）'},
-    {'name': '模板', 'mapping': 'template', 'description': '使用YAML变量文件中定义的请求模板'},
+    {'name': '模板', 'mapping': 'template', 'description': '使用YAML变量文件中定义的请求模板'}
 ])
 def http_request(context, **kwargs):
     """执行HTTP请求
@@ -79,11 +79,6 @@ def http_request(context, **kwargs):
         # 创建HTTP请求对象
         http_req = HTTPRequest(config, client_name, session_name)
         
-        # 设置重试参数
-        if retry_count is not None:
-            # 这里可以添加重试配置处理逻辑
-            pass
-            
         # 执行请求
         response = http_req.execute()
         

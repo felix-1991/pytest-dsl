@@ -48,6 +48,7 @@
 | 保存响应 | 字符串 | 否 | 将完整响应保存到指定变量名中，便于后续使用 |
 | 重试次数 | 整数 | 否 | 请求失败时的重试次数，默认为0 |
 | 重试间隔 | 整数 | 否 | 重试间隔时间（秒），默认为1 |
+| 禁用授权 | 布尔值 | 否 | 禁用客户端配置中的授权机制，默认为false |
 
 ## 请求配置详细说明
 
@@ -94,6 +95,7 @@ request:
   proxies:  # 代理设置
     http: http://proxy.example.com:8080
     https: https://proxy.example.com:8080
+  disable_auth: false  # 是否禁用客户端配置中的授权机制
 ```
 
 ### captures 部分
@@ -183,6 +185,116 @@ http_clients:
     proxies:
       http: http://proxy.example.com:8080
       https: https://proxy.example.com:8080
+    auth:  # 授权配置
+      type: basic  # 授权类型: basic, token, api_key, oauth2, custom
+      username: api_user
+      password: api_password
+  my_api:
+    base_url: https://api.example.com
+    auth:
+      type: token
+      token: ${MY_API_TOKEN}
+```
+
+### 授权配置说明
+
+HTTP客户端支持多种授权方式，可以在客户端配置中设置:
+
+#### 基本授权 (Basic Auth)
+
+```yaml
+auth:
+  type: basic
+  username: user
+  password: password
+```
+
+#### 令牌授权 (Token Auth)
+
+```yaml
+auth:
+  type: token
+  token: your_token
+  scheme: Bearer  # 可选，默认为"Bearer"
+  header: Authorization  # 可选，默认为"Authorization"
+```
+
+#### API密钥授权 (API Key Auth)
+
+```yaml
+auth:
+  type: api_key
+  api_key: your_api_key
+  key_name: X-API-Key  # 可选，默认为"X-API-Key"
+  in_header: true  # 可选，默认为true
+  in_query: false  # 可选，默认为false
+  query_param_name: api_key  # 可选，如果与key_name不同
+```
+
+#### OAuth2授权
+
+```yaml
+auth:
+  type: oauth2
+  token_url: https://oauth.example.com/token
+  client_id: your_client_id
+  client_secret: your_client_secret
+  scope: "read write"  # 可选
+  grant_type: client_credentials  # 可选，默认为"client_credentials"
+  username: user  # 可选，如果grant_type为"password"
+  password: password  # 可选，如果grant_type为"password"
+  token_refresh_window: 60  # 可选，默认为60秒
+```
+
+#### 自定义授权
+
+```yaml
+auth:
+  type: custom
+  provider_name: your_custom_provider  # 已注册的自定义授权提供者名称
+```
+
+### 注册自定义授权提供者
+
+可以通过代码注册自定义授权提供者:
+
+```python
+from pytest_dsl.core.auth_provider import register_auth_provider, CustomAuthProvider
+
+# 使用回调函数
+def my_auth_callback(request_kwargs):
+    # 自定义授权逻辑
+    if "headers" not in request_kwargs:
+        request_kwargs["headers"] = {}
+    request_kwargs["headers"]["X-Custom-Auth"] = "custom_token"
+    return request_kwargs
+
+# 注册自定义授权提供者
+register_auth_provider(
+    "my_custom_auth",
+    CustomAuthProvider,
+    auth_callback=my_auth_callback
+)
+
+# 或者实现自己的AuthProvider子类
+from pytest_dsl.core.auth_provider import AuthProvider
+
+class MyAuthProvider(AuthProvider):
+    def __init__(self, param1, param2):
+        self.param1 = param1
+        self.param2 = param2
+        
+    def apply_auth(self, request_kwargs):
+        # 实现自定义授权逻辑
+        return request_kwargs
+
+# 注册自定义授权提供者类
+register_auth_provider(
+    "my_special_auth",
+    MyAuthProvider,
+    "param1_value",
+    "param2_value"
+)
 ```
 
 ## 使用示例
