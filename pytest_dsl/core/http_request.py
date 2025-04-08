@@ -467,15 +467,21 @@ class HTTPRequest:
         """
         # 类型转换
         if operator in ["eq", "neq", "lt", "lte", "gt", "gte"] and expected_value is not None:
-            if isinstance(expected_value, str) and expected_value.isdigit():
-                expected_value = int(expected_value)
-            elif isinstance(expected_value, str) and expected_value.replace('.', '', 1).isdigit():
-                expected_value = float(expected_value)
+            if isinstance(expected_value, str):
+                # 去除空白字符和换行符后再判断
+                clean_expected = expected_value.strip()
+                if clean_expected.isdigit():
+                    expected_value = int(clean_expected)
+                elif clean_expected.replace('.', '', 1).isdigit():
+                    expected_value = float(clean_expected)
                 
-            if isinstance(actual_value, str) and actual_value.isdigit():
-                actual_value = int(actual_value)
-            elif isinstance(actual_value, str) and actual_value.replace('.', '', 1).isdigit():
-                actual_value = float(actual_value)
+            if isinstance(actual_value, str):
+                # 去除空白字符和换行符后再判断
+                clean_actual = actual_value.strip()
+                if clean_actual.isdigit():
+                    actual_value = int(clean_actual)
+                elif clean_actual.replace('.', '', 1).isdigit():
+                    actual_value = float(clean_actual)
         
         # 基于断言类型执行断言
         if assertion_type == "value" or assertion_type == "length":
@@ -510,10 +516,11 @@ class HTTPRequest:
         elif assertion_type == "endswith":
             return isinstance(actual_value, str) and actual_value.endswith(expected_value)
         elif assertion_type == "matches":
+            if not isinstance(actual_value, str) or not isinstance(expected_value, str):
+                return False
             try:
-                if actual_value is None:
-                    return False
-                return bool(re.search(expected_value, str(actual_value)))
+                import re
+                return bool(re.search(expected_value, actual_value))
             except:
                 return False
         elif assertion_type == "in":
@@ -569,6 +576,14 @@ class HTTPRequest:
             elif isinstance(actual_value, (list, tuple, dict)):
                 return expected_value not in actual_value
             return True
+        elif operator == "matches":
+            if not isinstance(actual_value, str) or not isinstance(expected_value, str):
+                return False
+            try:
+                import re
+                return bool(re.search(expected_value, actual_value))
+            except:
+                return False
         else:
             raise ValueError(f"不支持的比较操作符: {operator}")
     

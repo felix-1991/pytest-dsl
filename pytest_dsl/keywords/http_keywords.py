@@ -248,33 +248,21 @@ def _process_assertions_with_retry(http_req, max_retries, retry_interval):
     last_error = None
     for retry in range(max_retries + 1):  # +1表示包括首次尝试
         try:
+            # 如果是重试，需要重新发送请求
+            if retry > 0:
+                logger.info(f"第 {retry} 次重试...")
+                http_req.execute()  # 重新发送请求
             # 尝试执行断言
             http_req.process_asserts()
-            # 如果断言成功，记录日志并返回
-            if retry > 0:
-                logger.info(f"断言在第 {retry} 次重试后成功")
-                with allure.step(f"断言重试成功 (第 {retry} 次尝试)"):
-                    allure.attach("断言成功", name="重试结果", attachment_type=allure.attachment_type.TEXT)
-            return
+            return  # 如果断言成功，直接返回
         except AssertionError as e:
             last_error = e
             if retry < max_retries:
-                # 如果还有重试次数，记录日志并等待
-                logger.info(f"断言失败，将在 {retry_interval} 秒后进行第 {retry + 1} 次重试: {str(e)}")
-                with allure.step(f"断言失败，准备重试 (第 {retry + 1}/{max_retries} 次)"):
-                    allure.attach(str(e), name="断言失败详情", attachment_type=allure.attachment_type.TEXT)
-                
-                # 在重试前等待指定的时间
+                logger.warning(f"断言失败，等待 {retry_interval} 秒后重试: {str(e)}")
                 time.sleep(retry_interval)
-                
-                # 重新发送请求，获取最新数据
-                http_req.execute()
-                
-                # 重新处理捕获 (因为可能会使用新的捕获值进行下一次断言)
-                http_req.process_captures()
             else:
-                # 重试次数用尽，记录最终失败
-                logger.error(f"断言失败，重试 {max_retries} 次后仍然失败: {str(e)}")
-                with allure.step(f"断言失败，所有重试均失败 (共 {max_retries} 次)"):
-                    allure.attach(str(e), name="最终断言失败详情", attachment_type=allure.attachment_type.TEXT)
-                raise 
+                logger.error(f"断言失败，已达到最大重试次数 {max_retries}: {str(e)}")
+                raise last_error
+        except Exception as e:
+            logger.error(f"处理断言时发生错误: {str(e)}")
+            raise e 
