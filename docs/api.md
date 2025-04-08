@@ -251,7 +251,7 @@ auth:
 ```yaml
 auth:
   type: custom
-  provider_name: your_custom_provider  # 已注册的自定义授权提供者名称
+  provider_name: jwt_refresh_auth  # 已注册的自定义授权提供者名称
 ```
 
 ### 注册自定义授权提供者
@@ -261,40 +261,16 @@ auth:
 ```python
 from pytest_dsl.core.auth_provider import register_auth_provider, CustomAuthProvider
 
-# 使用回调函数
-def my_auth_callback(request_kwargs):
-    # 自定义授权逻辑
-    if "headers" not in request_kwargs:
-        request_kwargs["headers"] = {}
-    request_kwargs["headers"]["X-Custom-Auth"] = "custom_token"
-    return request_kwargs
-
-# 注册自定义授权提供者
-register_auth_provider(
-    "my_custom_auth",
-    CustomAuthProvider,
-    auth_callback=my_auth_callback
-)
-
-# 或者实现自己的AuthProvider子类
-from pytest_dsl.core.auth_provider import AuthProvider
-
-class MyAuthProvider(AuthProvider):
-    def __init__(self, param1, param2):
-        self.param1 = param1
-        self.param2 = param2
-        
+class JWTAuthProvider(CustomAuthProvider):
     def apply_auth(self, request_kwargs):
-        # 实现自定义授权逻辑
+        if "headers" not in request_kwargs:
+            request_kwargs["headers"] = {}
+        request_kwargs["headers"]["Authorization"] = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example_token"
         return request_kwargs
 
+
 # 注册自定义授权提供者类
-register_auth_provider(
-    "my_special_auth",
-    MyAuthProvider,
-    "param1_value",
-    "param2_value"
-)
+register_auth_provider("jwt_refresh_auth", JWTAuthProvider)
 ```
 
 ## 使用示例
