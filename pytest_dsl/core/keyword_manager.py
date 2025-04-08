@@ -20,21 +20,24 @@ class KeywordManager:
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
             def wrapper(**kwargs):
-                with allure.step(f"执行关键字: {name}"):
+                # 获取自定义步骤名称，如果未指定则使用关键字名称
+                step_name = kwargs.pop('step_name', name)
+                
+                with allure.step(f"{step_name}"):
                     try:
-                        # 保存当前上下文引用
-                        # if 'context' in kwargs:
-                        #     self.current_context = kwargs['context']
-                            
                         result = func(**kwargs)
-                        self._log_execution(name, kwargs, result)
+                        self._log_execution(step_name, kwargs, result)
                         return result
                     except Exception as e:
-                        self._log_failure(name, kwargs, e)
+                        self._log_failure(step_name, kwargs, e)
                         raise
 
             param_list = [Parameter(**p) for p in parameters]
             mapping = {p.name: p.mapping for p in param_list}
+            
+            # 自动添加 step_name 到 mapping 中
+            mapping["步骤名称"] = "step_name"
+            
             self._keywords[name] = {
                 'func': wrapper,
                 'mapping': mapping,
@@ -52,7 +55,19 @@ class KeywordManager:
 
     def get_keyword_info(self, keyword_name: str) -> Dict:
         """获取关键字信息"""
-        return self._keywords.get(keyword_name)
+        keyword_info = self._keywords.get(keyword_name)
+        if not keyword_info:
+            return None
+            
+        # 动态添加step_name参数到参数列表中
+        if not any(p.name == "步骤名称" for p in keyword_info['parameters']):
+            keyword_info['parameters'].append(Parameter(
+                name="步骤名称",
+                mapping="step_name",
+                description="自定义的步骤名称，用于在报告中显示"
+            ))
+            
+        return keyword_info
 
     def _log_execution(self, keyword_name: str, params: Dict, result: Any) -> None:
         """记录关键字执行结果"""
@@ -76,6 +91,13 @@ class KeywordManager:
         for name, info in self._keywords.items():
             docs.append(f"关键字: {name}")
             docs.append("参数:")
+            # 确保step_name参数在文档中显示
+            if not any(p.name == "步骤名称" for p in info['parameters']):
+                info['parameters'].append(Parameter(
+                    name="步骤名称",
+                    mapping="step_name",
+                    description="自定义的步骤名称，用于在报告中显示"
+                ))
             for param in info['parameters']:
                 docs.append(
                     f"  {param.name} ({param.mapping}): {param.description}")

@@ -137,9 +137,34 @@ class HTTPRequest:
                         attachment_type=allure.attachment_type.TEXT
                     )
                 except Exception as e:
-                    # 如果无法计算长度，记录错误但不抛出异常
+                    # 如果无法计算长度，记录错误并添加请求和响应信息
+                    error_msg = f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n错误: 无法计算长度: {str(e)}"
+                    
+                    # 添加请求信息
+                    error_msg += "\n\n=== 请求信息 ==="
+                    error_msg += f"\nMethod: {self.config.get('method', 'GET')}"
+                    error_msg += f"\nURL: {self.config.get('url', '')}"
+                    if 'headers' in self.config.get('request', {}):
+                        error_msg += "\nHeaders: " + str(self.config.get('request', {}).get('headers', {}))
+                    if 'params' in self.config.get('request', {}):
+                        error_msg += "\nParams: " + str(self.config.get('request', {}).get('params', {}))
+                    if 'json' in self.config.get('request', {}):
+                        error_msg += "\nJSON Body: " + str(self.config.get('request', {}).get('json', {}))
+                    
+                    # 添加响应信息
+                    error_msg += "\n\n=== 响应信息 ==="
+                    error_msg += f"\nStatus: {self.response.status_code} {self.response.reason}"
+                    error_msg += f"\nHeaders: {dict(self.response.headers)}"
+                    try:
+                        if 'application/json' in self.response.headers.get('Content-Type', ''):
+                            error_msg += f"\nBody: {json.dumps(self.response.json(), ensure_ascii=False)}"
+                        else:
+                            error_msg += f"\nBody: {self.response.text}"
+                    except:
+                        error_msg += "\nBody: <无法解析响应体>"
+                    
                     allure.attach(
-                        f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n错误: 无法计算长度: {str(e)}",
+                        error_msg,
                         name=f"捕获长度失败: {var_name}",
                         attachment_type=allure.attachment_type.TEXT
                     )
@@ -243,8 +268,34 @@ class HTTPRequest:
                     attachment_type=allure.attachment_type.TEXT
                 )
             else:
+                # 构建详细的错误信息，包含请求和响应信息
+                error_msg = f"提取器: {extractor_type}\n路径: {extraction_path}\n断言类型: {assertion_type}\n操作符: {compare_operator}\n预期值: {expected_value}\n实际值: {original_actual_value if assertion_type == 'length' else actual_value}" + (f"\n长度: {actual_value}" if assertion_type == "length" else "")
+                
+                # 添加请求信息
+                error_msg += "\n\n=== 请求信息 ==="
+                error_msg += f"\nMethod: {self.config.get('method', 'GET')}"
+                error_msg += f"\nURL: {self.config.get('url', '')}"
+                if 'headers' in self.config.get('request', {}):
+                    error_msg += "\nHeaders: " + str(self.config.get('request', {}).get('headers', {}))
+                if 'params' in self.config.get('request', {}):
+                    error_msg += "\nParams: " + str(self.config.get('request', {}).get('params', {}))
+                if 'json' in self.config.get('request', {}):
+                    error_msg += "\nJSON Body: " + str(self.config.get('request', {}).get('json', {}))
+                
+                # 添加响应信息
+                error_msg += "\n\n=== 响应信息 ==="
+                error_msg += f"\nStatus: {self.response.status_code} {self.response.reason}"
+                error_msg += f"\nHeaders: {dict(self.response.headers)}"
+                try:
+                    if 'application/json' in self.response.headers.get('Content-Type', ''):
+                        error_msg += f"\nBody: {json.dumps(self.response.json(), ensure_ascii=False)}"
+                    else:
+                        error_msg += f"\nBody: {self.response.text}"
+                except:
+                    error_msg += "\nBody: <无法解析响应体>"
+                
                 allure.attach(
-                    f"提取器: {extractor_type}\n路径: {extraction_path}\n断言类型: {assertion_type}\n操作符: {compare_operator}\n预期值: {expected_value}\n实际值: {original_actual_value if assertion_type == 'length' else actual_value}" + (f"\n长度: {actual_value}" if assertion_type == "length" else ""),
+                    error_msg,
                     name=f"断言失败: {extractor_type} {assertion_type}",
                     attachment_type=allure.attachment_type.TEXT
                 )

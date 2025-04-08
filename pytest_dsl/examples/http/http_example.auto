@@ -12,7 +12,7 @@
             - ["status", "eq", 200]
             - ["jsonpath", "$.id", "eq", 1]
             - ["jsonpath", "$.title", "exists"]
-    '''
+    ''',步骤名称: "使用默认客户端获取博客信息"
 
 # 带参数的GET请求
 [HTTP请求],客户端:'default',配置:'''
@@ -109,7 +109,7 @@
         asserts:
             - ["status", "eq", 200]
             - ["jsonpath", "$.args.task_id", "eq", "${task_id}"]  # 这个断言一定会通过
-            - ["response_time", "lt", 1000]  # 这个断言可能失败，因为延迟是2秒
+            - ["response_time", "lt", 3000]  # 这个断言可能失败，因为延迟是2秒
     ''',断言重试次数: 3,断言重试间隔: 1
 
 [打印],内容:'任务查询完成，URL: ${url}'

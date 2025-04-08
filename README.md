@@ -187,7 +187,50 @@ end
 # 基本格式：[关键字],参数名1:值1,参数名2:值2
 [打印],输出:'Hello World'
 [API接口调用],方法:GET,URL:'https://api.example.com',请求头:'{"Content-Type":"application/json"}'
+
+# 使用自定义步骤名称
+[HTTP请求],客户端:'default',配置:'...',步骤名称:'获取用户信息'
+[HTTP请求],客户端:'default',配置:'...',步骤名称:'创建新文章'
 ```
+
+### 自定义步骤名称
+
+在 DSL 中，每个关键字调用都可以通过 `步骤名称` 参数来自定义在测试报告中显示的步骤名称。这对于提高测试报告的可读性和维护性非常有帮助。
+
+#### 使用场景
+
+1. 为 HTTP 请求添加有意义的步骤名称：
+```
+[HTTP请求],客户端:'default',配置:'''
+    method: GET
+    url: https://api.example.com/users/1
+''',步骤名称:'获取用户详细信息'
+```
+
+2. 为断言添加描述性名称：
+```
+[HTTP请求],客户端:'default',配置:'''
+    method: GET
+    url: https://api.example.com/posts
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$.length()", "gt", 0]
+''',步骤名称:'验证文章列表API'
+```
+
+3. 为复杂操作添加清晰的步骤说明：
+```
+[HTTP请求],客户端:'default',配置:'''
+    method: POST
+    url: https://api.example.com/tasks
+    request:
+        json:
+            type: "data_analysis"
+            dataset: "sample123"
+''',步骤名称:'创建数据分析任务'
+```
+
+自定义步骤名称会显示在 Allure 测试报告中，使测试步骤更加清晰易懂。如果不指定步骤名称，将使用默认的关键字名称作为步骤名称。
 
 ### 清理操作
 
