@@ -21,7 +21,9 @@ from pytest_dsl.core.global_context import global_context
     {'name': '保存响应', 'mapping': 'save_response', 'description': '将完整响应保存到指定变量名中'},
     {'name': '重试次数', 'mapping': 'retry_count', 'description': '请求失败时的重试次数'},
     {'name': '重试间隔', 'mapping': 'retry_interval', 'description': '重试间隔时间（秒）'},
-    {'name': '模板', 'mapping': 'template', 'description': '使用YAML变量文件中定义的请求模板'}
+    {'name': '模板', 'mapping': 'template', 'description': '使用YAML变量文件中定义的请求模板'},
+    {'name': '断言重试次数', 'mapping': 'assert_retry_count', 'description': '断言失败时的重试次数'},
+    {'name': '断言重试间隔', 'mapping': 'assert_retry_interval', 'description': '断言重试间隔时间（秒）'}
 ])
 def http_request(context, **kwargs):
     """执行HTTP请求
@@ -37,6 +39,8 @@ def http_request(context, **kwargs):
         retry_count: 重试次数
         retry_interval: 重试间隔
         template: 模板名称
+        assert_retry_count: 断言失败时的重试次数
+        assert_retry_interval: 断言重试间隔时间（秒）
         
     Returns:
         捕获的变量字典或响应对象
@@ -48,6 +52,8 @@ def http_request(context, **kwargs):
     retry_count = kwargs.get('retry_count')
     retry_interval = kwargs.get('retry_interval')
     template_name = kwargs.get('template')
+    assert_retry_count = kwargs.get('assert_retry_count')
+    assert_retry_interval = kwargs.get('assert_retry_interval')
     
     with allure.step(f"发送HTTP请求 (客户端: {client_name}{', 会话: ' + session_name if session_name else ''})"):
         # 处理模板
@@ -89,12 +95,17 @@ def http_request(context, **kwargs):
         for var_name, value in captured_values.items():
             context.set(var_name, value)
         
-        # 处理断言
-        http_req.process_asserts()
-        
         # 保存完整响应（如果需要）
         if save_response:
             context.set(save_response, response)
+        
+        # 处理断言（支持重试）
+        if assert_retry_count and int(assert_retry_count) > 0:
+            _process_assertions_with_retry(http_req, int(assert_retry_count), 
+                                        float(assert_retry_interval) if assert_retry_interval else 1.0)
+        else:
+            # 不需要重试，直接断言
+            http_req.process_asserts()
         
         # 返回捕获的变量
         return captured_values
@@ -216,3 +227,54 @@ def _deep_merge(base: Dict, override: Dict) -> Dict:
             result[key] = value
             
     return result 
+
+
+def _process_assertions_with_retry(http_req, max_retries, retry_interval):
+    """处理断言并支持重试
+    
+    Args:
+        http_req: HTTP请求对象
+        max_retries: 最大重试次数
+        retry_interval: 重试间隔（秒）
+    
+    Raises:
+        AssertionError: 当断言失败且重试次数用尽时
+    """
+    import time
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    last_error = None
+    for retry in range(max_retries + 1):  # +1表示包括首次尝试
+        try:
+            # 尝试执行断言
+            http_req.process_asserts()
+            # 如果断言成功，记录日志并返回
+            if retry > 0:
+                logger.info(f"断言在第 {retry} 次重试后成功")
+                with allure.step(f"断言重试成功 (第 {retry} 次尝试)"):
+                    allure.attach("断言成功", name="重试结果", attachment_type=allure.attachment_type.TEXT)
+            return
+        except AssertionError as e:
+            last_error = e
+            if retry < max_retries:
+                # 如果还有重试次数，记录日志并等待
+                logger.info(f"断言失败，将在 {retry_interval} 秒后进行第 {retry + 1} 次重试: {str(e)}")
+                with allure.step(f"断言失败，准备重试 (第 {retry + 1}/{max_retries} 次)"):
+                    allure.attach(str(e), name="断言失败详情", attachment_type=allure.attachment_type.TEXT)
+                
+                # 在重试前等待指定的时间
+                time.sleep(retry_interval)
+                
+                # 重新发送请求，获取最新数据
+                http_req.execute()
+                
+                # 重新处理捕获 (因为可能会使用新的捕获值进行下一次断言)
+                http_req.process_captures()
+            else:
+                # 重试次数用尽，记录最终失败
+                logger.error(f"断言失败，重试 {max_retries} 次后仍然失败: {str(e)}")
+                with allure.step(f"断言失败，所有重试均失败 (共 {max_retries} 次)"):
+                    allure.attach(str(e), name="最终断言失败详情", attachment_type=allure.attachment_type.TEXT)
+                raise 

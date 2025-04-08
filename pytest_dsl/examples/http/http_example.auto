@@ -66,6 +66,81 @@
 
 [打印],内容:'请求响应时间: ${response_time}ms'
 
+# 断言重试功能演示 - 模拟数据处理API
+[打印],内容:'开始测试断言重试功能 - 模拟数据处理场景'
+
+# 步骤1: 创建一个任务（模拟启动数据处理）
+[HTTP请求],客户端:'default',配置:'''
+        method: POST
+        url: https://httpbin.org/post
+        request:
+            headers:
+                Content-Type: application/json
+            json:
+                task_type: "data_analysis"
+                dataset_id: "sample123"
+                parameters: {
+                    "analysis_depth": "detailed",
+                    "include_graphs": true
+                }
+        captures:
+            task_id: ["jsonpath", "$.json.dataset_id"]
+            timestamp: ["jsonpath", "$.headers.Host"]
+        asserts:
+            - ["status", "eq", 200]
+    '''
+
+[打印],内容:'已创建分析任务，任务ID: ${task_id}'
+
+# 步骤2: 查询任务状态 - 使用断言重试功能等待"完成"状态
+# 由于这是模拟场景，我们使用 httpbin.org/delay/2 来模拟处理延迟
+# 在实际场景中，API可能需要一段时间才能返回预期结果
+
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/delay/2
+        request:
+            params:
+                task_id: ${task_id}
+                _: ${timestamp}  # 添加时间戳防止缓存
+        captures:
+            url: ["jsonpath", "$.url"]
+            task_details: ["jsonpath", "$.args"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.args.task_id", "eq", "${task_id}"]  # 这个断言一定会通过
+            - ["response_time", "lt", 1000]  # 这个断言可能失败，因为延迟是2秒
+    ''',断言重试次数: 3,断言重试间隔: 1
+
+[打印],内容:'任务查询完成，URL: ${url}'
+[打印],内容:'任务详情: ${task_details}'
+
+# 步骤3: 演示更复杂的断言重试场景 - 使用随机数模拟不确定结果
+[打印],内容:'开始测试断言重试功能 - 随机结果场景'
+
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://www.random.org/integers/
+        request:
+            params:
+                num: 1
+                min: 1
+                max: 10
+                col: 1
+                base: 10
+                format: plain
+        captures:
+            random_number: ["body"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["body", "matches", "^[0-9]+$"]  # 确认结果是数字
+            # 下面的断言大概有50%的几率成功，50%的几率失败，需要重试
+            - ["body", "lt", "6"]  # 断言随机数小于6
+    ''',断言重试次数: 5,断言重试间隔: 2
+
+[打印],内容:'获取的随机数: ${random_number}'
+[打印],内容:'断言重试测试完成!'
+
 @teardown do
     [打印],内容:'HTTP请求测试完成!'
 end 
