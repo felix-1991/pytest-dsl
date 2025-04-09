@@ -1,7 +1,7 @@
 @name: 布尔值断言测试
 @description: 测试断言关键字中的布尔值处理功能
 @tags: [断言, 布尔值, 示例]
-@author: 陈双麟
+@author: Felix
 @date: 2024-01-01
 
 # 基本布尔值测试

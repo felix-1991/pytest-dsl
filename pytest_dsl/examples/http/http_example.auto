@@ -1,7 +1,7 @@
 @name: HTTP请求关键字示例
 @description: 演示HTTP请求关键字的基本用法
 @tags: [HTTP, API, 示例]
-@author: 陈双麟
+@author: Felix
 @date: 2024-04-01
 
 # 基本GET请求示例

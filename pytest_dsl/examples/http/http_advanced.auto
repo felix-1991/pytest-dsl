@@ -1,7 +1,7 @@
 @name: HTTP请求关键字高级示例
 @description: "展示HTTP请求关键字的高级用法包括会话管理，和客户端配置"
 @tags: [HTTP, API, 高级, 示例]
-@author: 陈双麟
+@author: Felix
 @date: 2024-04-01
 
 # 本例使用httpbin.org作为测试API

@@ -1,7 +1,7 @@
 @name: 断言关键字示例
 @description: 演示不同断言关键字的使用方法
 @tags: [断言, JSON, 示例]
-@author: 陈双麟
+@author: Felix
 @date: 2024-01-01
 
 # 基本断言示例

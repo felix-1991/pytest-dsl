@@ -1,7 +1,7 @@
 @name: 内置认证测试
 @description: 演示内置认证提供者的使用
 @tags: [HTTP, API, 授权, 示例]
-@author: 陈双麟
+@author: Felix
 @date: 2024-05-01
 
 # 内置认证测试示例

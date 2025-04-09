@@ -1,7 +1,7 @@
 @name: HTTP请求长度捕获测试
 @description: 测试HTTP请求关键字中的长度捕获功能
 @tags: [HTTP, API, 长度捕获, 示例]
-@author: 陈双麟
+@author: Felix
 @date: 2024-04-01
 
 # 测试捕获数组长度

@@ -1,7 +1,7 @@
 @name: 自定义授权测试
 @description: 演示自定义授权提供者的使用
 @tags: [HTTP, API, 授权, 示例]
-@author: 陈双麟
+@author: Felix
 @date: 2024-05-01
 
 # 自定义授权测试示例

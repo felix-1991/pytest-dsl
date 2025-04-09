@@ -1,7 +1,7 @@
 @name: 外部文件引用测试
 @description: 演示如何在HTTP请求中使用外部文件引用
 @tags: [HTTP, 文件引用, 示例]
-@author: 陈双麟
+@author: Felix
 @date: 2024-04-08
 
 # 设置测试变量

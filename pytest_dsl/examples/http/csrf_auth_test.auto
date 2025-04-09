@@ -1,7 +1,7 @@
 @name: CSRF登录授权测试
 @description: 演示CSRF登录授权提供者的使用
 @tags: [HTTP, API, 授权, CSRF, 示例]
-@author: 陈双麟
+@author: Felix
 @date: 2024-05-20
 
 # CSRF登录授权测试示例

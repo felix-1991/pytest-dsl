@@ -10,7 +10,7 @@
 @name: 测试好用例
 @description: 这是一个测试用例
 @tags: [BVT, 自动化]
-@author: 陈双麟
+@author: Felix
 @date: 2021-08-10 14:30:00
 
 function 打印 (内容) do

@@ -109,7 +109,7 @@ end
 @name: 登录功能测试
 @description: 验证用户登录功能
 @tags: [BVT, 自动化]
-@author: 陈双麟
+@author: Felix
 @date: 2023-01-01
 ```
 
@@ -249,7 +249,7 @@ DSL支持使用CSV文件进行数据驱动测试。在测试用例中使用`@dat
 @name: 用户注册测试
 @description: 验证不同用户数据的注册功能
 @tags: [数据驱动, 自动化]
-@author: 陈双麟
+@author: Felix
 @date: 2024-03-05
 @data: 'test_data/register_users.csv' using csv
 
@@ -311,7 +311,7 @@ pytest tests/login/
 @name: 断言关键字示例
 @description: 演示不同断言关键字的使用方法
 @tags: [断言, JSON, 示例]
-@author: 陈双麟
+@author: Felix
 @date: 2024-01-01
 
 # 基本断言示例

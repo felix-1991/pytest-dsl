@@ -1,7 +1,7 @@
 @name: 表达式断言测试
 @description: 测试断言关键字中的表达式支持功能
 @tags: [断言, 表达式, 示例]
-@author: 陈双麟
+@author: Felix
 @date: 2024-01-01
 
 # 基本算术表达式

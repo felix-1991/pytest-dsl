@@ -1,7 +1,7 @@
 @name: 使用YAML变量的HTTP请求示例
 @description: 演示如何使用YAML变量文件中的客户端配置和模板
 @tags: [HTTP, API, YAML, 模板]
-@author: 陈双麟
+@author: Felix
 @date: 2024-04-01
 
 # 注意：运行此测试用例需要使用 --yaml-vars 命令行参数指定vars.yaml文件
