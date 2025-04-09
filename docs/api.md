@@ -473,6 +473,99 @@ http_templates:
     '''
 ```
 
+## 外部文件引用
+
+HTTP请求关键字支持从外部文件加载请求体和其他数据，解决大型JSON数据结构嵌入测试用例导致的可读性问题。有两种文件引用语法：
+
+### 简单语法
+
+使用 `@file:` 或 `@file_template:` 前缀直接引用外部文件:
+
+```yaml
+request:
+    json: "@file:path/to/data.json"  # 直接引用JSON文件
+    data: "@file:path/to/form_data.json"  # 引用表单数据
+    headers: "@file:path/to/headers.json"  # 引用请求头
+
+    # 带变量替换的模板文件
+    json: "@file_template:path/to/template.json"  # 引用并替换变量
+```
+
+### 详细语法
+
+使用 `file_ref` 结构提供更多配置选项:
+
+```yaml
+request:
+    json:
+        file_ref:
+            path: "path/to/data.json"  # 文件路径（必填）
+            type: "json"  # 文件类型: json, yaml, text，默认为auto(自动检测)
+            template: true  # 是否进行变量替换，默认为true
+            encoding: "utf-8"  # 文件编码，默认为utf-8
+```
+
+### 文件类型
+
+- `json`: JSON格式文件，会自动解析为对象
+- `yaml`: YAML格式文件，会自动解析为对象
+- `text`: 文本文件，保持原始内容
+- `auto`: 自动根据文件扩展名检测类型
+
+### 变量替换
+
+当使用 `@file_template:` 或设置 `template: true` 时，文件内容中的变量引用（`${var_name}`）会被替换为实际值。
+
+### 示例
+
+1. 使用简单语法引用静态JSON文件:
+```yaml
+method: POST
+url: https://api.example.com/users
+request:
+    headers:
+        Content-Type: application/json
+    json: "@file:test_data/user.json"
+```
+
+2. 引用带变量的模板文件:
+```yaml
+method: POST
+url: https://api.example.com/users
+request:
+    headers:
+        Content-Type: application/json
+    json: "@file_template:test_data/user_template.json"
+```
+
+3. 使用详细语法:
+```yaml
+method: POST
+url: https://api.example.com/users
+request:
+    headers:
+        Content-Type: application/json
+    json:
+        file_ref:
+            path: "test_data/user.json"
+            type: "json"
+            template: true
+```
+
+4. 将文件内容与其他属性合并:
+```yaml
+method: POST
+url: https://api.example.com/users
+request:
+    headers:
+        Content-Type: application/json
+    json:
+        file_ref:
+            path: "test_data/user_base.json"
+        additional_field: "some value"
+        timestamp: "${current_time}"
+```
+
 ## 实现注意事项
 
 1. **变量替换**：在执行请求前，处理配置中的变量引用（`${var}`格式）

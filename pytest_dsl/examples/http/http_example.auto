@@ -110,7 +110,7 @@
         asserts:
             - ["status", "eq", 200]
             - ["jsonpath", "$.args.task_id", "eq", "${task_id}"]  # 这个断言一定会通过
-            - ["response_time", "lt", 3000]  # 这个断言可能失败，因为延迟是2秒
+            - ["response_time", "lt", 1000]  # 这个断言可能失败，因为延迟是2秒
     ''',断言重试次数: 3,断言重试间隔: 1
 
 [打印],内容:'任务查询完成，URL: ${url}'

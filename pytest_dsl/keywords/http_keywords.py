@@ -6,12 +6,147 @@
 import allure
 import re
 import yaml
-from typing import Dict, Any, List, Optional
+import json
+import os
+import time
+from typing import Dict, Any, Union
 
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.core.http_request import HTTPRequest
-from pytest_dsl.core.http_client import http_client_manager
-from pytest_dsl.core.global_context import global_context
+from pytest_dsl.core.yaml_vars import yaml_vars
+from pytest_dsl.core.context import TestContext
+
+def _process_file_reference(reference: Union[str, Dict[str, Any]], allow_vars: bool = True, test_context: TestContext = None) -> Any:
+    """处理文件引用，加载外部文件内容
+    
+    支持两种语法:
+    1. 简单语法: "@file:/path/to/file.json" 或 "@file_template:/path/to/file.json"
+    2. 详细语法: 使用file_ref结构提供更多的配置选项
+    
+    Args:
+        reference: 文件引用字符串或配置字典
+        allow_vars: 是否允许在文件内容中替换变量
+        
+    Returns:
+        加载并处理后的文件内容
+    """
+    # 处理简单语法
+    if isinstance(reference, str):
+        # 匹配简单文件引用语法
+        file_ref_pattern = r'^@file(?:_template)?:(.+)$'
+        match = re.match(file_ref_pattern, reference.strip())
+        
+        if match:
+            file_path = match.group(1).strip()
+            is_template = '_template' in reference[:15]  # 检查是否为模板
+            return _load_file_content(file_path, is_template, 'auto', 'utf-8', test_context)
+    
+    # 处理详细语法
+    elif isinstance(reference, dict) and 'file_ref' in reference:
+        file_ref = reference['file_ref']
+        
+        if isinstance(file_ref, str):
+            # 如果file_ref是字符串，使用默认配置
+            return _load_file_content(file_ref, allow_vars, 'auto', 'utf-8', test_context)
+        elif isinstance(file_ref, dict):
+            # 如果file_ref是字典，使用自定义配置
+            file_path = file_ref.get('path')
+            if not file_path:
+                raise ValueError("file_ref必须包含path字段")
+                
+            template = file_ref.get('template', allow_vars)
+            file_type = file_ref.get('type', 'auto')
+            encoding = file_ref.get('encoding', 'utf-8')
+            
+            return _load_file_content(file_path, template, file_type, encoding, test_context)
+    
+    # 如果不是文件引用，返回原始值
+    return reference
+
+
+def _load_file_content(file_path: str, is_template: bool = False, 
+                       file_type: str = 'auto', encoding: str = 'utf-8', test_context: TestContext = None) -> Any:
+    """加载文件内容
+    
+    Args:
+        file_path: 文件路径
+        is_template: 是否作为模板处理（替换变量引用）
+        file_type: 文件类型 (auto, json, yaml, text)
+        encoding: 文件编码
+        
+    Returns:
+        加载并处理后的文件内容
+    """
+    # 验证文件存在
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"找不到引用的文件: {file_path}")
+    
+    # 读取文件内容
+    with open(file_path, 'r', encoding=encoding) as f:
+        content = f.read()
+    
+    # 如果是模板，处理变量替换
+    if is_template:
+        from pytest_dsl.core.variable_utils import VariableReplacer
+        replacer = VariableReplacer(test_context=test_context)
+        content = replacer.replace_in_string(content)
+    
+    # 根据文件类型处理内容
+    if file_type == 'auto':
+        # 根据文件扩展名自动检测类型
+        file_ext = os.path.splitext(file_path)[1].lower()
+        if file_ext in ['.json']:
+            file_type = 'json'
+        elif file_ext in ['.yaml', '.yml']:
+            file_type = 'yaml'
+        else:
+            file_type = 'text'
+    
+    # 处理不同类型的文件
+    if file_type == 'json':
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"无效的JSON文件 {file_path}: {str(e)}")
+    elif file_type == 'yaml':
+        try:
+            return yaml.safe_load(content)
+        except yaml.YAMLError as e:
+            raise ValueError(f"无效的YAML文件 {file_path}: {str(e)}")
+    else:
+        # 文本文件直接返回内容
+        return content
+
+
+def _process_request_config(config: Dict[str, Any], test_context: TestContext = None) -> Dict[str, Any]:
+    """处理请求配置，检查并处理文件引用
+    
+    Args:
+        config: 请求配置
+        
+    Returns:
+        处理后的请求配置
+    """
+    if not isinstance(config, dict):
+        return config
+    
+    # 处理request部分
+    if 'request' in config and isinstance(config['request'], dict):
+        request = config['request']
+        
+        # 处理json字段
+        if 'json' in request:
+            request['json'] = _process_file_reference(request['json'], test_context=test_context)
+            
+        # 处理data字段
+        if 'data' in request:
+            request['data'] = _process_file_reference(request['data'], test_context=test_context)
+            
+        # 处理headers字段
+        if 'headers' in request:
+            request['headers'] = _process_file_reference(request['headers'], test_context=test_context)
+    
+    return config
 
 
 @keyword_manager.register('HTTP请求', [
@@ -59,7 +194,6 @@ def http_request(context, **kwargs):
         # 处理模板
         if template_name:
             # 从YAML变量中获取模板
-            from pytest_dsl.core.yaml_vars import yaml_vars
             http_templates = yaml_vars.get_variable("http_templates") or {}
             template = http_templates.get(template_name)
             
@@ -67,20 +201,35 @@ def http_request(context, **kwargs):
                 raise ValueError(f"未找到名为 '{template_name}' 的HTTP请求模板")
             
             # 解析配置并合并模板
-            # 先进行变量替换，再解析YAML
-            config = _replace_variables_in_string(config)
-            try:
-                user_config = yaml.safe_load(config) if config else {}
-                
-                # 深度合并
-                merged_config = _deep_merge(template.copy(), user_config)
-                config = merged_config
-            except yaml.YAMLError as e:
-                raise ValueError(f"无效的YAML配置: {str(e)}")
+            if isinstance(config, str):
+                # 先进行变量替换，再解析YAML
+                from pytest_dsl.core.variable_utils import VariableReplacer
+                replacer = VariableReplacer(test_context=context)
+                config = replacer.replace_in_string(config)
+                try:
+                    user_config = yaml.safe_load(config) if config else {}
+                    
+                    # 深度合并
+                    merged_config = _deep_merge(template.copy(), user_config)
+                    config = merged_config
+                except yaml.YAMLError as e:
+                    raise ValueError(f"无效的YAML配置: {str(e)}")
         else:
             # 如果没有使用模板，直接对配置字符串进行变量替换
             if isinstance(config, str):
-                config = _replace_variables_in_string(config)
+                from pytest_dsl.core.variable_utils import VariableReplacer
+                replacer = VariableReplacer(test_context=context)
+                config = replacer.replace_in_string(config)
+        
+        # 解析YAML配置
+        if isinstance(config, str):
+            try:
+                config = yaml.safe_load(config)
+            except yaml.YAMLError as e:
+                raise ValueError(f"无效的YAML配置: {str(e)}")
+        
+        config = _process_request_config(config, test_context=context)
+            
         
         # 创建HTTP请求对象
         http_req = HTTPRequest(config, client_name, session_name)
@@ -111,158 +260,52 @@ def http_request(context, **kwargs):
         return captured_values
 
 
-def _replace_variables_in_string(value):
-    """替换字符串中的变量引用，包括嵌套的点号引用
-    
-    Args:
-        value: 包含变量引用的字符串
-        
-    Returns:
-        替换后的字符串
-    """
-    if not isinstance(value, str):
-        return value
-        
-    # 基本变量引用模式: ${variable}
-    basic_pattern = r'\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}'
-    
-    # 嵌套引用模式: ${variable.field.subfield}
-    nested_pattern = r'\$\{([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)+)\}'
-    
-    # 先处理嵌套引用
-    matches = list(re.finditer(nested_pattern, value))
-    for match in reversed(matches):
-        var_ref = match.group(1)  # 例如: "api_test_data.user_id"
-        parts = var_ref.split('.')
-        
-        # 获取根变量
-        root_var_name = parts[0]
-        if context_has_variable(root_var_name):
-            root_var = get_variable(root_var_name)
-            
-            # 递归访问嵌套属性
-            var_value = root_var
-            for part in parts[1:]:
-                if isinstance(var_value, dict) and part in var_value:
-                    var_value = var_value[part]
-                else:
-                    # 无法解析的属性路径
-                    var_value = f"${{{var_ref}}}"  # 保持原样
-                    break
-            
-            # 替换变量引用
-            value = value[:match.start()] + str(var_value) + value[match.end():]
-    
-    # 再处理基本引用
-    matches = list(re.finditer(basic_pattern, value))
-    for match in reversed(matches):
-        var_name = match.group(1)
-        if context_has_variable(var_name):
-            var_value = get_variable(var_name)
-            value = value[:match.start()] + str(var_value) + value[match.end():]
-    
-    return value
-
-
-def context_has_variable(var_name):
-    """检查变量是否存在于全局上下文"""
-    # 先检查YAML变量
-    from pytest_dsl.core.yaml_vars import yaml_vars
-    if yaml_vars.get_variable(var_name) is not None:
-        return True
-    
-    # 检查测试上下文
-    from pytest_dsl.core.keyword_manager import keyword_manager
-    current_context = getattr(keyword_manager, 'current_context', None)
-    if current_context and current_context.has(var_name):
-        return True
-    
-    # 再检查全局上下文
-    return global_context.has_variable(var_name)
-
-
-def get_variable(var_name):
-    """获取变量值，先从YAML变量中获取，再从全局上下文获取"""
-    # 先从YAML变量中获取
-    from pytest_dsl.core.yaml_vars import yaml_vars
-    yaml_value = yaml_vars.get_variable(var_name)
-    if yaml_value is not None:
-        return yaml_value
-    
-    # 检查测试上下文
-    from pytest_dsl.core.keyword_manager import keyword_manager
-    current_context = getattr(keyword_manager, 'current_context', None)
-    if current_context and current_context.has(var_name):
-        return current_context.get(var_name)
-    
-    # 再从全局上下文获取
-    if global_context.has_variable(var_name):
-        return global_context.get_variable(var_name)
-    
-    # 如果都没有找到，返回变量引用本身
-    return f"${{{var_name}}}"
-
-
-def _deep_merge(base: Dict, override: Dict) -> Dict:
+def _deep_merge(dict1, dict2):
     """深度合并两个字典
     
     Args:
-        base: 基础字典
-        override: 覆盖字典
+        dict1: 基础字典（会被修改）
+        dict2: 要合并的字典（优先级更高）
         
     Returns:
         合并后的字典
     """
-    result = base.copy()
-    
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            # 递归合并嵌套字典
-            result[key] = _deep_merge(result[key], value)
-        elif key in result and isinstance(result[key], list) and isinstance(value, list):
-            # 合并列表
-            result[key] = result[key] + value
+    for key in dict2:
+        if key in dict1 and isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
+            _deep_merge(dict1[key], dict2[key])
         else:
-            # 覆盖或添加值
-            result[key] = value
-            
-    return result 
+            dict1[key] = dict2[key]
+    return dict1
 
 
-def _process_assertions_with_retry(http_req, max_retries, retry_interval):
+def _process_assertions_with_retry(http_req, retry_count, retry_interval):
     """处理断言并支持重试
     
     Args:
         http_req: HTTP请求对象
-        max_retries: 最大重试次数
+        retry_count: 重试次数
         retry_interval: 重试间隔（秒）
-    
-    Raises:
-        AssertionError: 当断言失败且重试次数用尽时
     """
-    import time
-    import logging
     
-    logger = logging.getLogger(__name__)
-    
-    last_error = None
-    for retry in range(max_retries + 1):  # +1表示包括首次尝试
+    for attempt in range(retry_count + 1):
         try:
-            # 如果是重试，需要重新发送请求
-            if retry > 0:
-                logger.info(f"第 {retry} 次重试...")
-                http_req.execute()  # 重新发送请求
             # 尝试执行断言
-            http_req.process_asserts()
-            return  # 如果断言成功，直接返回
+            with allure.step(f"断言验证 (尝试 {attempt + 1}/{retry_count + 1})"):
+                results = http_req.process_asserts()
+                # 断言成功，直接返回
+                return
         except AssertionError as e:
-            last_error = e
-            if retry < max_retries:
-                logger.warning(f"断言失败，等待 {retry_interval} 秒后重试: {str(e)}")
-                time.sleep(retry_interval)
+            # 如果还有重试机会，等待后重试
+            if attempt < retry_count:
+                with allure.step(f"断言失败，等待 {retry_interval} 秒后重试"):
+                    allure.attach(
+                        str(e),
+                        name="断言失败详情",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    time.sleep(retry_interval)
+                    # 重新发送请求
+                    http_req.execute()
             else:
-                logger.error(f"断言失败，已达到最大重试次数 {max_retries}: {str(e)}")
-                raise last_error
-        except Exception as e:
-            logger.error(f"处理断言时发生错误: {str(e)}")
-            raise e 
+                # 重试次数用完，重新抛出异常
+                raise 

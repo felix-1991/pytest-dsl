@@ -19,7 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger("CSRF_AUTH_DEBUG")
 
 
-@auto_dsl("./http/http_example.auto", is_file=True)
+@auto_dsl("./http/file_reference_test.auto", is_file=True)
 class TestHttp:
     """HTTP测试类
     

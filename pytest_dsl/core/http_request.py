@@ -6,6 +6,7 @@ from typing import Dict, List, Any, Union, Optional, Tuple
 import lxml.etree as etree
 from requests import Response
 import allure
+import requests
 
 from pytest_dsl.core.http_client import http_client_manager
 
@@ -29,13 +30,6 @@ class HTTPRequest:
         self.session_name = session_name
         self.response = None
         self.captured_values = {}
-        
-        # 解析YAML配置
-        if isinstance(config, str):
-            try:
-                self.config = yaml.safe_load(config)
-            except yaml.YAMLError as e:
-                raise ValueError(f"无效的YAML配置: {str(e)}")
     
     def execute(self, disable_auth: bool = False) -> Response:
         """执行HTTP请求
@@ -84,16 +78,28 @@ class HTTPRequest:
         # 使用Allure记录请求信息
         self._log_request_to_allure(method, url, request_kwargs)
         
-        # 发送请求
-        self.response = client.make_request(method, url, **request_kwargs)
-        
-        # 使用Allure记录响应信息
-        self._log_response_to_allure(self.response)
-        
-        # 处理捕获
-        self.process_captures()
-        
-        return self.response
+        try:
+            # 发送请求
+            self.response = client.make_request(method, url, **request_kwargs)
+            
+            # 使用Allure记录响应信息
+            self._log_response_to_allure(self.response)
+            
+            # 处理捕获
+            self.process_captures()
+            
+            return self.response
+        except requests.exceptions.RequestException as e:
+            # 记录请求异常到Allure
+            error_message = f"请求异常: {str(e)}"
+            allure.attach(
+                error_message,
+                name=f"HTTP请求失败: {method} {url}",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            
+            # 重新抛出更有意义的异常
+            raise ValueError(f"HTTP请求失败: {str(e)}") from e
     
     def process_captures(self) -> Dict[str, Any]:
         """处理响应捕获

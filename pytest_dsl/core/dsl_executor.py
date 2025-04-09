@@ -31,6 +31,9 @@ class DSLExecutor:
         """设置当前测试数据集"""
         if data:
             self.variables.update(data)
+            # 同时将数据添加到测试上下文
+            for key, value in data.items():
+                self.test_context.set(key, value)
         
     def _load_test_data(self, data_source):
         """加载测试数据
@@ -180,6 +183,8 @@ class DSLExecutor:
             
             if not keep_variables:
                 self.variables.clear()
+                # 同时清空测试上下文
+                self.test_context.clear()
 
     def _handle_statements(self, node):
         """处理语句列表"""
@@ -201,7 +206,9 @@ class DSLExecutor:
                 attachment_type=allure.attachment_type.TEXT
             )
         else:
+            # 存储在本地变量字典和测试上下文中
             self.variable_replacer.local_variables[var_name] = expr_value
+            self.test_context.set(var_name, expr_value)  # 同时添加到测试上下文
             allure.attach(
                 f"变量: {var_name}\n值: {expr_value}",
                 name="赋值详情",
@@ -225,7 +232,9 @@ class DSLExecutor:
                     attachment_type=allure.attachment_type.TEXT
                 )
             else:
+                # 存储在本地变量字典和测试上下文中
                 self.variable_replacer.local_variables[var_name] = result
+                self.test_context.set(var_name, result)  # 同时添加到测试上下文
                 allure.attach(
                     f"变量: {var_name}\n值: {result}",
                     name="赋值详情",
@@ -242,7 +251,9 @@ class DSLExecutor:
         end = self.eval_expression(node.children[1])
         
         for i in range(int(start), int(end)):
+            # 存储在本地变量字典和测试上下文中
             self.variable_replacer.local_variables[var_name] = i
+            self.test_context.set(var_name, i)  # 同时添加到测试上下文
             with allure.step(f"循环轮次: {var_name} = {i}"):
                 self.execute(node.children[2])
 

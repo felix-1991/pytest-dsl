@@ -1,0 +1,31 @@
+{
+    "user": {
+        "name": "${username}",
+        "email": "${email}",
+        "password": "${password}",
+        "age": "${age}",
+        "address": {
+            "city": "${city}",
+            "country": "中国",
+            "postal_code": "100000"
+        },
+        "preferences": {
+            "language": "zh-CN",
+            "theme": "${theme}",
+            "notifications": true
+        },
+        "skills": "${skills}",
+        "projects": [
+            {
+                "id": 1,
+                "name": "项目A",
+                "role": "${role}",
+                "start_date": "2023-01-01"
+            }
+        ]
+    },
+    "metadata": {
+        "version": "1.0.0",
+        "created_at": "${current_date}"
+    }
+} 

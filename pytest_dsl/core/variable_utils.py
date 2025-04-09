@@ -21,7 +21,21 @@ class VariableReplacer:
             test_context: 测试上下文对象
         """
         self.local_variables = local_variables or {}
-        self.test_context = test_context or TestContext()
+        self._test_context = test_context or TestContext()
+        
+    @property
+    def test_context(self) -> TestContext:
+        """获取测试上下文，确保始终使用最新的上下文对象
+        
+        如果上下文对象中包含executor属性，则使用executor的上下文
+        （这确保即使上下文被替换也能获取正确的引用）
+        
+        Returns:
+            测试上下文对象
+        """
+        if hasattr(self._test_context, 'executor') and self._test_context.executor is not None:
+            return self._test_context.executor.test_context
+        return self._test_context
         
     def get_variable(self, var_name: str) -> Any:
         """获取变量值，按照优先级查找

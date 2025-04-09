@@ -1,0 +1,42 @@
+{
+    "user": {
+        "name": "测试用户",
+        "email": "test@example.com",
+        "password": "password123",
+        "age": 30,
+        "address": {
+            "city": "北京",
+            "country": "中国",
+            "postal_code": "100000"
+        },
+        "preferences": {
+            "language": "zh-CN",
+            "theme": "dark",
+            "notifications": true
+        },
+        "skills": [
+            "Python",
+            "JavaScript",
+            "Docker",
+            "Kubernetes"
+        ],
+        "projects": [
+            {
+                "id": 1,
+                "name": "项目A",
+                "role": "项目经理",
+                "start_date": "2023-01-01"
+            },
+            {
+                "id": 2,
+                "name": "项目B",
+                "role": "技术专家",
+                "start_date": "2023-03-15"
+            }
+        ]
+    },
+    "metadata": {
+        "version": "1.0.0",
+        "created_at": "2024-04-08T10:00:00Z"
+    }
+} 

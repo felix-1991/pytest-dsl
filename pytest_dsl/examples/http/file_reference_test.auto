@@ -1,0 +1,111 @@
+@name: 外部文件引用测试
+@description: 演示如何在HTTP请求中使用外部文件引用
+@tags: [HTTP, 文件引用, 示例]
+@author: 陈双麟
+@date: 2024-04-08
+
+# 设置测试变量
+username = "张三"
+email = "zhangsan@example.com"
+password = "test123456"
+age = 28
+city = "上海"
+theme = "light"
+skills = "Java,Go,React"
+role = "开发工程师"
+current_date = "2024-04-08T12:00:00Z"
+
+# 示例1: 使用简单文件引用语法加载静态JSON
+[打印],内容:'1. 测试简单文件引用语法 - 静态JSON'
+
+[HTTP请求],客户端:'default',配置:'''
+        method: POST
+        url: https://httpbin.org/post
+        request:
+            headers:
+                Content-Type: application/json
+            json: "@file:pytest_dsl/examples/http/data/user_data.json"
+        captures:
+            user_name: ["jsonpath", "$.json.user.name"]
+            user_email: ["jsonpath", "$.json.user.email"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.json.user.name", "eq", "测试用户"]
+    ''',步骤名称: "使用静态JSON文件发送请求"
+
+[打印],内容:'捕获的用户名: ${user_name}'
+[打印],内容:'捕获的邮箱: ${user_email}'
+
+# 示例2: 使用简单文件模板语法加载带变量的JSON
+[打印],内容:'2. 测试简单文件引用语法 - 带变量的JSON模板'
+
+[HTTP请求],客户端:'default',配置:'''
+        method: POST
+        url: https://httpbin.org/post
+        request:
+            headers:
+                Content-Type: application/json
+            json: "@file_template:pytest_dsl/examples/http/data/user_template.json"
+        captures:
+            user_name: ["jsonpath", "$.json.user.name"]
+            user_email: ["jsonpath", "$.json.user.email"]
+            metadata_date: ["jsonpath", "$.json.metadata.created_at"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.json.user.name", "eq", "${username}"]
+            - ["jsonpath", "$.json.metadata.created_at", "eq", "${current_date}"]
+    ''',步骤名称: "使用带变量的JSON模板文件发送请求"
+
+[打印],内容:'用户名被替换为: ${user_name}'
+[打印],内容:'创建日期被替换为: ${metadata_date}'
+
+# 示例3: 使用详细文件引用语法
+[打印],内容:'3. 测试详细文件引用语法'
+
+[HTTP请求],客户端:'default',配置:'''
+        method: POST
+        url: https://httpbin.org/post
+        request:
+            headers:
+                Content-Type: application/json
+            json:
+                file_ref:
+                    path: "pytest_dsl/examples/http/data/user_data.json"
+                    type: "json"
+                    template: false
+                    encoding: "utf-8"
+        captures:
+            skills: ["jsonpath", "$.json.user.skills"]
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.json.user.skills", "length", 4]
+    ''',步骤名称: "使用详细文件引用语法发送请求"
+
+[打印],内容:'捕获的技能列表: ${skills}'
+
+# 示例4: 将外部文件引用与请求JSON部分合并
+[打印],内容:'4. 测试将外部文件与请求JSON合并'
+
+[HTTP请求],客户端:'default',配置:'''
+        method: POST
+        url: https://httpbin.org/post
+        request:
+            headers:
+                Content-Type: application/json
+            json:
+                file_ref:
+                    path: "pytest_dsl/examples/http/data/user_template.json"
+                    template: true
+                extra_field: "附加字段"
+                timestamp: ${current_date}
+        captures:
+            request_json: ["jsonpath", "$.json"]
+        asserts:
+            - ["status", "eq", 200]
+    ''',步骤名称: "合并外部文件与请求JSON"
+
+[打印],内容:'请求JSON已合并: ${request_json}'
+
+@teardown do
+    [打印],内容:'外部文件引用测试完成!'
+end 
