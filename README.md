@@ -80,6 +80,62 @@ pytest-dsl/
 └── README.md           # 项目说明文档
 ```
 
+## 自定义关键字
+
+除了使用内置关键字外，pytest-dsl还支持以下方式创建和使用自定义关键字：
+
+1. **项目本地关键字**：在项目根目录下创建`keywords`目录，添加自定义关键字模块
+2. **插件式关键字**：通过Python的entry_points机制注册的第三方插件
+
+### 项目本地关键字（推荐）
+
+当您将pytest-dsl用于自己的项目时，只需在项目根目录创建一个`keywords`目录，添加您的关键字模块即可：
+
+```
+您的项目/
+├── keywords/           # 自定义关键字目录
+│   ├── __init__.py     # 可选
+│   ├── web_keywords.py # Web测试关键字
+│   └── db_keywords.py  # 数据库测试关键字
+├── tests/              # 测试目录
+│   └── test_cases.auto # DSL测试用例
+└── pytest.ini          # pytest配置
+```
+
+pytest-dsl会自动发现并加载您项目中的关键字，无需额外配置。
+
+### 关键字编写示例
+
+关键字模块中使用`keyword_manager.register`装饰器来注册自定义关键字：
+
+```python
+# keywords/db_keywords.py
+from pytest_dsl.core.keyword_manager import keyword_manager
+
+@keyword_manager.register('数据库查询', [
+    {'name': 'SQL', 'mapping': 'sql', 'description': 'SQL查询语句'},
+    {'name': '数据库', 'mapping': 'db', 'description': '数据库连接名称'}
+])
+def query_database(**kwargs):
+    """执行数据库查询
+    
+    Args:
+        sql: SQL查询语句
+        db: 数据库连接名称
+        context: 测试上下文(自动传入)
+    """
+    sql = kwargs.get('sql')
+    db = kwargs.get('db', 'default')
+    context = kwargs.get('context')
+    
+    # 实现数据库查询逻辑
+    # ...
+    
+    return result
+```
+
+详细文档请参阅 [自定义关键字指南](./pytest_dsl/docs/custom_keywords.md)。
+
 ## DSL语法
 
 ### 基本结构
