@@ -7,7 +7,9 @@ reserved = {
     'for': 'FOR',
     'in': 'IN',
     'range': 'RANGE',
-    'using': 'USING'  # Add new keyword for data-driven testing
+    'using': 'USING',  # Add new keyword for data-driven testing
+    'True': 'TRUE',    # 添加布尔值支持
+    'False': 'FALSE'   # 添加布尔值支持
 }
 
 # token 名称列表

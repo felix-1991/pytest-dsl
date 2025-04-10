@@ -1,0 +1,24 @@
+@name: 高级列表功能测试
+@description: 测试嵌套列表和多类型列表功能
+@tags: [列表, 嵌套列表, 自动化]
+@author: Test
+@date: 2024-05-30
+
+# 测试简单列表赋值
+languages = ["go", "java", "python"]
+[打印],内容:'语言列表:'
+[打印],内容:${languages}
+
+# 测试嵌套列表
+nested_list = ["字符串", [1, 2, 3], [True, False]]
+[打印],内容:'嵌套列表:'
+[打印],内容:${nested_list}
+
+# 测试空列表
+empty_list = []
+[打印],内容:'空列表:'
+[打印],内容:${empty_list}
+
+@teardown do
+    [打印],内容:'高级列表测试完成'
+end 

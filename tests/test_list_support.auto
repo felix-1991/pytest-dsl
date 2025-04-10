@@ -1,0 +1,20 @@
+@name: 列表变量支持测试
+@description: 测试列表变量赋值和操作功能
+@tags: [列表, 变量, 自动化]
+@author: Test
+@date: 2024-05-30
+
+# 测试列表赋值
+languages = ["go", "java", "python"]
+
+# 打印列表内容
+[打印],内容:${languages}
+
+# 混合列表测试
+mixed_list = ["字符串", 123, True]
+[打印],内容:'混合列表:'
+[打印],内容:${mixed_list}
+
+@teardown do
+    [打印],内容:'测试完成'
+end 

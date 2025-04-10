@@ -82,6 +82,16 @@ class DSLExecutor:
             return self.variable_replacer.replace_in_value(value)
         elif expr_node.type == 'KeywordCall':
             return self.execute(expr_node)
+        elif expr_node.type == 'ListExpr':
+            # 处理列表表达式
+            result = []
+            for item in expr_node.children:
+                item_value = self.eval_expression(item)
+                result.append(item_value)
+            return result
+        elif expr_node.type == 'BooleanExpr':
+            # 处理布尔值表达式
+            return expr_node.value
         else:
             raise Exception(f"无法求值的表达式类型: {expr_node.type}")
     

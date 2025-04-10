@@ -107,8 +107,39 @@ def p_expression(p):
     '''expression : NUMBER
                   | STRING
                   | PLACEHOLDER
-                  | ID'''
+                  | ID
+                  | boolean_expr
+                  | list_expr'''
     p[0] = Node('Expression', value=p[1])
+
+
+def p_boolean_expr(p):
+    '''boolean_expr : TRUE
+                    | FALSE'''
+    p[0] = Node('BooleanExpr', value=True if p[1] == 'True' else False)
+
+
+def p_list_expr(p):
+    '''list_expr : LBRACKET list_items RBRACKET
+                 | LBRACKET RBRACKET'''
+    if len(p) == 4:
+        p[0] = Node('ListExpr', children=p[2])
+    else:
+        p[0] = Node('ListExpr', children=[])  # 空列表
+
+
+def p_list_items(p):
+    '''list_items : list_item
+                  | list_item COMMA list_items'''
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = [p[1]] + p[3]
+
+
+def p_list_item(p):
+    '''list_item : expression'''
+    p[0] = p[1]
 
 
 def p_loop(p):
