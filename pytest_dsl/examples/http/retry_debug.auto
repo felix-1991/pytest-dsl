@@ -1,0 +1,22 @@
+@name: 断言重试调试示例
+@description: 使用更严格的断言条件测试断言重试功能
+@tags: [HTTP, API, 断言重试, 调试]
+@author: Felix
+@date: 2024-06-15
+
+[打印],内容:'开始测试断言重试功能 - 故意设置极低的响应时间限制'
+
+# 使用非常低的响应时间限制确保断言失败
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/delay/1
+        asserts:
+            - ["status", "eq", 200]  # 这个会通过
+            - ["response_time", "lt", 50]  # 设置极低的值确保失败，1秒的延迟应该会超过50ms
+        retry_assertions:
+            count: 2
+            interval: 0.5
+            all: true
+    ''',步骤名称:"故意触发断言失败的示例"
+
+[打印],内容:'测试完成 - 如果执行到这里，说明重试逻辑正常工作' 

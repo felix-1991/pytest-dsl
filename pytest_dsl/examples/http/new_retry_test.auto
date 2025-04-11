@@ -1,0 +1,22 @@
+@name: 新的断言重试示例
+@description: 测试修改后的断言重试机制
+@tags: [HTTP, API, 断言重试]
+@author: Felix
+@date: 2024-06-15
+
+[打印],内容:'开始测试修改后的断言重试机制'
+
+# 使用全局retry_assertions配置
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/delay/1
+        asserts:
+            - ["status", "eq", 200]
+            - ["response_time", "lt", 100]  # 强制失败，设置为很小的值
+        retry_assertions:
+            count: 2
+            interval: 1
+            all: true
+    ''',步骤名称:"全局断言重试示例"
+
+[打印],内容:'测试完成!' 

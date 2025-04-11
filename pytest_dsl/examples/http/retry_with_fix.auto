@@ -1,0 +1,21 @@
+@name: 全局断言重试示例
+@description: 使用全局retry_assertions配置测试断言重试功能
+@tags: [HTTP, API, 断言重试]
+@author: Felix
+@date: 2024-06-15
+
+# 使用全局retry_assertions配置
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/delay/1
+        asserts:
+            - ["status", "eq", 200]
+            - ["response_time", "lt", 1000]
+        # 全局重试配置
+        retry_assertions:
+            count: 2
+            interval: 1
+            indices: [1]  # 只重试response_time断言
+    ''',步骤名称:"全局重试配置示例"
+
+[打印],内容:'测试完成!' 

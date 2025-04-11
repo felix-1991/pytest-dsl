@@ -145,26 +145,57 @@ class HTTPClient:
         if 'data' in request_kwargs:
             logger.debug(f"表单数据: {request_kwargs['data']}")
 
-        # 发送请求
-        if self.use_session:
-            response = self._session.request(method, url, **request_kwargs)
-        else:
-            response = requests.request(method, url, **request_kwargs)
-
-        # 记录响应详情
-        logger.debug(f"\n=== HTTP响应详情 ===")
-        logger.debug(f"状态码: {response.status_code}")
-        logger.debug(f"响应头: {json.dumps(dict(response.headers), indent=2, ensure_ascii=False)}")
+        # 为超时设置默认值
+        if 'timeout' not in request_kwargs:
+            request_kwargs['timeout'] = self.timeout
+            
+        # 为SSL验证设置默认值
+        if 'verify' not in request_kwargs:
+            request_kwargs['verify'] = self.verify_ssl
+            
+        # 应用代理配置
+        if self.proxies and 'proxies' not in request_kwargs:
+            request_kwargs['proxies'] = self.proxies
+            
         try:
-            if 'application/json' in response.headers.get('Content-Type', ''):
-                logger.debug(f"响应体 (JSON): {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
+            # 发送请求
+            if self.use_session:
+                if self._session is None:
+                    logger.warning("会话对象为空，创建新会话")
+                    self._session = requests.Session()
+                    if self.default_headers:
+                        self._session.headers.update(self.default_headers)
+                response = self._session.request(method, url, **request_kwargs)
             else:
-                logger.debug(f"响应体: {response.text}")
-        except Exception as e:
-            logger.debug(f"解析响应体失败: {str(e)}")
-            logger.debug(f"原始响应体: {response.text}")
+                response = requests.request(method, url, **request_kwargs)
 
-        return response
+            # 记录响应详情
+            logger.debug(f"\n=== HTTP响应详情 ===")
+            logger.debug(f"状态码: {response.status_code}")
+            logger.debug(f"响应头: {json.dumps(dict(response.headers), indent=2, ensure_ascii=False)}")
+            try:
+                if 'application/json' in response.headers.get('Content-Type', ''):
+                    logger.debug(f"响应体 (JSON): {json.dumps(response.json(), indent=2, ensure_ascii=False)}")
+                else:
+                    logger.debug(f"响应体: {response.text}")
+            except Exception as e:
+                logger.debug(f"解析响应体失败: {str(e)}")
+                logger.debug(f"原始响应体: {response.text}")
+
+            # 添加响应时间
+            if not hasattr(response, 'elapsed_ms'):
+                response.elapsed_ms = response.elapsed.total_seconds() * 1000
+                
+            return response
+        except requests.exceptions.RequestException as e:
+            logger.error(f"HTTP请求异常: {type(e).__name__}: {str(e)}")
+            raise
+        except Exception as e:
+            logger.error(f"未预期的异常: {type(e).__name__}: {str(e)}")
+            # 将非请求异常包装为请求异常
+            raised_exception = requests.exceptions.RequestException(f"HTTP请求过程中发生错误: {str(e)}")
+            raised_exception.__cause__ = e
+            raise raised_exception
     
     def _log_request(self, method: str, url: str, request_kwargs: Dict[str, Any]) -> None:
         """记录请求信息

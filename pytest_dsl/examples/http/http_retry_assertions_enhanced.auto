@@ -1,0 +1,94 @@
+@name: HTTP请求增强断言重试示例
+@description: 演示新的独立断言重试配置结构
+@tags: [HTTP, API, 断言重试, 增强配置]
+@author: Felix
+@date: 2024-06-01
+
+# 示例1: 使用独立的retry_assertions配置
+[打印],内容:'示例1: 使用独立的retry_assertions配置'
+
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/delay/2
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.url", "contains", "httpbin.org"]
+            - ["response_time", "lt", 1000]  # 这个断言可能会失败，因为请求延迟约2秒
+        retry_assertions:
+            count: 3
+            interval: 1
+            all: true
+    ''',步骤名称: "独立断言重试配置示例"
+
+# 示例2: 对指定索引的断言进行重试
+[打印],内容:'示例2: 对指定索引的断言进行重试'
+
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://www.random.org/integers/
+        request:
+            params:
+                num: 1
+                min: 1
+                max: 10
+                col: 1
+                base: 10
+                format: plain
+        captures:
+            random_number: ["body"]
+        asserts:
+            - ["status", "eq", 200]                # 索引0
+            - ["body", "matches", "^[0-9]+$"]      # 索引1
+            - ["body", "lt", 6]                    # 索引2 - 需要重试
+            - ["response_time", "lt", 10000]       # 索引3
+        retry_assertions:
+            count: 5
+            interval: 2
+            indices: [2]  # 只重试索引为2的断言（即body < 6）
+    ''',步骤名称:"指定索引断言重试示例"
+
+[打印],内容:'获取的随机数: ${random_number}'
+
+# 示例3: 为特定断言指定不同的重试策略
+[打印],内容:'示例3: 为特定断言指定不同的重试策略'
+
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/delay/1
+        asserts:
+            - ["status", "eq", 200]                # 索引0
+            - ["response_time", "lt", 800]         # 索引1
+            - ["jsonpath", "$.headers.Host", "eq", "httpbin.org"]  # 索引2
+        retry_assertions:
+            # 全局设置
+            count: 2
+            interval: 1
+            # 针对特定断言的设置
+            specific:
+                "1": {  # 对索引1的断言使用特定配置
+                    count: 4,
+                    interval: 0.5
+                }
+            # 不重试索引0的断言
+            indices: [1, 2]
+    ''',步骤名称:"混合断言重试策略示例"
+
+# 示例4: 只使用新式配置
+[打印],内容:'示例4: 只使用新式配置'
+
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/status/200
+        asserts:
+            - ["status", "eq", 200]
+            - ["response_time", "lt", 5000]
+        # 使用新的独立重试配置
+        retry_assertions:
+            count: 3
+            interval: 1.5
+            all: true
+    ''',步骤名称:"纯配置式重试示例"
+
+@teardown do
+    [打印],内容:'增强断言重试测试完成!'
+end 

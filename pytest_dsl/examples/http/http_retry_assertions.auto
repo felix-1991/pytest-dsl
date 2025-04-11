@@ -1,0 +1,91 @@
+@name: HTTP请求断言重试配置示例
+@description: 演示新的retry_assertions配置式断言重试功能
+@tags: [HTTP, API, 断言重试, 示例]
+@author: Felix
+@date: 2024-06-15
+
+# 示例1: 使用旧版全局配置重试所有断言
+[打印],内容:'示例1: 使用旧版全局配置重试所有断言'
+
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/delay/2
+        retry:
+            count: 3
+            interval: 1
+        asserts:
+            - ["status", "eq", 200]
+            - ["jsonpath", "$.url", "contains", "httpbin.org"]
+            - ["response_time", "lt", 1000]  # 这个断言可能会失败，因为请求延迟约2秒
+    ''',步骤名称: "旧版全局断言重试示例"
+
+# 示例2: 使用indices指定重试特定断言
+[打印],内容:'示例2: 使用indices指定重试特定断言'
+
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://www.random.org/integers/
+        request:
+            params:
+                num: 1
+                min: 1
+                max: 10
+                col: 1
+                base: 10
+                format: plain
+        captures:
+            random_number: ["body"]
+        asserts:
+            - ["status", "eq", 200]             # 索引0
+            - ["body", "matches", "^[0-9]+$"]   # 索引1
+            - ["body", "lt", 6]                 # 索引2 - 需要重试
+            - ["response_time", "lt", 10000]    # 索引3
+        retry_assertions:
+            count: 5
+            interval: 2
+            indices: [2]  # 只重试索引为2的断言（即body < 6）
+    ''',步骤名称:"特定断言重试示例"
+
+[打印],内容:'获取的随机数: ${random_number}'
+
+# 示例3: 使用specific为不同断言设置不同的重试参数
+[打印],内容:'示例3: 使用specific为不同断言设置不同的重试参数'
+
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/delay/1
+        asserts:
+            - ["status", "eq", 200]                # 索引0
+            - ["response_time", "lt", 800]         # 索引1
+            - ["jsonpath", "$.headers.Host", "eq", "httpbin.org"]  # 索引2
+            - ["jsonpath", "$.url", "contains", "httpbin.org"]     # 索引3
+        retry_assertions:
+            count: 2         # 默认重试次数
+            interval: 1      # 默认重试间隔
+            indices: [1, 2]  # 只重试索引1和2的断言
+            specific:
+                "2": {       # 为索引2的断言设置特定参数
+                    count: 4,
+                    interval: 0.5
+                }
+            # 注意：索引3不会重试，因为没有包含在indices中
+    ''',步骤名称:"混合断言重试策略示例"
+
+# 示例4: 使用all=true重试所有断言
+[打印],内容:'示例4: 使用all=true重试所有断言'
+
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/status/200
+        asserts:
+            - ["status", "eq", 200]
+            - ["response_time", "lt", 100]  # 可能会失败
+        retry_assertions:
+            count: 3
+            interval: 1.5
+            all: true  # 重试所有断言
+    ''',步骤名称:"全局断言重试示例"
+
+@teardown do
+    [打印],内容:'断言重试测试完成!'
+end 

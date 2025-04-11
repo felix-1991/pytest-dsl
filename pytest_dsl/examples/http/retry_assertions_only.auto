@@ -1,0 +1,52 @@
+@name: 只使用retry_assertions的断言重试示例
+@description: 不使用断言级别的retry标记，只使用独立的retry_assertions配置块
+@tags: [HTTP, API, 断言重试]
+@author: Felix
+@date: 2024-06-15
+
+# 使用全局retry_assertions配置所有断言
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/delay/1
+        asserts:
+            - ["status", "eq", 200]
+            - ["response_time", "lt", 500]  # 可能会失败，因为请求延迟约1秒
+        # 全局重试配置
+        retry_assertions:
+            count: 2
+            interval: 1
+            all: true  # 重试所有断言
+    ''',步骤名称:"全局断言重试配置示例"
+
+# 使用特定断言索引重试
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/delay/1
+        asserts:
+            - ["status", "eq", 200]          # 索引0
+            - ["response_time", "lt", 500]   # 索引1，需要重试
+        # 只重试指定索引的断言
+        retry_assertions:
+            count: 3
+            interval: 0.5
+            indices: [1]  # 只重试response_time断言
+    ''',步骤名称:"特定断言索引重试示例"
+
+# 使用特定断言配置
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/delay/1
+        asserts:
+            - ["status", "eq", 200]          # 索引0
+            - ["response_time", "lt", 500]   # 索引1，使用特定配置
+            - ["body", "contains", "url"]    # 索引2
+        # 为特定断言提供自定义配置
+        retry_assertions:
+            specific:
+                "1": {  # 索引1的特定配置
+                    count: 4,
+                    interval: 0.3
+                }
+    ''',步骤名称:"特定断言配置重试示例"
+
+[打印],内容:'测试完成!' 

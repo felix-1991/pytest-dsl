@@ -45,6 +45,16 @@ class HTTPRequest:
             client = http_client_manager.get_session(self.session_name, self.client_name)
         else:
             client = http_client_manager.get_client(self.client_name)
+            
+        # 验证客户端有效性
+        if client is None:
+            error_message = f"无法获取HTTP客户端: {self.client_name}"
+            allure.attach(
+                error_message,
+                name="HTTP客户端错误",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            raise ValueError(error_message)
         
         # 提取请求参数
         method = self.config.get('method', 'GET').upper()
@@ -100,6 +110,17 @@ class HTTPRequest:
             
             # 重新抛出更有意义的异常
             raise ValueError(f"HTTP请求失败: {str(e)}") from e
+        except Exception as e:
+            # 捕获所有其他异常
+            error_message = f"未预期的异常: {type(e).__name__}: {str(e)}"
+            allure.attach(
+                error_message,
+                name=f"HTTP请求执行错误: {method} {url}",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            
+            # 重新抛出异常
+            raise ValueError(f"HTTP请求执行错误: {str(e)}") from e
     
     def process_captures(self) -> Dict[str, Any]:
         """处理响应捕获
@@ -108,7 +129,19 @@ class HTTPRequest:
             捕获的值字典
         """
         if not self.response:
-            raise ValueError("需要先执行请求才能捕获响应")
+            error_message = "需要先执行请求才能捕获响应"
+            # 记录更详细的错误信息到Allure
+            debug_info = (
+                f"错误详情: self.response 为 None\n"
+                f"配置信息: {json.dumps(self.config, indent=2, ensure_ascii=False, default=str)}\n"
+                f"当前状态: 客户端名称={self.client_name}, 会话名称={self.session_name}"
+            )
+            allure.attach(
+                debug_info,
+                name="捕获失败详情",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            raise ValueError(error_message)
             
         captures_config = self.config.get('captures', {})
         
@@ -116,80 +149,98 @@ class HTTPRequest:
             if not isinstance(capture_spec, list):
                 raise ValueError(f"无效的捕获规格: {var_name}: {capture_spec}")
             
-            extractor_type = capture_spec[0]
-            extraction_path = capture_spec[1] if len(capture_spec) > 1 else None
-            
-            # 检查是否有length参数
-            is_length_capture = False
-            if len(capture_spec) > 2 and capture_spec[2] == "length":
-                is_length_capture = True
-                default_value = capture_spec[3] if len(capture_spec) > 3 else None
-            else:
-                default_value = capture_spec[2] if len(capture_spec) > 2 else None
-            
-            # 提取值
-            captured_value = self._extract_value(extractor_type, extraction_path, default_value)
-            
-            # 特殊处理length
-            if is_length_capture:
-                try:
-                    original_value = captured_value
-                    captured_value = len(captured_value)
-                    
-                    # 记录长度到Allure
-                    allure.attach(
-                        f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n原始值: {str(original_value)}\n长度: {captured_value}",
-                        name=f"捕获长度: {var_name}",
-                        attachment_type=allure.attachment_type.TEXT
-                    )
-                except Exception as e:
-                    # 如果无法计算长度，记录错误并添加请求和响应信息
-                    error_msg = f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n错误: 无法计算长度: {str(e)}"
-                    
-                    # 添加请求信息
-                    error_msg += "\n\n=== 请求信息 ==="
-                    error_msg += f"\nMethod: {self.config.get('method', 'GET')}"
-                    error_msg += f"\nURL: {self.config.get('url', '')}"
-                    if 'headers' in self.config.get('request', {}):
-                        error_msg += "\nHeaders: " + str(self.config.get('request', {}).get('headers', {}))
-                    if 'params' in self.config.get('request', {}):
-                        error_msg += "\nParams: " + str(self.config.get('request', {}).get('params', {}))
-                    if 'json' in self.config.get('request', {}):
-                        error_msg += "\nJSON Body: " + str(self.config.get('request', {}).get('json', {}))
-                    
-                    # 添加响应信息
-                    error_msg += "\n\n=== 响应信息 ==="
-                    error_msg += f"\nStatus: {self.response.status_code} {self.response.reason}"
-                    error_msg += f"\nHeaders: {dict(self.response.headers)}"
+            # 提取捕获信息
+            try:
+                extractor_type = capture_spec[0]
+                extraction_path = capture_spec[1] if len(capture_spec) > 1 else None
+                
+                # 检查是否有length参数
+                is_length_capture = False
+                if len(capture_spec) > 2 and capture_spec[2] == "length":
+                    is_length_capture = True
+                    default_value = capture_spec[3] if len(capture_spec) > 3 else None
+                else:
+                    default_value = capture_spec[2] if len(capture_spec) > 2 else None
+                
+                # 提取值
+                captured_value = self._extract_value(extractor_type, extraction_path, default_value)
+                
+                # 特殊处理length
+                if is_length_capture:
                     try:
-                        if 'application/json' in self.response.headers.get('Content-Type', ''):
-                            error_msg += f"\nBody: {json.dumps(self.response.json(), ensure_ascii=False)}"
-                        else:
-                            error_msg += f"\nBody: {self.response.text}"
-                    except:
-                        error_msg += "\nBody: <无法解析响应体>"
-                    
+                        original_value = captured_value
+                        captured_value = len(captured_value)
+                        
+                        # 记录长度到Allure
+                        allure.attach(
+                            f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n原始值: {str(original_value)}\n长度: {captured_value}",
+                            name=f"捕获长度: {var_name}",
+                            attachment_type=allure.attachment_type.TEXT
+                        )
+                    except Exception as e:
+                        # 如果无法计算长度，记录错误并添加请求和响应信息
+                        error_msg = f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n错误: 无法计算长度: {str(e)}"
+                        
+                        # 添加请求信息
+                        error_msg += "\n\n=== 请求信息 ==="
+                        error_msg += f"\nMethod: {self.config.get('method', 'GET')}"
+                        error_msg += f"\nURL: {self.config.get('url', '')}"
+                        if 'headers' in self.config.get('request', {}):
+                            error_msg += "\nHeaders: " + str(self.config.get('request', {}).get('headers', {}))
+                        if 'params' in self.config.get('request', {}):
+                            error_msg += "\nParams: " + str(self.config.get('request', {}).get('params', {}))
+                        if 'json' in self.config.get('request', {}):
+                            error_msg += "\nJSON Body: " + str(self.config.get('request', {}).get('json', {}))
+                        
+                        # 添加响应信息
+                        error_msg += "\n\n=== 响应信息 ==="
+                        error_msg += f"\nStatus: {self.response.status_code} {self.response.reason}"
+                        error_msg += f"\nHeaders: {dict(self.response.headers)}"
+                        try:
+                            if 'application/json' in self.response.headers.get('Content-Type', ''):
+                                error_msg += f"\nBody: {json.dumps(self.response.json(), ensure_ascii=False)}"
+                            else:
+                                error_msg += f"\nBody: {self.response.text}"
+                        except:
+                            error_msg += "\nBody: <无法解析响应体>"
+                        
+                        allure.attach(
+                            error_msg,
+                            name=f"捕获长度失败: {var_name}",
+                            attachment_type=allure.attachment_type.TEXT
+                        )
+                        captured_value = 0  # 默认长度
+                else:
+                    # 记录捕获到Allure
                     allure.attach(
-                        error_msg,
-                        name=f"捕获长度失败: {var_name}",
+                        f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n提取值: {str(captured_value)}",
+                        name=f"捕获变量: {var_name}",
                         attachment_type=allure.attachment_type.TEXT
                     )
-                    captured_value = 0  # 默认长度
-            else:
-                # 记录捕获到Allure
+                
+                self.captured_values[var_name] = captured_value
+            except Exception as e:
+                error_msg = (
+                    f"变量捕获失败: {var_name}\n"
+                    f"捕获规格: {capture_spec}\n"
+                    f"错误: {type(e).__name__}: {str(e)}"
+                )
                 allure.attach(
-                    f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n提取值: {str(captured_value)}",
-                    name=f"捕获变量: {var_name}",
+                    error_msg,
+                    name=f"变量捕获失败: {var_name}",
                     attachment_type=allure.attachment_type.TEXT
                 )
-            
-            self.captured_values[var_name] = captured_value
+                # 设置默认值
+                self.captured_values[var_name] = None
         
         return self.captured_values
     
-    def process_asserts(self) -> List[Dict[str, Any]]:
+    def process_asserts(self, specific_asserts=None) -> List[Dict[str, Any]]:
         """处理响应断言
         
+        Args:
+            specific_asserts: 指定要处理的断言列表，如果为None则处理所有断言
+            
         Returns:
             断言结果列表
         """
@@ -198,14 +249,60 @@ class HTTPRequest:
             
         asserts_config = self.config.get('asserts', [])
         assert_results = []
+        failed_retryable_assertions = []
         
-        for assertion in asserts_config:
+        # 处理断言重试配置
+        # 1. 只使用独立的retry_assertions配置
+        retry_assertions_config = self.config.get('retry_assertions', {})
+        has_dedicated_retry_config = bool(retry_assertions_config)
+        
+        # 2. 向后兼容: 检查全局retry配置（仅作为默认值使用）
+        retry_config = self.config.get('retry', {})
+        global_retry_enabled = bool(retry_config)
+        
+        # 3. 提取重试默认设置
+        global_retry_count = retry_assertions_config.get('count', retry_config.get('count', 3))
+        global_retry_interval = retry_assertions_config.get('interval', retry_config.get('interval', 1))
+        
+        # 4. 提取应该重试的断言索引列表
+        retry_all_assertions = retry_assertions_config.get('all', global_retry_enabled)
+        retry_assertion_indices = retry_assertions_config.get('indices', [])
+        
+        # 5. 提取特定断言的重试配置
+        specific_assertion_configs = retry_assertions_config.get('specific', {})
+        
+        # 如果传入了specific_asserts，只处理指定的断言
+        process_asserts = specific_asserts if specific_asserts is not None else asserts_config
+        
+        for assertion_idx, assertion in enumerate(process_asserts):
             if not isinstance(assertion, list) or len(assertion) < 2:
                 raise ValueError(f"无效的断言配置: {assertion}")
             
             # 提取断言参数
             extractor_type = assertion[0]
             
+            # 判断该断言是否应该重试（只使用retry_assertions配置）
+            is_retryable = False
+            assertion_retry_count = global_retry_count
+            assertion_retry_interval = global_retry_interval
+            
+            # retry_assertions特定配置
+            if str(assertion_idx) in specific_assertion_configs:
+                spec_config = specific_assertion_configs[str(assertion_idx)]
+                is_retryable = True
+                if isinstance(spec_config, dict):
+                    if 'count' in spec_config:
+                        assertion_retry_count = spec_config['count']
+                    if 'interval' in spec_config:
+                        assertion_retry_interval = spec_config['interval']
+            # retry_assertions索引列表
+            elif assertion_idx in retry_assertion_indices:
+                is_retryable = True
+            # retry_assertions全局配置
+            elif retry_all_assertions:
+                is_retryable = True
+            
+            # 处理断言参数
             if len(assertion) == 2:  # 存在性断言 ["header", "Location", "exists"]
                 extraction_path = assertion[1]
                 assertion_type = "exists"
@@ -248,66 +345,88 @@ class HTTPRequest:
             if assertion_type == "length" and extractor_type != "response_time" and extractor_type != "status" and extractor_type != "body":
                 try:
                     actual_value = len(actual_value)
-                except:
-                    actual_value = None
+                except Exception as e:
+                    # 长度计算失败的信息已在_extract_value中记录
+                    actual_value = 0
             
             # 执行断言
-            result = self._perform_assertion(assertion_type, compare_operator, actual_value, expected_value)
-            
-            # 记录断言结果
             assertion_result = {
-                'extractor': extractor_type,
+                'type': extractor_type,
                 'path': extraction_path,
-                'type': assertion_type,
+                'assertion_type': assertion_type,
                 'operator': compare_operator,
-                'expected': expected_value,
-                'actual': original_actual_value if assertion_type == "length" else actual_value,
-                'result': result
+                'actual_value': actual_value,
+                'expected_value': expected_value,
+                'original_value': original_actual_value if assertion_type == "length" else None,
+                'retryable': is_retryable,
+                'retry_count': assertion_retry_count,
+                'retry_interval': assertion_retry_interval,
+                'index': assertion_idx  # 记录断言在原始列表中的索引
             }
-            assert_results.append(assertion_result)
             
-            # 记录断言到Allure
-            if result:
+            try:
+                # 验证断言
+                result = self._perform_assertion(assertion_type, compare_operator, actual_value, expected_value)
+                assertion_result['result'] = result
+                assertion_result['passed'] = True
+                
+                # 使用Allure记录断言成功
                 allure.attach(
-                    f"提取器: {extractor_type}\n路径: {extraction_path}\n断言类型: {assertion_type}\n操作符: {compare_operator}\n预期值: {expected_value}\n实际值: {original_actual_value if assertion_type == 'length' else actual_value}" + (f"\n长度: {actual_value}" if assertion_type == "length" else ""),
-                    name=f"断言成功: {extractor_type} {assertion_type}",
+                    self._format_assertion_details(assertion_result),
+                    name=f"断言成功: {extractor_type}",
                     attachment_type=allure.attachment_type.TEXT
                 )
-            else:
-                # 构建详细的错误信息，包含请求和响应信息
-                error_msg = f"提取器: {extractor_type}\n路径: {extraction_path}\n断言类型: {assertion_type}\n操作符: {compare_operator}\n预期值: {expected_value}\n实际值: {original_actual_value if assertion_type == 'length' else actual_value}" + (f"\n长度: {actual_value}" if assertion_type == "length" else "")
+            except AssertionError as e:
+                assertion_result['result'] = False
+                assertion_result['passed'] = False
+                assertion_result['error'] = str(e)
                 
-                # 添加请求信息
-                error_msg += "\n\n=== 请求信息 ==="
-                error_msg += f"\nMethod: {self.config.get('method', 'GET')}"
-                error_msg += f"\nURL: {self.config.get('url', '')}"
-                if 'headers' in self.config.get('request', {}):
-                    error_msg += "\nHeaders: " + str(self.config.get('request', {}).get('headers', {}))
-                if 'params' in self.config.get('request', {}):
-                    error_msg += "\nParams: " + str(self.config.get('request', {}).get('params', {}))
-                if 'json' in self.config.get('request', {}):
-                    error_msg += "\nJSON Body: " + str(self.config.get('request', {}).get('json', {}))
-                
-                # 添加响应信息
-                error_msg += "\n\n=== 响应信息 ==="
-                error_msg += f"\nStatus: {self.response.status_code} {self.response.reason}"
-                error_msg += f"\nHeaders: {dict(self.response.headers)}"
-                try:
-                    if 'application/json' in self.response.headers.get('Content-Type', ''):
-                        error_msg += f"\nBody: {json.dumps(self.response.json(), ensure_ascii=False)}"
-                    else:
-                        error_msg += f"\nBody: {self.response.text}"
-                except:
-                    error_msg += "\nBody: <无法解析响应体>"
-                
+                # 使用Allure记录断言失败
                 allure.attach(
-                    error_msg,
-                    name=f"断言失败: {extractor_type} {assertion_type}",
+                    self._format_assertion_details(assertion_result) + f"\n\n错误: {str(e)}",
+                    name=f"断言失败: {extractor_type}",
                     attachment_type=allure.attachment_type.TEXT
                 )
-                raise AssertionError(f"断言失败: {extractor_type}({extraction_path}) {assertion_type} {compare_operator} {expected_value}, 实际值: {original_actual_value if assertion_type == 'length' else actual_value}" + (f", 长度: {actual_value}" if assertion_type == "length" else ""))
+                
+                # 如果断言可重试，添加到失败且需要重试的断言列表
+                if is_retryable:
+                    failed_retryable_assertions.append(assertion_result)
+                
+                # 抛出异常（会在外层捕获）
+                raise AssertionError(f"断言失败 [{extractor_type}]: {str(e)}")
+            
+            assert_results.append(assertion_result)
         
-        return assert_results
+        # 返回断言结果和需要重试的断言
+        return assert_results, failed_retryable_assertions
+    
+    def _format_assertion_details(self, assertion_result: Dict[str, Any]) -> str:
+        """格式化断言详情，用于Allure报告
+        
+        Args:
+            assertion_result: 断言结果字典
+            
+        Returns:
+            格式化的断言详情字符串
+        """
+        details = f"类型: {assertion_result['type']}\n"
+        if assertion_result['path']:
+            details += f"路径: {assertion_result['path']}\n"
+        
+        if assertion_result['assertion_type'] == 'length':
+            details += f"原始值: {assertion_result['original_value']}\n"
+            details += f"长度: {assertion_result['actual_value']}\n"
+        else:
+            details += f"实际值: {assertion_result['actual_value']}\n"
+            
+        details += f"操作符: {assertion_result['operator']}\n"
+        
+        if assertion_result['expected_value'] is not None:
+            details += f"预期值: {assertion_result['expected_value']}\n"
+            
+        details += f"结果: {'通过' if assertion_result['passed'] else '失败'}"
+        
+        return details
     
     def _extract_value(self, extractor_type: str, extraction_path: str = None, default_value: Any = None) -> Any:
         """从响应提取值

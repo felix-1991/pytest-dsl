@@ -1,0 +1,20 @@
+@name: 简单断言重试示例
+@description: 测试断言重试功能的基本使用
+@tags: [HTTP, API, 断言重试]
+@author: Felix
+@date: 2024-06-01
+
+# 使用独立的retry_assertions配置
+[HTTP请求],客户端:'default',配置:'''
+        method: GET
+        url: https://httpbin.org/delay/1
+        asserts:
+            - ["status", "eq", 200]
+            - ["response_time", "lt", 5000]
+        retry_assertions:
+            count: 2
+            interval: 1
+            all: true
+    ''',步骤名称:"简单断言重试示例"
+
+[打印],内容:'测试完成!' 
