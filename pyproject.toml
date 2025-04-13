@@ -41,5 +41,5 @@ pytest_dsl = "pytest_dsl.plugin"
 pytest-dsl = "pytest_dsl.cli:main"
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/pytest-dsl"
-"Bug Tracker" = "https://github.com/yourusername/pytest-dsl/issues" 
+"Homepage" = "https://github.com/felix-1991/pytest-dsl"
+"Bug Tracker" = "https://github.com/felix-1991/pytest-dsl/issues" 
