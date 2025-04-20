@@ -1,0 +1,24 @@
+@name: 变量和循环示例
+@description: 演示变量使用和循环结构
+@tags: [变量, 循环, 入门]
+@author: Felix
+@date: 2024-01-01
+
+# 基本变量定义和使用
+name = "pytest-dsl"
+version = "1.0.0"
+[打印],内容:'测试框架: ${name}, 版本: ${version}'
+
+# 循环结构示例
+[打印],内容:'开始循环测试'
+count = 3
+
+for i in range(1, ${count}) do
+    [打印],内容:'循环次数: ${i}'
+end
+
+[打印],内容:'循环结束'
+
+@teardown do
+    [打印],内容:'变量和循环测试完成!'
+end 

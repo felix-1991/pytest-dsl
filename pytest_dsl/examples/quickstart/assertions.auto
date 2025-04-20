@@ -1,0 +1,31 @@
+@name: 断言功能示例
+@description: 演示断言关键字的基本用法
+@tags: [断言, 入门]
+@author: Felix
+@date: 2024-01-01
+
+# 基本断言
+[断言],条件:'1 + 1 == 2',消息:'基本算术断言失败'
+
+# 数字比较
+num1 = 10
+num2 = 5
+[断言],条件:'${num1} > ${num2}',消息:'数字比较断言失败'
+
+# JSON数据处理
+json_data = '{"user": {"name": "张三", "age": 30, "roles": ["admin", "user"]}}'
+
+# JSON断言示例
+[JSON断言],JSON数据:${json_data},JSONPath:'$.user.age',预期值:30,操作符:'==',消息:'JSON断言失败：年龄不匹配'
+
+# 类型断言
+[类型断言],值:${json_data},类型:'string',消息:'类型断言失败'
+
+# 简单变量赋值和断言
+result = 53
+[打印],内容:'结果: ${result}'
+[断言],条件:'${result} == 53',消息:'结果不正确'
+
+@teardown do
+    [打印],内容:'断言测试完成!'
+end

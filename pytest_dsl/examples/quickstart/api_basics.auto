@@ -1,0 +1,55 @@
+@name: API测试入门示例
+@description: 演示基本的API接口测试用法
+@tags: [API, HTTP, 入门]
+@author: Felix
+@date: 2024-01-01
+
+# 基本GET请求
+[HTTP请求],客户端:'default',配置:'''
+    method: GET
+    url: https://jsonplaceholder.typicode.com/posts/1
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$.id", "eq", 1]
+        - ["jsonpath", "$.title", "exists"]
+''',步骤名称:'获取文章详情'
+
+# 响应数据捕获与使用
+[HTTP请求],客户端:'default',配置:'''
+    method: GET
+    url: https://jsonplaceholder.typicode.com/posts
+    request:
+        params:
+            userId: 1
+    captures:
+        first_post_id: ["jsonpath", "$[0].id"]
+        post_count: ["jsonpath", "$", "length"]
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$", "type", "array"]
+''',步骤名称:'获取用户文章列表'
+
+# 打印捕获的变量
+[打印],内容:'第一篇文章ID: ${first_post_id}, 文章总数: ${post_count}'
+
+# POST请求创建资源
+[HTTP请求],客户端:'default',配置:'''
+    method: POST
+    url: https://jsonplaceholder.typicode.com/posts
+    request:
+        headers:
+            Content-Type: application/json
+        json:
+            title: 测试标题
+            body: 测试内容
+            userId: 1
+    captures:
+        new_post_id: ["jsonpath", "$.id"]
+    asserts:
+        - ["status", "eq", 201]
+        - ["jsonpath", "$.title", "eq", "测试标题"]
+''',步骤名称:'创建新文章'
+
+@teardown do
+    [打印],内容:'API测试完成!'
+end 
