@@ -19,7 +19,7 @@ class AuthProvider(abc.ABC):
     """认证提供者基类"""
     
     @abc.abstractmethod
-    def apply_auth(self, request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    def apply_auth(self, base_url: str, request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """将认证信息应用到请求参数
         
         Args:
@@ -57,6 +57,46 @@ class AuthProvider(abc.ABC):
         request_kwargs.pop('auth', None)
             
         return request_kwargs
+
+    def process_response(self, response: requests.Response) -> None:
+        """处理响应以更新认证状态
+        
+        此方法允许认证提供者在响应返回后处理响应数据，例如从响应中提取
+        CSRF令牌、刷新令牌或其他认证信息，并更新内部状态用于后续请求。
+        
+        Args:
+            response: 请求响应对象
+        """
+        # 默认实现：不做任何处理
+        pass
+    
+    def pre_request_hook(self, method: str, url: str, request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """请求发送前的钩子
+        
+        此方法在请求被发送前调用，允许执行额外的请求预处理。
+        
+        Args:
+            method: HTTP方法
+            url: 请求URL
+            request_kwargs: 请求参数字典
+            
+        Returns:
+            更新后的请求参数字典
+        """
+        # 默认实现：不做任何预处理
+        return request_kwargs
+    
+    def post_response_hook(self, response: requests.Response, request_kwargs: Dict[str, Any]) -> None:
+        """响应接收后的钩子
+        
+        此方法在响应被接收后调用，允许执行额外的响应后处理。
+        
+        Args:
+            response: 响应对象
+            request_kwargs: 原始请求参数
+        """
+        # 调用process_response以保持向后兼容
+        self.process_response(response)
     
     @property
     def name(self) -> str:
@@ -77,7 +117,7 @@ class BasicAuthProvider(AuthProvider):
         self.username = username
         self.password = password
         
-    def apply_auth(self, request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    def apply_auth(self, base_url: str, request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """应用基本认证
         
         Args:
@@ -106,7 +146,7 @@ class TokenAuthProvider(AuthProvider):
         self.scheme = scheme
         self.header = header
         
-    def apply_auth(self, request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    def apply_auth(self, base_url: str, request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """应用令牌认证
         
         Args:
@@ -148,7 +188,7 @@ class ApiKeyAuthProvider(AuthProvider):
         self.in_query = in_query
         self.query_param_name = query_param_name or key_name
         
-    def apply_auth(self, request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    def apply_auth(self, base_url: str, request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """应用API Key认证
         
         Args:
@@ -204,7 +244,7 @@ class OAuth2Provider(AuthProvider):
         self._access_token = None
         self._token_expires_at = 0
         
-    def apply_auth(self, request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    def apply_auth(self, base_url: str, request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """应用OAuth2认证
         
         Args:
@@ -272,13 +312,14 @@ class CustomAuthProvider(AuthProvider):
     """自定义认证提供者基类
     
     用户可以通过继承此类并实现apply_auth方法来创建自定义认证提供者。
+    此外，还可以实现process_response方法来处理响应数据，例如提取CSRF令牌。
     """
     def __init__(self):
         """初始化自定义认证提供者"""
         pass
 
     @abc.abstractmethod
-    def apply_auth(self, request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    def apply_auth(self, base_url: str, request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """应用自定义认证
         
         Args:
@@ -294,7 +335,7 @@ class CustomAuthProvider(AuthProvider):
 auth_provider_registry = {}
 
 
-def register_auth_provider(name: str, provider_class: Type[AuthProvider], *args, **kwargs) -> None:
+def register_auth_provider(name: str, provider_class: Type[AuthProvider]) -> None:
     """注册认证提供者
     
     Args:
@@ -306,8 +347,7 @@ def register_auth_provider(name: str, provider_class: Type[AuthProvider], *args,
     if not issubclass(provider_class, AuthProvider):
         raise ValueError(f"Provider class must be a subclass of AuthProvider, got {provider_class.__name__}")
     
-    provider = provider_class(*args, **kwargs)
-    auth_provider_registry[name] = provider
+    auth_provider_registry[name] = provider_class
     logger.info(f"Registered auth provider '{name}' with class {provider_class.__name__}")
 
 
@@ -399,7 +439,7 @@ def create_auth_provider(auth_config: Dict[str, Any]) -> Optional[AuthProvider]:
     elif auth_type == "custom":
         provider_name = auth_config.get("provider_name")
         if provider_name and provider_name in auth_provider_registry:
-            return auth_provider_registry[provider_name]
+            return auth_provider_registry[provider_name](**auth_config)
         else:
             logger.error(f"未找到名为'{provider_name}'的自定义认证提供者")
             return None

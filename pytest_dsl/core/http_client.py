@@ -1,13 +1,10 @@
-import os
 import json
-import time
 import logging
-from typing import Dict, List, Any, Optional, Union, Tuple
+from typing import Dict, Any 
 import requests
-from requests.exceptions import RequestException
 from urllib.parse import urljoin
 from pytest_dsl.core.yaml_vars import yaml_vars
-from pytest_dsl.core.auth_provider import AuthProvider, create_auth_provider
+from pytest_dsl.core.auth_provider import create_auth_provider
 
 logger = logging.getLogger(__name__)
 
@@ -125,10 +122,14 @@ class HTTPClient:
                 
         elif self.auth_provider and 'auth' not in request_kwargs:
             # 应用认证提供者
-            request_kwargs = self.auth_provider.apply_auth(request_kwargs)
+            request_kwargs = self.auth_provider.apply_auth(self.base_url, request_kwargs)
             # 如果使用会话，更新会话头
             if self.use_session and 'headers' in request_kwargs:
                 self._session.headers.update(request_kwargs['headers'])
+
+        # 调用认证提供者的请求前钩子
+        if self.auth_provider and not disable_auth:
+            request_kwargs = self.auth_provider.pre_request_hook(method, url, request_kwargs)
 
         # 记录请求详情
         logger.debug(f"=== HTTP请求详情 ===")
@@ -185,6 +186,10 @@ class HTTPClient:
             # 添加响应时间
             if not hasattr(response, 'elapsed_ms'):
                 response.elapsed_ms = response.elapsed.total_seconds() * 1000
+                
+            # 调用认证提供者的响应处理钩子
+            if self.auth_provider and not disable_auth:
+                self.auth_provider.post_response_hook(response, request_kwargs)
                 
             return response
         except requests.exceptions.RequestException as e:

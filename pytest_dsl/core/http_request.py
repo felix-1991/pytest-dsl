@@ -2,13 +2,30 @@ import json
 import re
 import yaml
 import jsonpath_ng.ext as jsonpath
-from typing import Dict, List, Any, Union, Optional, Tuple
+from typing import Dict, List, Any, Union, Optional, Tuple, Set
 import lxml.etree as etree
 from requests import Response
 import allure
 import requests
 
 from pytest_dsl.core.http_client import http_client_manager
+
+
+# 定义支持的比较操作符
+COMPARISON_OPERATORS = {
+    "eq", "neq", "lt", "lte", "gt", "gte", "in", "not_in"
+}
+
+# 定义支持的断言类型
+ASSERTION_TYPES = {
+    "exists", "not_exists", "contains", "not_contains", "startswith", 
+    "endswith", "matches", "type", "length", "schema", "value"
+}
+
+# 操作符和断言类型重叠的集合（可以作为二者使用的）
+DUAL_PURPOSE = {
+    "contains", "not_contains", "matches", "in", "not_in"
+}
 
 
 class HTTPRequest:
@@ -122,14 +139,17 @@ class HTTPRequest:
             # 重新抛出异常
             raise ValueError(f"HTTP请求执行错误: {str(e)}") from e
     
-    def process_captures(self) -> Dict[str, Any]:
-        """处理响应捕获
+    def _ensure_response_exists(self, operation: str = "处理"):
+        """确保响应对象存在
         
-        Returns:
-            捕获的值字典
+        Args:
+            operation: 操作名称，用于错误消息
+            
+        Raises:
+            ValueError: 如果响应对象不存在
         """
         if not self.response:
-            error_message = "需要先执行请求才能捕获响应"
+            error_message = f"需要先执行请求才能{operation}"
             # 记录更详细的错误信息到Allure
             debug_info = (
                 f"错误详情: self.response 为 None\n"
@@ -138,10 +158,18 @@ class HTTPRequest:
             )
             allure.attach(
                 debug_info,
-                name="捕获失败详情",
+                name=f"{operation}失败详情",
                 attachment_type=allure.attachment_type.TEXT
             )
             raise ValueError(error_message)
+            
+    def process_captures(self) -> Dict[str, Any]:
+        """处理响应捕获
+        
+        Returns:
+            捕获的值字典
+        """
+        self._ensure_response_exists("捕获响应")
             
         captures_config = self.config.get('captures', {})
         
@@ -178,38 +206,19 @@ class HTTPRequest:
                             attachment_type=allure.attachment_type.TEXT
                         )
                     except Exception as e:
-                        # 如果无法计算长度，记录错误并添加请求和响应信息
-                        error_msg = f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n错误: 无法计算长度: {str(e)}"
-                        
-                        # 添加请求信息
-                        error_msg += "\n\n=== 请求信息 ==="
-                        error_msg += f"\nMethod: {self.config.get('method', 'GET')}"
-                        error_msg += f"\nURL: {self.config.get('url', '')}"
-                        if 'headers' in self.config.get('request', {}):
-                            error_msg += "\nHeaders: " + str(self.config.get('request', {}).get('headers', {}))
-                        if 'params' in self.config.get('request', {}):
-                            error_msg += "\nParams: " + str(self.config.get('request', {}).get('params', {}))
-                        if 'json' in self.config.get('request', {}):
-                            error_msg += "\nJSON Body: " + str(self.config.get('request', {}).get('json', {}))
-                        
-                        # 添加响应信息
-                        error_msg += "\n\n=== 响应信息 ==="
-                        error_msg += f"\nStatus: {self.response.status_code} {self.response.reason}"
-                        error_msg += f"\nHeaders: {dict(self.response.headers)}"
-                        try:
-                            if 'application/json' in self.response.headers.get('Content-Type', ''):
-                                error_msg += f"\nBody: {json.dumps(self.response.json(), ensure_ascii=False)}"
-                            else:
-                                error_msg += f"\nBody: {self.response.text}"
-                        except:
-                            error_msg += "\nBody: <无法解析响应体>"
-                        
+                        # 记录长度计算失败的详细信息
+                        error_msg = (
+                            f"无法计算长度: {type(e).__name__}: {str(e)}\n"
+                            f"类型: {type(original_value).__name__}\n"
+                            f"值: {original_value}"
+                        )
                         allure.attach(
                             error_msg,
-                            name=f"捕获长度失败: {var_name}",
+                            name=f"长度计算失败: {extractor_type} {extraction_path}",
                             attachment_type=allure.attachment_type.TEXT
                         )
-                        captured_value = 0  # 默认长度
+                        # 抛出更具体的异常，而不是用0替代
+                        raise ValueError(f"断言类型'length'无法应用于值 '{original_value}': {str(e)}")
                 else:
                     # 记录捕获到Allure
                     allure.attach(
@@ -235,21 +244,90 @@ class HTTPRequest:
         
         return self.captured_values
     
-    def process_asserts(self, specific_asserts=None) -> List[Dict[str, Any]]:
+    def _format_error_details(self, 
+                        extractor_type: str, 
+                        extraction_path: str, 
+                        assertion_type: str,
+                        compare_operator: str,
+                        actual_value: Any,
+                        expected_value: Any,
+                        original_actual_value: Any = None,
+                        error_message: str = None,
+                        additional_context: str = None) -> str:
+        """格式化断言错误的详细信息
+        
+        Args:
+            extractor_type: 提取器类型
+            extraction_path: 提取路径
+            assertion_type: 断言类型
+            compare_operator: 比较操作符
+            actual_value: 实际值
+            expected_value: 预期值
+            original_actual_value: 原始值（用于length断言）
+            error_message: 错误消息
+            additional_context: 附加上下文信息
+            
+        Returns:
+            格式化的错误详情字符串
+        """
+        error_details = []
+        
+        # 添加基本错误信息
+        prefix = "断言执行错误" if additional_context else "断言失败"
+        error_details.append(f"{prefix} [{extractor_type}]")
+        
+        # 添加异常类型信息（如果存在）
+        if additional_context:
+            error_details.append(f"异常类型: {additional_context}")
+        
+        # 添加路径信息
+        if extraction_path:
+            error_details.append(f"路径: {extraction_path}")
+        
+        # 添加断言类型和值信息
+        if assertion_type == "length":
+            error_details.append(f"断言类型: 长度比较")
+            if original_actual_value is not None:
+                error_details.append(f"原始值: {original_actual_value}")
+            error_details.append(f"实际长度: {actual_value}")
+        else:
+            error_details.append(f"断言类型: {assertion_type}")
+            error_details.append(f"实际值: {actual_value}")
+        
+        # 添加比较操作符
+        if compare_operator:
+            error_details.append(f"比较操作符: {compare_operator}")
+        
+        # 添加预期值
+        if expected_value is not None:
+            error_details.append(f"预期值: {expected_value}")
+        
+        # 添加类型信息
+        error_details.append(f"实际类型: {type(actual_value).__name__}")
+        if expected_value is not None:
+            error_details.append(f"预期类型: {type(expected_value).__name__}")
+        
+        # 添加错误消息
+        if error_message:
+            error_details.append(f"错误信息: {error_message}")
+        
+        return "\n".join(error_details)
+
+    def process_asserts(self, specific_asserts=None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """处理响应断言
         
         Args:
             specific_asserts: 指定要处理的断言列表，如果为None则处理所有断言
             
         Returns:
-            断言结果列表
+            Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]: 断言结果列表和失败需重试的断言列表
         """
-        if not self.response:
-            raise ValueError("需要先执行请求才能进行断言")
-            
+        self._ensure_response_exists("进行断言")
+        
         asserts_config = self.config.get('asserts', [])
         assert_results = []
         failed_retryable_assertions = []
+        failed_assertions = []  # 收集所有失败的断言
         
         # 处理断言重试配置
         # 1. 只使用独立的retry_assertions配置
@@ -303,37 +381,103 @@ class HTTPRequest:
                 is_retryable = True
             
             # 处理断言参数
-            if len(assertion) == 2:  # 存在性断言 ["header", "Location", "exists"]
+            if len(assertion) == 2:  # 简单存在性断言 ["header", "Location"]
                 extraction_path = assertion[1]
                 assertion_type = "exists"
                 expected_value = None
                 compare_operator = "eq"  # 默认比较操作符
             elif len(assertion) == 3:  # 简单断言 ["status", "eq", 200]
-                if extractor_type in ["status", "body", "response_time"]:
-                    extraction_path = None
-                    assertion_type = "value"  # 标记为简单值比较
-                    compare_operator = assertion[1]  # 比较操作符
+                # 检查第二个元素是否是操作符或二者兼用的断言类型
+                if assertion[1] in COMPARISON_OPERATORS or assertion[1] in DUAL_PURPOSE:
+                    # 这是操作符格式的断言 ["status", "eq", 200]
+                    extraction_path = None if extractor_type in ["status", "body", "response_time"] else assertion[1]
+                    
+                    # 特殊处理二者兼用的断言类型
+                    if assertion[1] in DUAL_PURPOSE:
+                        if extractor_type in ["jsonpath", "body", "header"]:
+                            # 当提取器是jsonpath/body/header时，将contains当作断言类型处理
+                            assertion_type = assertion[1]
+                            compare_operator = "eq"  # 默认操作符
+                        else:
+                            # 否则当作操作符处理
+                            assertion_type = "value"
+                            compare_operator = assertion[1]
+                    else:
+                        assertion_type = "value"  # 标记为值比较
+                        compare_operator = assertion[1]  # 比较操作符
+                    
                     expected_value = assertion[2]  # 预期值
                 else:
+                    # 这是断言类型格式 ["jsonpath", "$.id", "exists"]
                     extraction_path = assertion[1]
                     assertion_type = assertion[2]
-                    compare_operator = "eq"  # 默认比较操作符
-                    expected_value = None
-            elif len(assertion) == 4:  # 带操作符的断言 ["jsonpath", "$.id", "eq", 1]
+                    
+                    # 检查断言类型是否有效
+                    if assertion_type not in ASSERTION_TYPES:
+                        raise ValueError(f"不支持的断言类型: {assertion_type} 在 {assertion}")
+                    
+                    # 检查此断言类型是否需要预期值
+                    if assertion_type not in ["exists", "not_exists"]:
+                        # 特殊处理类型断言，它确实需要一个值但在这种格式中没有提供
+                        if assertion_type == "type":
+                            raise ValueError(f"断言类型 'type' 需要预期值(string/number/boolean/array/object/null)，但未提供: {assertion}")
+                        # 如果是不需要值的断言类型，则允许这种格式
+                        expected_value = None
+                        compare_operator = "eq"  # 默认比较操作符
+                    else:
+                        expected_value = None
+                        compare_operator = "eq"  # 默认比较操作符
+            elif len(assertion) == 4:  # 带操作符的断言 ["jsonpath", "$.id", "eq", 1] 或特殊断言 ["jsonpath", "$.type", "type", "string"]
                 extraction_path = assertion[1]
-                if assertion[2] in ["eq", "neq", "lt", "lte", "gt", "gte"]:
-                    # 这是带比较操作符的断言
+                
+                # 检查第三个元素是否是操作符
+                if assertion[2] in COMPARISON_OPERATORS or assertion[2] in DUAL_PURPOSE:
+                    # 这是操作符形式的断言
                     assertion_type = "value"  # 标记为值比较
                     compare_operator = assertion[2]  # 比较操作符
                     expected_value = assertion[3]  # 预期值
                 else:
+                    # 检查断言类型是否有效
+                    if assertion[2] not in ASSERTION_TYPES:
+                        raise ValueError(f"不支持的断言类型: {assertion[2]} 在 {assertion}")
+                        
                     # 其他类型的断言，比如特殊断言
                     assertion_type = assertion[2]
-                    compare_operator = "eq"  # 默认比较操作符
-                    expected_value = assertion[3]
+                    
+                    # 根据断言类型决定如何处理操作符和期望值
+                    if assertion_type == "length":
+                        # 对于长度断言，总是需要有比较操作符和期望值
+                        if len(assertion) < 4:
+                            raise ValueError(f"长度断言需要提供预期值: {assertion}")
+                        compare_operator = "eq"  # 在这种4元素格式中，使用默认比较操作符eq
+                        expected_value = assertion[3]  # 预期长度值
+                    else:
+                        # 对于其他特殊断言，使用第四个元素作为期望值
+                        compare_operator = "eq"  # 默认比较操作符
+                        expected_value = assertion[3]
             else:  # 5个参数，例如 ["jsonpath", "$", "length", "eq", 10]
                 extraction_path = assertion[1]
                 assertion_type = assertion[2]
+                
+                # 检查断言类型是否有效
+                if assertion_type not in ASSERTION_TYPES:
+                    raise ValueError(f"不支持的断言类型: {assertion_type} 在 {assertion}")
+                
+                # 特殊处理长度断言
+                if assertion_type == "length":
+                    # 验证第四个元素是有效的比较操作符
+                    if assertion[3] not in COMPARISON_OPERATORS:
+                        raise ValueError(f"长度断言的比较操作符必须是 {', '.join(COMPARISON_OPERATORS)} 之一: {assertion}")
+                    
+                    # 验证第五个元素是有效的长度值
+                    try:
+                        # 尝试将预期长度转换为整数
+                        expected_length = int(assertion[4])
+                        if expected_length < 0:
+                            raise ValueError(f"长度断言的预期值必须是非负整数: {assertion}")
+                    except (ValueError, TypeError):
+                        raise ValueError(f"长度断言的预期值必须是有效的整数: {assertion}")
+                
                 compare_operator = assertion[3]
                 expected_value = assertion[4]
             
@@ -344,10 +488,35 @@ class HTTPRequest:
             original_actual_value = actual_value
             if assertion_type == "length" and extractor_type != "response_time" and extractor_type != "status" and extractor_type != "body":
                 try:
+                    # 记录长度断言的原始值信息
+                    allure.attach(
+                        f"提取器: {extractor_type}\n路径: {extraction_path}\n原始值: {original_actual_value}\n类型: {type(original_actual_value).__name__}",
+                        name=f"长度断言原始值: {extractor_type}",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    
                     actual_value = len(actual_value)
+                    
+                    # 记录计算结果
+                    allure.attach(
+                        f"提取器: {extractor_type}\n路径: {extraction_path}\n长度: {actual_value}",
+                        name=f"长度断言计算结果: {extractor_type}",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
                 except Exception as e:
-                    # 长度计算失败的信息已在_extract_value中记录
-                    actual_value = 0
+                    # 记录长度计算失败的详细信息
+                    error_msg = (
+                        f"无法计算长度: {type(e).__name__}: {str(e)}\n"
+                        f"类型: {type(original_actual_value).__name__}\n"
+                        f"值: {original_actual_value}"
+                    )
+                    allure.attach(
+                        error_msg,
+                        name=f"长度计算失败: {extractor_type} {extraction_path}",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    # 抛出更具体的异常，而不是用0替代
+                    raise ValueError(f"断言类型'length'无法应用于值 '{original_actual_value}': {str(e)}")
             
             # 执行断言
             assertion_result = {
@@ -368,18 +537,68 @@ class HTTPRequest:
                 # 验证断言
                 result = self._perform_assertion(assertion_type, compare_operator, actual_value, expected_value)
                 assertion_result['result'] = result
-                assertion_result['passed'] = True
                 
-                # 使用Allure记录断言成功
-                allure.attach(
-                    self._format_assertion_details(assertion_result),
-                    name=f"断言成功: {extractor_type}",
-                    attachment_type=allure.attachment_type.TEXT
-                )
+                # 根据返回的布尔值确定断言是否通过
+                if result:
+                    assertion_result['passed'] = True
+                    
+                    # 使用Allure记录断言成功
+                    allure.attach(
+                        self._format_assertion_details(assertion_result),
+                        name=f"断言成功: {extractor_type}",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                else:
+                    # 断言失败但没有抛出异常
+                    assertion_result['passed'] = False
+                    assertion_result['error'] = "断言失败"
+                    
+                    # 使用Allure记录断言失败
+                    allure.attach(
+                        self._format_assertion_details(assertion_result) + "\n\n错误: 断言结果为False",
+                        name=f"断言失败: {extractor_type}",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    
+                    # 如果断言可重试，添加到失败且需要重试的断言列表
+                    if is_retryable:
+                        failed_retryable_assertions.append(assertion_result)
+                    
+                    # 构建格式化的错误消息
+                    formatted_error = self._format_error_details(
+                        extractor_type=extractor_type,
+                        extraction_path=extraction_path,
+                        assertion_type=assertion_type,
+                        compare_operator=compare_operator,
+                        actual_value=actual_value,
+                        expected_value=expected_value,
+                        original_actual_value=original_actual_value
+                    )
+                    
+                    # 收集断言失败，而不是立即抛出异常
+                    failed_assertions.append((assertion_idx, formatted_error))
+                    
             except AssertionError as e:
+                # 处理上面可能抛出的断言错误，或者其他断言错误
                 assertion_result['result'] = False
                 assertion_result['passed'] = False
                 assertion_result['error'] = str(e)
+                
+                # 如果异常已经是格式化的多行消息，直接使用
+                if "\n" in str(e):
+                    formatted_error = str(e)
+                else:
+                    # 使用辅助方法构建详细的错误消息
+                    formatted_error = self._format_error_details(
+                        extractor_type=extractor_type,
+                        extraction_path=extraction_path,
+                        assertion_type=assertion_type,
+                        compare_operator=compare_operator,
+                        actual_value=actual_value,
+                        expected_value=expected_value,
+                        original_actual_value=original_actual_value,
+                        error_message=str(e)
+                    )
                 
                 # 使用Allure记录断言失败
                 allure.attach(
@@ -392,10 +611,51 @@ class HTTPRequest:
                 if is_retryable:
                     failed_retryable_assertions.append(assertion_result)
                 
-                # 抛出异常（会在外层捕获）
-                raise AssertionError(f"断言失败 [{extractor_type}]: {str(e)}")
+                # 收集断言失败，而不是立即抛出异常
+                failed_assertions.append((assertion_idx, formatted_error))
+                
+            except Exception as e:
+                # 处理其他类型的异常
+                assertion_result['result'] = False
+                assertion_result['passed'] = False
+                assertion_result['error'] = f"未预期的异常: {type(e).__name__}: {str(e)}"
+                
+                # 使用辅助方法构建详细的错误消息
+                formatted_error = self._format_error_details(
+                    extractor_type=extractor_type,
+                    extraction_path=extraction_path,
+                    assertion_type=assertion_type,
+                    compare_operator=compare_operator,
+                    actual_value=actual_value,
+                    expected_value=expected_value,
+                    original_actual_value=original_actual_value,
+                    error_message=str(e),
+                    additional_context=type(e).__name__
+                )
+                
+                # 使用Allure记录断言错误
+                allure.attach(
+                    self._format_assertion_details(assertion_result) + f"\n\n错误: {assertion_result['error']}",
+                    name=f"断言执行错误: {extractor_type}",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+                
+                # 收集断言失败，而不是立即抛出异常
+                failed_assertions.append((assertion_idx, formatted_error))
             
             assert_results.append(assertion_result)
+        
+        # 执行完所有断言后，如果有失败的断言，抛出异常
+        if failed_assertions:
+            if len(failed_assertions) == 1:
+                # 只有一个断言失败时，直接使用该断言的错误消息
+                raise AssertionError(failed_assertions[0][1])
+            else:
+                # 多个断言失败时，汇总所有错误
+                error_summary = f"多个断言失败 ({len(failed_assertions)}/{len(process_asserts)}):\n"
+                for idx, (assertion_idx, error_msg) in enumerate(failed_assertions, 1):
+                    error_summary += f"\n{idx}. 断言 #{assertion_idx+1}: {error_msg.split('断言失败')[0].strip()}"
+                raise AssertionError(error_summary)
         
         # 返回断言结果和需要重试的断言
         return assert_results, failed_retryable_assertions
@@ -590,27 +850,69 @@ class HTTPRequest:
         Returns:
             断言结果
         """
-        # 类型转换
+        # 类型转换增强
         if operator in ["eq", "neq", "lt", "lte", "gt", "gte"] and expected_value is not None:
-            if isinstance(expected_value, str):
-                # 去除空白字符和换行符后再判断
-                clean_expected = expected_value.strip()
-                if clean_expected.isdigit():
-                    expected_value = int(clean_expected)
-                elif clean_expected.replace('.', '', 1).isdigit():
-                    expected_value = float(clean_expected)
+            # 尝试转换数字字符串为数字
+            try:
+                # 将预期值转换为适当的类型
+                if isinstance(expected_value, str):
+                    # 去除空白字符和换行符
+                    clean_expected = expected_value.strip()
+                    
+                    # 判断是否是整数
+                    if clean_expected.isdigit() or (clean_expected.startswith('-') and clean_expected[1:].isdigit()):
+                        expected_value = int(clean_expected)
+                    # 判断是否是浮点数（包括科学记数法）
+                    elif (
+                        # 标准小数
+                        (clean_expected.replace('.', '', 1).isdigit()) or
+                        # 负小数
+                        (clean_expected.startswith('-') and clean_expected[1:].replace('.', '', 1).isdigit()) or
+                        # 科学记数法 - 正
+                        (('e' in clean_expected or 'E' in clean_expected) and
+                         clean_expected.replace('e', '').replace('E', '').replace('+', '', 1).replace('-', '', 1).replace('.', '', 1).isdigit()) or
+                        # 科学记数法 - 负
+                        (clean_expected.startswith('-') and ('e' in clean_expected or 'E' in clean_expected) and
+                         clean_expected[1:].replace('e', '').replace('E', '').replace('+', '', 1).replace('-', '', 1).replace('.', '', 1).isdigit())
+                    ):
+                        expected_value = float(clean_expected)
                 
-            if isinstance(actual_value, str):
-                # 去除空白字符和换行符后再判断
-                clean_actual = actual_value.strip()
-                if clean_actual.isdigit():
-                    actual_value = int(clean_actual)
-                elif clean_actual.replace('.', '', 1).isdigit():
-                    actual_value = float(clean_actual)
+                # 将实际值转换为适当的类型
+                if isinstance(actual_value, str):
+                    # 去除空白字符和换行符
+                    clean_actual = actual_value.strip()
+                    
+                    # 判断是否是整数
+                    if clean_actual.isdigit() or (clean_actual.startswith('-') and clean_actual[1:].isdigit()):
+                        actual_value = int(clean_actual)
+                    # 判断是否是浮点数（包括科学记数法）
+                    elif (
+                        # 标准小数
+                        (clean_actual.replace('.', '', 1).isdigit()) or
+                        # 负小数
+                        (clean_actual.startswith('-') and clean_actual[1:].replace('.', '', 1).isdigit()) or
+                        # 科学记数法 - 正
+                        (('e' in clean_actual or 'E' in clean_actual) and
+                         clean_actual.replace('e', '').replace('E', '').replace('+', '', 1).replace('-', '', 1).replace('.', '', 1).isdigit()) or
+                        # 科学记数法 - 负
+                        (clean_actual.startswith('-') and ('e' in clean_actual or 'E' in clean_actual) and
+                         clean_actual[1:].replace('e', '').replace('E', '').replace('+', '', 1).replace('-', '', 1).replace('.', '', 1).isdigit())
+                    ):
+                        actual_value = float(clean_actual)
+            except (ValueError, TypeError) as e:
+                # 转换失败时记录日志但不抛出异常，保持原值进行比较
+                allure.attach(
+                    f"类型转换失败: {str(e)}\n实际值: {actual_value} ({type(actual_value).__name__})\n预期值: {expected_value} ({type(expected_value).__name__})",
+                    name="断言类型转换警告",
+                    attachment_type=allure.attachment_type.TEXT
+                )
         
         # 基于断言类型执行断言
-        if assertion_type == "value" or assertion_type == "length":
+        if assertion_type == "value":
             # 直接使用操作符进行比较
+            return self._compare_values(actual_value, expected_value, operator)
+        elif assertion_type == "length":
+            # 长度比较
             return self._compare_values(actual_value, expected_value, operator)
         elif assertion_type == "exists":
             return actual_value is not None
@@ -631,27 +933,32 @@ class HTTPRequest:
                 return actual_value is None
             return False
         elif assertion_type == "contains":
-            if isinstance(actual_value, str) and isinstance(expected_value, str):
-                return expected_value in actual_value
+            # contains断言总是检查actual是否包含expected
+            if isinstance(actual_value, str):
+                return str(expected_value) in actual_value
             elif isinstance(actual_value, (list, tuple, dict)):
                 return expected_value in actual_value
             return False
+        elif assertion_type == "not_contains":
+            # not_contains断言总是检查actual是否不包含expected
+            if isinstance(actual_value, str):
+                return str(expected_value) not in actual_value
+            elif isinstance(actual_value, (list, tuple, dict)):
+                return expected_value not in actual_value
+            return True
         elif assertion_type == "startswith":
-            return isinstance(actual_value, str) and actual_value.startswith(expected_value)
+            return isinstance(actual_value, str) and actual_value.startswith(str(expected_value))
         elif assertion_type == "endswith":
-            return isinstance(actual_value, str) and actual_value.endswith(expected_value)
+            return isinstance(actual_value, str) and actual_value.endswith(str(expected_value))
         elif assertion_type == "matches":
-            if not isinstance(actual_value, str) or not isinstance(expected_value, str):
+            if not isinstance(actual_value, str):
                 return False
             try:
                 import re
-                return bool(re.search(expected_value, actual_value))
+                pattern = str(expected_value)
+                return bool(re.search(pattern, actual_value))
             except:
                 return False
-        elif assertion_type == "in":
-            return actual_value in expected_value
-        elif assertion_type == "not_in":
-            return actual_value not in expected_value
         elif assertion_type == "schema":
             try:
                 from jsonschema import validate
@@ -661,7 +968,7 @@ class HTTPRequest:
                 return False
         else:
             raise ValueError(f"不支持的断言类型: {assertion_type}")
-    
+            
     def _compare_values(self, actual_value: Any, expected_value: Any, operator: str) -> bool:
         """比较两个值
         
@@ -686,29 +993,11 @@ class HTTPRequest:
         elif operator == "gte":
             return actual_value >= expected_value
         elif operator == "in":
+            # in操作符检查actual是否在expected列表中
             return actual_value in expected_value
         elif operator == "not_in":
+            # not_in操作符检查actual是否不在expected列表中
             return actual_value not in expected_value
-        elif operator == "contains":
-            if isinstance(actual_value, str) and isinstance(expected_value, str):
-                return expected_value in actual_value
-            elif isinstance(actual_value, (list, tuple, dict)):
-                return expected_value in actual_value
-            return False
-        elif operator == "not_contains":
-            if isinstance(actual_value, str) and isinstance(expected_value, str):
-                return expected_value not in actual_value
-            elif isinstance(actual_value, (list, tuple, dict)):
-                return expected_value not in actual_value
-            return True
-        elif operator == "matches":
-            if not isinstance(actual_value, str) or not isinstance(expected_value, str):
-                return False
-            try:
-                import re
-                return bool(re.search(expected_value, actual_value))
-            except:
-                return False
         else:
             raise ValueError(f"不支持的比较操作符: {operator}")
     
