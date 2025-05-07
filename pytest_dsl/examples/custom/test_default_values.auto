@@ -1,0 +1,34 @@
+@name: 默认值测试
+@description: 测试自定义关键字默认值功能
+@tags: [测试, 自定义关键字, 默认值]
+@author: Felix
+@date: 2024-06-11
+
+# 导入资源文件
+@import: "pytest_dsl/examples/custom/resources/common_utils.resource"
+@import: "pytest_dsl/examples/custom/resources/base_utils.resource"
+@import: "pytest_dsl/examples/custom/resources/advanced_utils.resource"
+
+[打印],内容:'开始测试自定义关键字默认值'
+
+# 测试带默认值的参数 - 不传递该参数
+[打印],内容:'测试不提供带默认值的参数:'
+拼接结果1 = [拼接字符串],前缀:"Hello "
+[打印],内容:'使用默认后缀的拼接结果: ${拼接结果1}'
+
+# 测试带默认值的参数 - 传递该参数
+[打印],内容:'测试提供带默认值的参数:'
+拼接结果2 = [拼接字符串],前缀:"Hello ",后缀:"Override"
+[打印],内容:'使用自定义后缀的拼接结果: ${拼接结果2}'
+
+# 测试base_utils.resource中的带默认值关键字
+格式化结果1 = [格式化消息],消息模板:"测试消息"
+[打印],内容:'使用默认变量的格式化结果: ${格式化结果1}'
+
+# 测试advanced_utils.resource中的带默认值关键字
+报告结果1 = [生成报告消息],标题:"仅标题测试"
+[打印],内容:'使用默认内容的报告:\n${报告结果1}'
+
+@teardown do
+    [打印],内容:'默认值测试完成'
+end 

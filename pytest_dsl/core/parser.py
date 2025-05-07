@@ -46,13 +46,16 @@ def p_metadata_item(p):
                     | TAGS_KEYWORD COLON LBRACKET tags RBRACKET
                     | AUTHOR_KEYWORD COLON metadata_value
                     | DATE_KEYWORD COLON DATE
-                    | DATA_KEYWORD COLON data_source'''
+                    | DATA_KEYWORD COLON data_source
+                    | IMPORT_KEYWORD COLON STRING'''
     if p[1] == '@tags':
         p[0] = Node(p[1], value=p[4])
     elif p[1] == '@data':
         # 对于数据驱动测试，将数据源信息存储在节点中
         data_info = p[3]  # 这是一个包含 file 和 format 的字典
         p[0] = Node(p[1], value=data_info, children=None)
+    elif p[1] == '@import':
+        p[0] = Node(p[1], value=p[3])
     else:
         p[0] = Node(p[1], value=p[3])
 
@@ -90,7 +93,9 @@ def p_statements(p):
 def p_statement(p):
     '''statement : assignment
                 | keyword_call
-                | loop'''
+                | loop
+                | custom_keyword
+                | return_statement'''
     p[0] = p[1]
 
 
@@ -183,6 +188,44 @@ def p_teardown(p):
 def p_data_source(p):
     '''data_source : STRING USING ID'''
     p[0] = {'file': p[1], 'format': p[3]}
+
+
+def p_custom_keyword(p):
+    '''custom_keyword : KEYWORD_KEYWORD ID LPAREN param_definitions RPAREN DO statements END'''
+    p[0] = Node('CustomKeyword', [p[4], p[7]], p[2])
+
+
+def p_param_definitions(p):
+    '''param_definitions : param_def_list
+                        | '''
+    if len(p) == 2:
+        p[0] = p[1]
+    else:
+        p[0] = []
+
+
+def p_param_def_list(p):
+    '''param_def_list : param_def COMMA param_def_list
+                     | param_def'''
+    if len(p) == 4:
+        p[0] = [p[1]] + p[3]
+    else:
+        p[0] = [p[1]]
+
+
+def p_param_def(p):
+    '''param_def : ID EQUALS STRING
+                | ID EQUALS NUMBER
+                | ID'''
+    if len(p) == 4:
+        p[0] = Node('ParameterDef', [Node('Expression', value=p[3])], p[1])
+    else:
+        p[0] = Node('ParameterDef', [], p[1])
+
+
+def p_return_statement(p):
+    '''return_statement : RETURN expression'''
+    p[0] = Node('Return', [p[2]])
 
 
 def p_error(p):

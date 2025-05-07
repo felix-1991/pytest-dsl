@@ -9,7 +9,8 @@ reserved = {
     'range': 'RANGE',
     'using': 'USING',  # Add new keyword for data-driven testing
     'True': 'TRUE',    # 添加布尔值支持
-    'False': 'FALSE'   # 添加布尔值支持
+    'False': 'FALSE',   # 添加布尔值支持
+    'return': 'RETURN'  # 添加return关键字支持
 }
 
 # token 名称列表
@@ -33,6 +34,8 @@ tokens = [
     'DATE_KEYWORD',
     'TEARDOWN_KEYWORD',
     'DATA_KEYWORD',  # Add new token for @data keyword
+    'KEYWORD_KEYWORD',  # 添加@keyword关键字
+    'IMPORT_KEYWORD',   # 添加@import关键字
 ] + list(reserved.values())
 
 # 正则表达式定义 token
@@ -103,6 +106,16 @@ def t_TEARDOWN_KEYWORD(t):
 
 def t_DATA_KEYWORD(t):
     r'@data'
+    return t
+
+
+def t_KEYWORD_KEYWORD(t):
+    r'@keyword'
+    return t
+
+
+def t_IMPORT_KEYWORD(t):
+    r'@import'
     return t
 
 

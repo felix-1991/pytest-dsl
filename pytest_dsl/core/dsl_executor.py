@@ -26,6 +26,7 @@ class DSLExecutor:
         self.test_context = TestContext()
         self.test_context.executor = self  # 让 test_context 能够访问到 executor
         self.variable_replacer = VariableReplacer(self.variables, self.test_context)
+        self.imported_files = set()  # 跟踪已导入的文件，避免循环导入
         
     def set_current_data(self, data):
         """设置当前测试数据集"""
@@ -133,6 +134,9 @@ class DSLExecutor:
                 if child.type == 'Metadata':
                     for item in child.children:
                         metadata[item.type] = item.value
+                        # 处理导入指令
+                        if item.type == '@import':
+                            self._handle_import(item.value)
                 elif child.type == 'Teardown':
                     teardown_node = child
             
@@ -153,6 +157,25 @@ class DSLExecutor:
         finally:
             # 测试用例执行完成后清空上下文
             self.test_context.clear()
+
+    def _handle_import(self, file_path):
+        """处理导入指令
+        
+        Args:
+            file_path: 资源文件路径
+        """
+        # 防止循环导入
+        if file_path in self.imported_files:
+            return
+        
+        try:
+            # 导入自定义关键字文件
+            from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
+            custom_keyword_manager.load_resource_file(file_path)
+            self.imported_files.add(file_path)
+        except Exception as e:
+            print(f"导入资源文件失败: {file_path}, 错误: {str(e)}")
+            raise
 
     def _execute_test_iteration(self, metadata, node, teardown_node):
         """执行测试迭代"""
@@ -305,6 +328,19 @@ class DSLExecutor:
         """处理清理操作"""
         self.execute(node.children[0])
 
+    @allure.step("执行返回语句")
+    def _handle_return(self, node):
+        """处理return语句
+        
+        Args:
+            node: Return节点
+            
+        Returns:
+            表达式求值结果
+        """
+        expr_node = node.children[0]
+        return self.eval_expression(expr_node)
+
     def execute(self, node):
         """执行AST节点"""
         handlers = {
@@ -315,7 +351,8 @@ class DSLExecutor:
             'AssignmentKeywordCall': self._handle_assignment_keyword_call,
             'ForLoop': self._handle_for_loop,
             'KeywordCall': self._execute_keyword_call,
-            'Teardown': self._handle_teardown
+            'Teardown': self._handle_teardown,
+            'Return': self._handle_return
         }
         
         handler = handlers.get(node.type)
