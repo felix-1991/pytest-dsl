@@ -110,7 +110,7 @@ class VariableReplacer:
             return value
             
         # 处理变量引用模式: ${variable} 或 ${variable.field.subfield}
-        pattern = r'\$\{([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)\}'
+        pattern = r'\$\{([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*(?:\.[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)*)\}'
         
         result = value
         matches = list(re.finditer(pattern, result))

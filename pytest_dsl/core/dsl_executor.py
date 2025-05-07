@@ -101,7 +101,7 @@ class DSLExecutor:
             return self.eval_expression(value)
         elif isinstance(value, str):
             # 定义变量引用模式
-            pattern = r'\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}'
+            pattern = r'\$\{([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\}'
             # 检查整个字符串是否完全匹配单一变量引用模式
             match = re.fullmatch(pattern, value)
             if match:
