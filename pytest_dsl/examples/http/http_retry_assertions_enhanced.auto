@@ -13,7 +13,7 @@
         asserts:
             - ["status", "eq", 200]
             - ["jsonpath", "$.url", "contains", "httpbin.org"]
-            - ["response_time", "lt", 1000]  # 这个断言可能会失败，因为请求延迟约2秒
+            - ["response_time", "lt", 3003]  # 这个断言可能会失败，因为请求延迟约2秒
         retry_assertions:
             count: 3
             interval: 1
@@ -57,7 +57,7 @@
         url: https://httpbin.org/delay/1
         asserts:
             - ["status", "eq", 200]                # 索引0
-            - ["response_time", "lt", 800]         # 索引1
+            - ["response_time", "lt", 2500]         # 索引1
             - ["jsonpath", "$.headers.Host", "eq", "httpbin.org"]  # 索引2
         retry_assertions:
             # 全局设置

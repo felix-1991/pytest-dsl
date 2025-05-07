@@ -149,6 +149,75 @@ def _process_request_config(config: Dict[str, Any], test_context: TestContext = 
     return config
 
 
+def _normalize_retry_config(config, assert_retry_count=None, assert_retry_interval=None):
+    """标准化断言重试配置
+    
+    将不同来源的重试配置（命令行参数、retry配置、retry_assertions配置）
+    统一转换为标准化的重试配置对象。
+    
+    Args:
+        config: 原始配置字典
+        assert_retry_count: 命令行级别的重试次数参数
+        assert_retry_interval: 命令行级别的重试间隔参数
+        
+    Returns:
+        标准化的重试配置字典，格式为:
+        {
+            'enabled': 是否启用重试,
+            'count': 重试次数,
+            'interval': 重试间隔,
+            'all': 是否重试所有断言,
+            'indices': 要重试的断言索引列表,
+            'specific': 特定断言的重试配置
+        }
+    """
+    # 初始化标准重试配置
+    standard_retry_config = {
+        'enabled': False,
+        'count': 3,          # 默认重试3次
+        'interval': 1.0,     # 默认间隔1秒
+        'all': False,        # 默认不重试所有断言
+        'indices': [],       # 默认不指定要重试的断言索引
+        'specific': {}       # 默认不指定特定断言的重试配置
+    }
+    
+    # 处理命令行参数
+    if assert_retry_count and int(assert_retry_count) > 0:
+        standard_retry_config['enabled'] = True
+        standard_retry_config['count'] = int(assert_retry_count)
+        standard_retry_config['all'] = True  # 命令行参数会重试所有断言
+        if assert_retry_interval:
+            standard_retry_config['interval'] = float(assert_retry_interval)
+    
+    # 处理专用retry_assertions配置
+    if 'retry_assertions' in config and config['retry_assertions']:
+        retry_assertions = config['retry_assertions']
+        standard_retry_config['enabled'] = True
+        
+        if 'count' in retry_assertions:
+            standard_retry_config['count'] = retry_assertions['count']
+        if 'interval' in retry_assertions:
+            standard_retry_config['interval'] = retry_assertions['interval']
+        if 'all' in retry_assertions:
+            standard_retry_config['all'] = retry_assertions['all']
+        if 'indices' in retry_assertions:
+            standard_retry_config['indices'] = retry_assertions['indices']
+        if 'specific' in retry_assertions:
+            standard_retry_config['specific'] = retry_assertions['specific']
+    
+    # 处理传统retry配置（如果专用配置不存在）
+    elif 'retry' in config and config['retry']:
+        retry_config = config['retry']
+        if 'count' in retry_config and retry_config['count'] > 0:
+            standard_retry_config['enabled'] = True
+            standard_retry_config['count'] = retry_config['count']
+            standard_retry_config['all'] = True  # 传统配置会重试所有断言
+            if 'interval' in retry_config:
+                standard_retry_config['interval'] = retry_config['interval']
+    
+    return standard_retry_config
+
+
 @keyword_manager.register('HTTP请求', [
     {'name': '客户端', 'mapping': 'client', 'description': '客户端名称，对应YAML变量文件中的客户端配置'},
     {'name': '配置', 'mapping': 'config', 'description': '包含请求、捕获和断言的YAML配置'},
@@ -228,24 +297,18 @@ def http_request(context, **kwargs):
             except yaml.YAMLError as e:
                 raise ValueError(f"无效的YAML配置: {str(e)}")
 
-        # 如果提供了命令行级别的断言重试参数，将其添加到新的retry_assertions配置中
-        if assert_retry_count and int(assert_retry_count) > 0:
-            # 检查配置中是否已经有retry_assertions配置
-            if 'retry_assertions' not in config:
-                config['retry_assertions'] = {}
-            
-            # 设置全局重试次数和间隔
-            config['retry_assertions']['count'] = int(assert_retry_count)
-            config['retry_assertions']['all'] = True
-            if assert_retry_interval:
-                config['retry_assertions']['interval'] = float(assert_retry_interval)
-            
-            # 向后兼容：同时设置旧格式的retry配置
-            if 'retry' not in config:
-                config['retry'] = {}
-            config['retry']['count'] = int(assert_retry_count)
-            if assert_retry_interval:
-                config['retry']['interval'] = float(assert_retry_interval)
+        # 统一处理重试配置
+        retry_config = _normalize_retry_config(config, assert_retry_count, assert_retry_interval)
+        
+        # 为了兼容性，将标准化后的重试配置写回到配置中
+        if retry_config['enabled']:
+            config['retry_assertions'] = {
+                'count': retry_config['count'],
+                'interval': retry_config['interval'],
+                'all': retry_config['all'],
+                'indices': retry_config['indices'],
+                'specific': retry_config['specific']
+            }
         
         config = _process_request_config(config, test_context=context)
         
@@ -266,22 +329,14 @@ def http_request(context, **kwargs):
         if save_response:
             context.set(save_response, response)
 
-        # 检查是否有配置中的断言重试设置
-        has_retry_assertions = 'retry_assertions' in config
-        has_legacy_retry = 'retry' in config
-        
-        # 处理断言（支持配置中的重试设置）
-        if has_retry_assertions or has_legacy_retry:
-            # 使用配置式断言重试
-            with allure.step("执行配置式断言验证（支持选择性重试）"):
-                _process_config_based_assertions_with_retry(http_req)
-        elif assert_retry_count and int(assert_retry_count) > 0:
-            # 向后兼容：使用传统的断言重试
-            _process_assertions_with_retry(http_req, int(assert_retry_count), 
-                                        float(assert_retry_interval) if assert_retry_interval else 1.0)
-        else:
-            # 不需要重试，直接断言
-            http_req.process_asserts()
+        # 统一处理断言逻辑
+        with allure.step("执行断言验证"):
+            if retry_config['enabled']:
+                # 使用统一的重试处理函数
+                _process_assertions_with_unified_retry(http_req, retry_config)
+            else:
+                # 不需要重试，直接断言
+                http_req.process_asserts()
         
         # 返回捕获的变量
         return captured_values
@@ -305,82 +360,129 @@ def _deep_merge(dict1, dict2):
     return dict1
 
 
-def _process_assertions_with_retry(http_req, retry_count, retry_interval):
-    """处理断言并支持重试
+def _process_assertions_with_unified_retry(http_req, retry_config):
+    """使用统一的重试配置处理断言
     
     Args:
         http_req: HTTP请求对象
-        retry_count: 重试次数
-        retry_interval: 重试间隔（秒）
+        retry_config: 标准化的重试配置
     """
-    
-    for attempt in range(retry_count + 1):
-        try:
-            # 尝试执行断言
-            with allure.step(f"断言验证 (尝试 {attempt + 1}/{retry_count + 1})"):
-                # 修改为获取断言结果和失败的可重试断言
-                results, failed_retryable_assertions = http_req.process_asserts()
-                # 断言成功，直接返回
-                return results
-        except AssertionError as e:
-            # 如果还有重试机会，等待后重试
-            if attempt < retry_count:
-                with allure.step(f"断言失败，等待 {retry_interval} 秒后重试"):
-                    allure.attach(
-                        str(e),
-                        name="断言失败详情",
-                        attachment_type=allure.attachment_type.TEXT
-                    )
-                    time.sleep(retry_interval)
-                    # 重新发送请求
-                    http_req.execute()
-            else:
-                # 重试次数用完，重新抛出异常
-                raise
-
-
-def _process_config_based_assertions_with_retry(http_req):
-    """基于配置处理断言重试
-    
-    支持以下重试配置格式:
-    1. 关键字级别参数: assert_retry_count, assert_retry_interval
-    2. 全局配置: retry: {count: 3, interval: 1}
-    3. 独立重试配置: retry_assertions: {...}
-    
-    Args:
-        http_req: HTTP请求对象
-    
-    Returns:
-        断言结果列表
-    """
-    # 尝试执行所有断言
+    # 初始尝试执行所有断言
     try:
         results, failed_retryable_assertions = http_req.process_asserts()
-        return results  # 如果所有断言都通过，直接返回结果
-    except AssertionError:
-        # 有断言失败，需要进行重试
+        # 如果没有失败的断言，直接返回
+        return results
+    except AssertionError as e:
+        # 记录初始断言失败的详细错误信息
+        allure.attach(
+            str(e),
+            name="断言验证失败详情",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        
+        # 添加一个特殊的标记到配置中，表示我们只想收集失败的断言而不抛出异常
+        original_config = http_req.config.copy() if isinstance(http_req.config, dict) else {}
+        
+        # 创建一个临时副本
+        temp_config = original_config.copy()
+        
+        # 添加特殊标记，用于指示http_request.py中的process_asserts在处理fail时不抛出异常
+        # 注意：这需要对应修改HTTPRequest.process_asserts方法
+        temp_config['_collect_failed_assertions_only'] = True
+        
+        try:
+            # 临时替换配置
+            http_req.config = temp_config
+            
+            # 重新运行断言，这次只收集失败的断言而不抛出异常
+            _, failed_retryable_assertions = http_req.process_asserts()
+        except Exception as collect_err:
+            # 出现意外错误时记录
+            allure.attach(
+                f"收集失败断言时出错: {type(collect_err).__name__}: {str(collect_err)}",
+                name="断言收集错误",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            failed_retryable_assertions = []
+        finally:
+            # 恢复原始配置
+            http_req.config = original_config
+            
+        # 有断言失败，判断是否有需要重试的断言
         if not failed_retryable_assertions:
-            # 没有可重试的断言，重新抛出异常
+            # 没有可重试的断言，重新抛出原始异常
             raise
         
+        # 过滤需要重试的断言
+        retryable_assertions = []
+        
+        for failed_assertion in failed_retryable_assertions:
+            assertion_idx = failed_assertion['index']
+            
+            # 判断该断言是否应该重试
+            should_retry = False
+            specific_retry_count = retry_config['count']
+            specific_retry_interval = retry_config['interval']
+            
+            # 检查特定断言配置
+            if str(assertion_idx) in retry_config['specific']:
+                should_retry = True
+                spec_config = retry_config['specific'][str(assertion_idx)]
+                if isinstance(spec_config, dict):
+                    if 'count' in spec_config:
+                        specific_retry_count = spec_config['count']
+                    if 'interval' in spec_config:
+                        specific_retry_interval = spec_config['interval']
+            # 检查索引列表
+            elif assertion_idx in retry_config['indices']:
+                should_retry = True
+            # 检查是否重试所有
+            elif retry_config['all']:
+                should_retry = True
+            
+            # 如果应该重试，添加到可重试断言列表
+            if should_retry:
+                # 添加重试配置到断言对象
+                failed_assertion['retry_count'] = specific_retry_count
+                failed_assertion['retry_interval'] = specific_retry_interval
+                retryable_assertions.append(failed_assertion)
+        
+        # 如果没有可重试的断言，重新抛出异常
+        if not retryable_assertions:
+            raise
+        
+        # 记录哪些断言会被重试
+        retry_info = "\n".join([
+            f"{i+1}. {a['type']} " + 
+            (f"[{a['path']}]" if a['path'] else "") + 
+            f": 重试 {a['retry_count']} 次，间隔 {a['retry_interval']} 秒" 
+            for i, a in enumerate(retryable_assertions)
+        ])
+        
+        allure.attach(
+            f"找到 {len(retryable_assertions)} 个可重试的断言:\n\n{retry_info}",
+            name="重试断言列表",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        
         # 开始重试循环
-        max_retry_count = 3  # 默认重试次数
+        max_retry_count = retry_config['count']
         
         # 找出所有断言中最大的重试次数
-        for failed_assertion in failed_retryable_assertions:
-            max_retry_count = max(max_retry_count, failed_assertion.get('retry_count', 3))
-            
-        # 断言重试
+        for retryable_assertion in retryable_assertions:
+            max_retry_count = max(max_retry_count, retryable_assertion.get('retry_count', 3))
+        
+        # 进行断言重试
         for attempt in range(1, max_retry_count + 1):  # 从1开始，因为第0次已经尝试过了
             # 等待重试间隔
-            with allure.step(f"断言重试 (尝试 {attempt + 1}/{max_retry_count + 1})"):
+            with allure.step(f"断言重试 (尝试 {attempt}/{max_retry_count})"):
                 # 确定本次重试的间隔时间（使用每个断言中最长的间隔时间）
-                retry_interval = 1.0  # 默认间隔时间
-                for failed_assertion in failed_retryable_assertions:
-                    retry_interval = max(retry_interval, failed_assertion.get('retry_interval', 1.0))
+                retry_interval = retry_config['interval']
+                for assertion in retryable_assertions:
+                    retry_interval = max(retry_interval, assertion.get('retry_interval', 1.0))
                 
                 allure.attach(
-                    f"重试 {len(failed_retryable_assertions)} 个可重试断言\n"
+                    f"重试 {len(retryable_assertions)} 个断言\n"
                     f"等待间隔: {retry_interval}秒",
                     name="断言重试信息",
                     attachment_type=allure.attachment_type.TEXT
@@ -393,12 +495,12 @@ def _process_config_based_assertions_with_retry(http_req):
                 
                 # 过滤出仍在重试范围内的断言
                 still_retryable_assertions = []
-                for failed_assertion in failed_retryable_assertions:
-                    assertion_retry_count = failed_assertion.get('retry_count', 3)
+                for assertion in retryable_assertions:
+                    assertion_retry_count = assertion.get('retry_count', 3)
                     
                     # 如果断言的重试次数大于当前尝试次数，继续重试该断言
                     if attempt < assertion_retry_count:
-                        still_retryable_assertions.append(failed_assertion)
+                        still_retryable_assertions.append(assertion)
                 
                 # 如果没有可以继续重试的断言，跳出循环
                 if not still_retryable_assertions:
@@ -413,18 +515,104 @@ def _process_config_based_assertions_with_retry(http_req):
                     # 只处理需要重试的断言
                     results, new_failed_assertions = http_req.process_asserts(specific_asserts=retry_assertions)
                     
-                    # 如果所有断言都通过了，返回结果
+                    # 如果所有断言都通过了，检查全部断言
                     if not new_failed_assertions:
                         # 执行一次完整的断言检查，确保所有断言都通过
-                        return http_req.process_asserts()[0]
+                        try:
+                            results, _ = http_req.process_asserts()
+                            allure.attach(
+                                "所有断言重试后验证通过",
+                                name="重试成功",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            return results
+                        except AssertionError as final_err:
+                            # 记录最终错误，然后继续重试
+                            allure.attach(
+                                f"重试后的完整断言验证仍有失败: {str(final_err)}",
+                                name="完整断言仍失败",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            continue
                     
                     # 更新失败的可重试断言列表
-                    failed_retryable_assertions = new_failed_assertions
+                    retryable_assertions = new_failed_assertions
                     
-                except AssertionError:
-                    # 断言仍然失败，继续重试
+                except AssertionError as retry_err:
+                    # 重试时断言失败，记录后继续重试
+                    allure.attach(
+                        f"第 {attempt} 次重试断言失败: {str(retry_err)}",
+                        name=f"重试断言失败 #{attempt}",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
                     continue
         
         # 重试次数用完，执行一次完整的断言以获取最终结果和错误
         # 这会抛出异常，如果仍然有断言失败
-        return http_req.process_asserts()[0] 
+        allure.attach(
+            "所有重试次数已用完，执行最终断言验证",
+            name="重试完成",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        
+        try:
+            results, _ = http_req.process_asserts()
+            return results
+        except AssertionError as final_err:
+            # 重新格式化错误消息，添加重试信息
+            enhanced_error = (
+                f"断言验证失败 (已重试 {max_retry_count} 次):\n\n{str(final_err)}"
+            )
+            allure.attach(
+                enhanced_error,
+                name="重试后仍失败的断言",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            raise AssertionError(enhanced_error) from final_err
+
+
+# 移除旧的重试函数，使用统一的重试机制
+# 以下函数保留用于向后兼容，但内部逻辑已更改为调用统一重试函数
+def _process_assertions_with_retry(http_req, retry_count, retry_interval):
+    """处理断言并支持重试（向后兼容函数）
+    
+    Args:
+        http_req: HTTP请求对象
+        retry_count: 重试次数
+        retry_interval: 重试间隔（秒）
+    """
+    # 创建统一的重试配置
+    retry_config = {
+        'enabled': True,
+        'count': retry_count,
+        'interval': retry_interval,
+        'all': True,
+        'indices': [],
+        'specific': {}
+    }
+    
+    # 使用统一的重试处理函数
+    return _process_assertions_with_unified_retry(http_req, retry_config)
+
+
+def _process_config_based_assertions_with_retry(http_req):
+    """基于配置处理断言重试（向后兼容函数）
+    
+    Args:
+        http_req: HTTP请求对象
+    """
+    # 从配置中获取重试信息
+    retry_assertions_config = http_req.config.get('retry_assertions', {})
+    
+    # 创建统一的重试配置
+    retry_config = {
+        'enabled': True,
+        'count': retry_assertions_config.get('count', 3),
+        'interval': retry_assertions_config.get('interval', 1.0),
+        'all': retry_assertions_config.get('all', False),
+        'indices': retry_assertions_config.get('indices', []),
+        'specific': retry_assertions_config.get('specific', {})
+    }
+    
+    # 使用统一的重试处理函数
+    return _process_assertions_with_unified_retry(http_req, retry_config) 

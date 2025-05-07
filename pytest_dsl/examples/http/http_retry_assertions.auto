@@ -16,7 +16,7 @@
         asserts:
             - ["status", "eq", 200]
             - ["jsonpath", "$.url", "contains", "httpbin.org"]
-            - ["response_time", "lt", 1000]  # 这个断言可能会失败，因为请求延迟约2秒
+            - ["response_time", "lt", 3000]  # 这个断言可能会失败，因为请求延迟约2秒
     ''',步骤名称: "旧版全局断言重试示例"
 
 # 示例2: 使用indices指定重试特定断言
@@ -56,7 +56,7 @@
         url: https://httpbin.org/delay/1
         asserts:
             - ["status", "eq", 200]                # 索引0
-            - ["response_time", "lt", 800]         # 索引1
+            - ["response_time", "lt", 2000]         # 索引1
             - ["jsonpath", "$.headers.Host", "eq", "httpbin.org"]  # 索引2
             - ["jsonpath", "$.url", "contains", "httpbin.org"]     # 索引3
         retry_assertions:

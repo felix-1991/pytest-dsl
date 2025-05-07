@@ -13,7 +13,7 @@ from pytest_dsl.core.http_client import http_client_manager
 
 # 定义支持的比较操作符
 COMPARISON_OPERATORS = {
-    "eq", "neq", "lt", "lte", "gt", "gte", "in", "not_in"
+    "eq", "neq", "lt", "lte", "gt", "gte", "in", "not_in", "matches"
 }
 
 # 定义支持的断言类型
@@ -397,14 +397,14 @@ class HTTPRequest:
                         if extractor_type in ["jsonpath", "body", "header"]:
                             # 当提取器是jsonpath/body/header时，将contains当作断言类型处理
                             assertion_type = assertion[1]
-                            compare_operator = "eq"  # 默认操作符
+                            compare_operator = assertion[1]  # 匹配操作符和断言类型
                         else:
                             # 否则当作操作符处理
                             assertion_type = "value"
                             compare_operator = assertion[1]
                     else:
                         assertion_type = "value"  # 标记为值比较
-                        compare_operator = assertion[1]  # 比较操作符
+                        compare_operator = assertion[1]
                     
                     expected_value = assertion[2]  # 预期值
                 else:
@@ -421,12 +421,12 @@ class HTTPRequest:
                         # 特殊处理类型断言，它确实需要一个值但在这种格式中没有提供
                         if assertion_type == "type":
                             raise ValueError(f"断言类型 'type' 需要预期值(string/number/boolean/array/object/null)，但未提供: {assertion}")
-                        # 如果是不需要值的断言类型，则允许这种格式
+                        # 断言类型作为操作符
                         expected_value = None
-                        compare_operator = "eq"  # 默认比较操作符
+                        compare_operator = assertion_type  # 使用断言类型作为操作符
                     else:
                         expected_value = None
-                        compare_operator = "eq"  # 默认比较操作符
+                        compare_operator = assertion_type  # 存在性断言的操作符就是断言类型本身
             elif len(assertion) == 4:  # 带操作符的断言 ["jsonpath", "$.id", "eq", 1] 或特殊断言 ["jsonpath", "$.type", "type", "string"]
                 extraction_path = assertion[1]
                 
@@ -449,11 +449,11 @@ class HTTPRequest:
                         # 对于长度断言，总是需要有比较操作符和期望值
                         if len(assertion) < 4:
                             raise ValueError(f"长度断言需要提供预期值: {assertion}")
-                        compare_operator = "eq"  # 在这种4元素格式中，使用默认比较操作符eq
+                        compare_operator = "eq"  # 默认使用相等比较
                         expected_value = assertion[3]  # 预期长度值
                     else:
                         # 对于其他特殊断言，使用第四个元素作为期望值
-                        compare_operator = "eq"  # 默认比较操作符
+                        compare_operator = assertion_type  # 使用断言类型作为操作符
                         expected_value = assertion[3]
             else:  # 5个参数，例如 ["jsonpath", "$", "length", "eq", 10]
                 extraction_path = assertion[1]
@@ -647,15 +647,34 @@ class HTTPRequest:
         
         # 执行完所有断言后，如果有失败的断言，抛出异常
         if failed_assertions:
-            if len(failed_assertions) == 1:
-                # 只有一个断言失败时，直接使用该断言的错误消息
-                raise AssertionError(failed_assertions[0][1])
-            else:
-                # 多个断言失败时，汇总所有错误
-                error_summary = f"多个断言失败 ({len(failed_assertions)}/{len(process_asserts)}):\n"
-                for idx, (assertion_idx, error_msg) in enumerate(failed_assertions, 1):
-                    error_summary += f"\n{idx}. 断言 #{assertion_idx+1}: {error_msg.split('断言失败')[0].strip()}"
-                raise AssertionError(error_summary)
+            # 检查是否只收集失败而不抛出异常（由重试机制设置）
+            collect_only = self.config.get('_collect_failed_assertions_only', False)
+            
+            if not collect_only:
+                if len(failed_assertions) == 1:
+                    # 只有一个断言失败时，直接使用该断言的错误消息
+                    raise AssertionError(failed_assertions[0][1])
+                else:
+                    # 多个断言失败时，汇总所有错误
+                    error_summary = f"多个断言失败 ({len(failed_assertions)}/{len(process_asserts)}):\n"
+                    for idx, (assertion_idx, error_msg) in enumerate(failed_assertions, 1):
+                        # 从错误消息中提取关键部分
+                        if "[" in error_msg and "]" in error_msg:
+                            # 尝试提取提取器类型
+                            extractor_type = error_msg.split("[", 1)[1].split("]")[0] if "[" in error_msg else "未知"
+                        else:
+                            extractor_type = "未知"
+                        
+                        # 生成简短的断言标题
+                        assertion_title = f"断言 #{assertion_idx+1} [{extractor_type}]"
+                        
+                        # 添加分隔线使错误更容易辨别
+                        error_summary += f"\n{'-' * 30}\n{idx}. {assertion_title}:\n{'-' * 30}\n{error_msg}"
+                    
+                    # 添加底部分隔线
+                    error_summary += f"\n{'-' * 50}"
+                    
+                    raise AssertionError(error_summary)
         
         # 返回断言结果和需要重试的断言
         return assert_results, failed_retryable_assertions
@@ -716,15 +735,24 @@ class HTTPRequest:
             elif extractor_type == "status":
                 return self.response.status_code
             elif extractor_type == "body":
-                return self.response.text
+                if isinstance(self.response.text, str):
+                    return self.response.text
+                return str(self.response.text)
             elif extractor_type == "response_time":
                 return self.response.elapsed.total_seconds() * 1000
             else:
                 raise ValueError(f"不支持的提取器类型: {extractor_type}")
         except Exception as e:
+            # 记录提取错误
+            error_message = f"提取值失败({extractor_type}, {extraction_path}): {type(e).__name__}: {str(e)}"
+            allure.attach(
+                error_message,
+                name=f"提取错误: {extractor_type}",
+                attachment_type=allure.attachment_type.TEXT
+            )
             if default_value is not None:
                 return default_value
-            raise ValueError(f"提取值失败({extractor_type}, {extraction_path}): {str(e)}")
+            raise ValueError(error_message)
     
     def _extract_jsonpath(self, path: str, default_value: Any = None) -> Any:
         """使用JSONPath从JSON响应提取值
@@ -907,13 +935,87 @@ class HTTPRequest:
                     attachment_type=allure.attachment_type.TEXT
                 )
         
+        # 记录断言参数
+        allure.attach(
+            f"断言类型: {assertion_type}\n"
+            f"比较操作符: {operator}\n"
+            f"实际值: {actual_value} ({type(actual_value).__name__})\n"
+            f"期望值: {expected_value} ({type(expected_value).__name__ if expected_value is not None else 'None'})",
+            name="断言参数",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        
         # 基于断言类型执行断言
         if assertion_type == "value":
             # 直接使用操作符进行比较
             return self._compare_values(actual_value, expected_value, operator)
+        # 特殊断言类型 - 这些类型的操作符与断言类型匹配
+        elif assertion_type in ["contains", "not_contains", "startswith", "endswith", "matches", "schema"]:
+            # 直接使用断言类型作为方法处理，实现特殊断言逻辑
+            if assertion_type == "contains":
+                # contains断言总是检查actual是否包含expected
+                if isinstance(actual_value, str):
+                    return str(expected_value) in actual_value
+                elif isinstance(actual_value, (list, tuple, dict)):
+                    return expected_value in actual_value
+                return False
+            elif assertion_type == "not_contains":
+                # not_contains断言总是检查actual是否不包含expected
+                if isinstance(actual_value, str):
+                    return str(expected_value) not in actual_value
+                elif isinstance(actual_value, (list, tuple, dict)):
+                    return expected_value not in actual_value
+                return True
+            elif assertion_type == "startswith":
+                return isinstance(actual_value, str) and actual_value.startswith(str(expected_value))
+            elif assertion_type == "endswith":
+                return isinstance(actual_value, str) and actual_value.endswith(str(expected_value))
+            elif assertion_type == "matches":
+                if not isinstance(actual_value, str):
+                    actual_value = str(actual_value) if actual_value is not None else ""
+                try:
+                    import re
+                    pattern = str(expected_value)
+                    match_result = bool(re.search(pattern, actual_value))
+                    # 记录匹配结果
+                    allure.attach(
+                        f"正则表达式匹配结果: {'成功' if match_result else '失败'}\n"
+                        f"模式: {pattern}\n"
+                        f"目标字符串: {actual_value}",
+                        name="正则表达式匹配",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    return match_result
+                except Exception as e:
+                    # 记录正则表达式匹配错误
+                    allure.attach(
+                        f"正则表达式匹配失败: {type(e).__name__}: {str(e)}\n"
+                        f"模式: {expected_value}\n"
+                        f"目标字符串: {actual_value}",
+                        name="正则表达式错误",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    return False
+            elif assertion_type == "schema":
+                try:
+                    from jsonschema import validate
+                    validate(instance=actual_value, schema=expected_value)
+                    return True
+                except Exception as e:
+                    # 记录JSON Schema验证错误
+                    allure.attach(
+                        f"JSON Schema验证失败: {type(e).__name__}: {str(e)}\n"
+                        f"Schema: {expected_value}\n"
+                        f"实例: {actual_value}",
+                        name="Schema验证错误",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    return False
         elif assertion_type == "length":
             # 长度比较
-            return self._compare_values(actual_value, expected_value, operator)
+            # 使用实际的比较操作符进行比较，默认使用eq
+            effective_operator = "eq" if operator == "length" else operator
+            return self._compare_values(actual_value, expected_value, effective_operator)
         elif assertion_type == "exists":
             return actual_value is not None
         elif assertion_type == "not_exists":
@@ -932,40 +1034,6 @@ class HTTPRequest:
             elif expected_value == "null":
                 return actual_value is None
             return False
-        elif assertion_type == "contains":
-            # contains断言总是检查actual是否包含expected
-            if isinstance(actual_value, str):
-                return str(expected_value) in actual_value
-            elif isinstance(actual_value, (list, tuple, dict)):
-                return expected_value in actual_value
-            return False
-        elif assertion_type == "not_contains":
-            # not_contains断言总是检查actual是否不包含expected
-            if isinstance(actual_value, str):
-                return str(expected_value) not in actual_value
-            elif isinstance(actual_value, (list, tuple, dict)):
-                return expected_value not in actual_value
-            return True
-        elif assertion_type == "startswith":
-            return isinstance(actual_value, str) and actual_value.startswith(str(expected_value))
-        elif assertion_type == "endswith":
-            return isinstance(actual_value, str) and actual_value.endswith(str(expected_value))
-        elif assertion_type == "matches":
-            if not isinstance(actual_value, str):
-                return False
-            try:
-                import re
-                pattern = str(expected_value)
-                return bool(re.search(pattern, actual_value))
-            except:
-                return False
-        elif assertion_type == "schema":
-            try:
-                from jsonschema import validate
-                validate(instance=actual_value, schema=expected_value)
-                return True
-            except:
-                return False
         else:
             raise ValueError(f"不支持的断言类型: {assertion_type}")
             
@@ -998,6 +1066,47 @@ class HTTPRequest:
         elif operator == "not_in":
             # not_in操作符检查actual是否不在expected列表中
             return actual_value not in expected_value
+        elif operator == "contains":
+            # contains操作符检查actual是否包含expected
+            if isinstance(actual_value, str):
+                return str(expected_value) in actual_value
+            elif isinstance(actual_value, (list, tuple, dict)):
+                return expected_value in actual_value
+            return False
+        elif operator == "not_contains":
+            # not_contains操作符检查actual是否不包含expected
+            if isinstance(actual_value, str):
+                return str(expected_value) not in actual_value
+            elif isinstance(actual_value, (list, tuple, dict)):
+                return expected_value not in actual_value
+            return True
+        elif operator == "matches":
+            # matches操作符使用正则表达式进行匹配
+            if not isinstance(actual_value, str):
+                actual_value = str(actual_value) if actual_value is not None else ""
+            try:
+                import re
+                pattern = str(expected_value)
+                match_result = bool(re.search(pattern, actual_value))
+                # 记录匹配结果
+                allure.attach(
+                    f"正则表达式匹配结果: {'成功' if match_result else '失败'}\n"
+                    f"模式: {pattern}\n"
+                    f"目标字符串: {actual_value}",
+                    name="正则表达式匹配",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+                return match_result
+            except Exception as e:
+                # 记录正则表达式匹配错误
+                allure.attach(
+                    f"正则表达式匹配失败: {type(e).__name__}: {str(e)}\n"
+                    f"模式: {expected_value}\n"
+                    f"目标字符串: {actual_value}",
+                    name="正则表达式错误",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+                return False
         else:
             raise ValueError(f"不支持的比较操作符: {operator}")
     
