@@ -10,7 +10,9 @@ reserved = {
     'using': 'USING',  # Add new keyword for data-driven testing
     'True': 'TRUE',    # 添加布尔值支持
     'False': 'FALSE',   # 添加布尔值支持
-    'return': 'RETURN'  # 添加return关键字支持
+    'return': 'RETURN',  # 添加return关键字支持
+    'else': 'ELSE',   # 添加else关键字支持
+    'if': 'IF'  # 添加if关键字支持
 }
 
 # token 名称列表
@@ -36,6 +38,12 @@ tokens = [
     'DATA_KEYWORD',  # Add new token for @data keyword
     'KEYWORD_KEYWORD',  # 添加@keyword关键字
     'IMPORT_KEYWORD',   # 添加@import关键字
+    'GT',        # 大于 >
+    'LT',        # 小于 <
+    'GE',        # 大于等于 >=
+    'LE',        # 小于等于 <=
+    'EQ',        # 等于 ==
+    'NE',        # 不等于 !=
 ] + list(reserved.values())
 
 # 正则表达式定义 token
@@ -46,6 +54,12 @@ t_RBRACKET = r'\]'
 t_COLON = r':'
 t_COMMA = r','
 t_EQUALS = r'='
+t_GT = r'>'
+t_LT = r'<'
+t_GE = r'>='
+t_LE = r'<='
+t_EQ = r'=='
+t_NE = r'!='
 
 # 增加PLACEHOLDER规则，匹配 ${变量名} 格式
 t_PLACEHOLDER = r'\$\{[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*\}'

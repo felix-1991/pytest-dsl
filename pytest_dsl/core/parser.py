@@ -12,6 +12,7 @@ class Node:
 # 定义优先级和结合性
 precedence = (
     ('left', 'COMMA'),
+    ('left', 'GT', 'LT', 'GE', 'LE', 'EQ', 'NE'),  # 比较运算符优先级
     ('right', 'EQUALS'),
 )
 
@@ -95,7 +96,8 @@ def p_statement(p):
                 | keyword_call
                 | loop
                 | custom_keyword
-                | return_statement'''
+                | return_statement
+                | if_statement'''
     p[0] = p[1]
 
 
@@ -109,13 +111,26 @@ def p_assignment(p):
 
 
 def p_expression(p):
-    '''expression : NUMBER
-                  | STRING
-                  | PLACEHOLDER
-                  | ID
-                  | boolean_expr
-                  | list_expr'''
-    p[0] = Node('Expression', value=p[1])
+    '''expression : expr_atom
+                  | comparison_expr'''
+    # 如果是比较表达式或其他复合表达式，则已经是一个Node对象
+    if isinstance(p[1], Node):
+        p[0] = p[1]
+    else:
+        p[0] = Node('Expression', value=p[1])
+
+
+def p_expr_atom(p):
+    '''expr_atom : NUMBER
+                 | STRING
+                 | PLACEHOLDER
+                 | ID
+                 | boolean_expr
+                 | list_expr'''
+    if isinstance(p[1], Node):
+        p[0] = p[1]
+    else:
+        p[0] = Node('Expression', value=p[1])
 
 
 def p_boolean_expr(p):
@@ -226,6 +241,43 @@ def p_param_def(p):
 def p_return_statement(p):
     '''return_statement : RETURN expression'''
     p[0] = Node('Return', [p[2]])
+
+
+def p_if_statement(p):
+    '''if_statement : IF expression DO statements END
+                   | IF expression DO statements ELSE statements END'''
+    if len(p) == 6:
+        p[0] = Node('IfStatement', [p[2], p[4]], None)
+    else:
+        p[0] = Node('IfStatement', [p[2], p[4], p[6]], None)
+
+
+def p_comparison_expr(p):
+    '''comparison_expr : expr_atom GT expr_atom
+                      | expr_atom LT expr_atom
+                      | expr_atom GE expr_atom
+                      | expr_atom LE expr_atom
+                      | expr_atom EQ expr_atom
+                      | expr_atom NE expr_atom'''
+    
+    # 根据规则索引判断使用的是哪个操作符
+    if p.slice[2].type == 'GT':
+        operator = '>'
+    elif p.slice[2].type == 'LT':
+        operator = '<'
+    elif p.slice[2].type == 'GE':
+        operator = '>='
+    elif p.slice[2].type == 'LE':
+        operator = '<='
+    elif p.slice[2].type == 'EQ':
+        operator = '=='
+    elif p.slice[2].type == 'NE':
+        operator = '!='
+    else:
+        print(f"警告: 无法识别的操作符类型 {p.slice[2].type}")
+        operator = None
+    
+    p[0] = Node('ComparisonExpr', [p[1], p[3]], operator)
 
 
 def p_error(p):

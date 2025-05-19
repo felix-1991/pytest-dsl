@@ -93,6 +93,9 @@ class DSLExecutor:
         elif expr_node.type == 'BooleanExpr':
             # 处理布尔值表达式
             return expr_node.value
+        elif expr_node.type == 'ComparisonExpr':
+            # 处理比较表达式
+            return self._eval_comparison_expr(expr_node)
         else:
             raise Exception(f"无法求值的表达式类型: {expr_node.type}")
     
@@ -101,6 +104,10 @@ class DSLExecutor:
         if isinstance(value, Node):
             return self.eval_expression(value)
         elif isinstance(value, str):
+            # 如果是ID类型的变量名
+            if value in self.variable_replacer.local_variables:
+                return self.variable_replacer.local_variables[value]
+            
             # 定义变量引用模式
             pattern = r'\$\{([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\}'
             # 检查整个字符串是否完全匹配单一变量引用模式
@@ -112,6 +119,39 @@ class DSLExecutor:
                 # 如果不是单一变量，则替换字符串中的所有变量引用
                 return self.variable_replacer.replace_in_string(value)
         return value
+    
+    def _eval_comparison_expr(self, expr_node):
+        """
+        对比较表达式进行求值
+        
+        :param expr_node: 比较表达式节点
+        :return: 比较结果（布尔值）
+        """
+        left_value = self.eval_expression(expr_node.children[0])
+        right_value = self.eval_expression(expr_node.children[1])
+        operator = expr_node.value  # 操作符: >, <, >=, <=, ==, !=
+        
+        # 尝试类型转换
+        if isinstance(left_value, str) and str(left_value).isdigit():
+            left_value = int(left_value)
+        if isinstance(right_value, str) and str(right_value).isdigit():
+            right_value = int(right_value)
+        
+        # 根据操作符执行相应的比较操作
+        if operator == '>':
+            return left_value > right_value
+        elif operator == '<':
+            return left_value < right_value
+        elif operator == '>=':
+            return left_value >= right_value
+        elif operator == '<=':
+            return left_value <= right_value
+        elif operator == '==':
+            return left_value == right_value
+        elif operator == '!=':
+            return left_value != right_value
+        else:
+            raise Exception(f"未知的比较操作符: {operator}")
     
     def _get_variable(self, var_name):
         """获取变量值，优先从本地变量获取，如果不存在则尝试从全局上下文获取"""
@@ -341,6 +381,28 @@ class DSLExecutor:
         expr_node = node.children[0]
         return self.eval_expression(expr_node)
 
+    @allure.step("执行条件语句")
+    def _handle_if_statement(self, node):
+        """处理if-else语句
+        
+        Args:
+            node: IfStatement节点，包含条件表达式、if分支和可选的else分支
+        """
+        condition = self.eval_expression(node.children[0])
+        
+        # 将条件转换为布尔值进行评估
+        if condition:
+            # 执行if分支
+            with allure.step("执行if分支"):
+                return self.execute(node.children[1])
+        elif len(node.children) > 2:
+            # 如果存在else分支且条件为假，则执行else分支
+            with allure.step("执行else分支"):
+                return self.execute(node.children[2])
+        
+        # 如果条件为假且没有else分支，则不执行任何操作
+        return None
+
     def execute(self, node):
         """执行AST节点"""
         handlers = {
@@ -352,7 +414,8 @@ class DSLExecutor:
             'ForLoop': self._handle_for_loop,
             'KeywordCall': self._execute_keyword_call,
             'Teardown': self._handle_teardown,
-            'Return': self._handle_return
+            'Return': self._handle_return,
+            'IfStatement': self._handle_if_statement
         }
         
         handler = handlers.get(node.type)
