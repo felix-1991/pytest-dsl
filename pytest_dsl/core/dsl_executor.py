@@ -210,6 +210,21 @@ class DSLExecutor:
     def _replace_variables_in_string(self, value):
         """替换字符串中的变量引用"""
         return self.variable_replacer.replace_in_string(value)
+    
+    def _handle_custom_keywords_in_file(self, node):
+        """处理文件中的自定义关键字定义
+        
+        Args:
+            node: Start节点
+        """
+        if len(node.children) > 1 and node.children[1].type == 'Statements':
+            statements_node = node.children[1]
+            for stmt in statements_node.children:
+                if stmt.type == 'CustomKeyword':
+                    # 导入自定义关键字管理器
+                    from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
+                    # 注册自定义关键字
+                    custom_keyword_manager._register_custom_keyword(stmt, "current_file")
 
     def _handle_start(self, node):
         """处理开始节点"""
@@ -230,6 +245,8 @@ class DSLExecutor:
                 elif child.type == 'Teardown':
                     teardown_node = child
             
+             # 在_execute_test_iteration之前添加
+            self._handle_custom_keywords_in_file(node)
             # 执行测试
             self._execute_test_iteration(metadata, node, teardown_node)
             
@@ -465,7 +482,8 @@ class DSLExecutor:
             'KeywordCall': self._execute_keyword_call,
             'Teardown': self._handle_teardown,
             'Return': self._handle_return,
-            'IfStatement': self._handle_if_statement
+            'IfStatement': self._handle_if_statement,
+            'CustomKeyword': lambda _: None  # 添加对CustomKeyword节点的处理，只需注册不需执行
         }
         
         handler = handlers.get(node.type)
