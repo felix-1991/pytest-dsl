@@ -300,6 +300,31 @@ pytest test_api.py
 pytest -v --alluredir=./reports
 ```
 
+### 使用Allure生成和查看报告
+
+pytest-dsl已与Allure报告框架集成，可以生成美观、交互式的测试报告。
+
+```bash
+# 运行测试并生成Allure报告数据
+pytest --alluredir=./allure-results
+
+# 生成HTML报告并启动本地服务器查看
+allure serve ./allure-results
+
+# 或生成HTML报告到指定目录
+allure generate ./allure-results -o ./allure-report
+# 然后可以打开 ./allure-report/index.html 查看报告
+```
+
+Allure报告会自动包含以下信息：
+- 测试步骤和执行状态
+- HTTP请求和响应详情
+- 断言结果和失败原因
+- 测试执行时间和性能数据
+- 测试标签和分类信息
+
+通过Allure报告，您可以更直观地分析测试结果，快速定位问题。
+
 ## 更多功能
 
 ### 断言重试功能
