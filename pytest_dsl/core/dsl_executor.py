@@ -96,6 +96,9 @@ class DSLExecutor:
         elif expr_node.type == 'ComparisonExpr':
             # 处理比较表达式
             return self._eval_comparison_expr(expr_node)
+        elif expr_node.type == 'ArithmeticExpr':
+            # 处理算术表达式
+            return self._eval_arithmetic_expr(expr_node)
         else:
             raise Exception(f"无法求值的表达式类型: {expr_node.type}")
     
@@ -152,6 +155,53 @@ class DSLExecutor:
             return left_value != right_value
         else:
             raise Exception(f"未知的比较操作符: {operator}")
+    
+    def _eval_arithmetic_expr(self, expr_node):
+        """
+        对算术表达式进行求值
+        
+        :param expr_node: 算术表达式节点
+        :return: 计算结果
+        """
+        left_value = self.eval_expression(expr_node.children[0])
+        right_value = self.eval_expression(expr_node.children[1])
+        operator = expr_node.value  # 操作符: +, -, *, /
+        
+        # 尝试类型转换 - 如果是字符串数字则转为数字
+        if isinstance(left_value, str) and str(left_value).replace('.', '', 1).isdigit():
+            left_value = float(left_value)
+            # 如果是整数则转为整数
+            if left_value.is_integer():
+                left_value = int(left_value)
+        
+        if isinstance(right_value, str) and str(right_value).replace('.', '', 1).isdigit():
+            right_value = float(right_value)
+            # 如果是整数则转为整数
+            if right_value.is_integer():
+                right_value = int(right_value)
+        
+        # 进行相应的算术运算
+        if operator == '+':
+            # 对于字符串，+是连接操作
+            if isinstance(left_value, str) or isinstance(right_value, str):
+                return str(left_value) + str(right_value)
+            return left_value + right_value
+        elif operator == '-':
+            return left_value - right_value
+        elif operator == '*':
+            # 如果其中一个是字符串，另一个是数字，则进行字符串重复
+            if isinstance(left_value, str) and isinstance(right_value, (int, float)):
+                return left_value * int(right_value)
+            elif isinstance(right_value, str) and isinstance(left_value, (int, float)):
+                return right_value * int(left_value)
+            return left_value * right_value
+        elif operator == '/':
+            # 除法时检查除数是否为0
+            if right_value == 0:
+                raise Exception("除法错误: 除数不能为0")
+            return left_value / right_value
+        else:
+            raise Exception(f"未知的算术操作符: {operator}")
     
     def _get_variable(self, var_name):
         """获取变量值，优先从本地变量获取，如果不存在则尝试从全局上下文获取"""

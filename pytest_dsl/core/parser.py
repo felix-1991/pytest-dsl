@@ -13,6 +13,8 @@ class Node:
 precedence = (
     ('left', 'COMMA'),
     ('left', 'GT', 'LT', 'GE', 'LE', 'EQ', 'NE'),  # 比较运算符优先级
+    ('left', 'PLUS', 'MINUS'),  # 加减运算符优先级
+    ('left', 'TIMES', 'DIVIDE'),  # 乘除运算符优先级
     ('right', 'EQUALS'),
 )
 
@@ -112,7 +114,8 @@ def p_assignment(p):
 
 def p_expression(p):
     '''expression : expr_atom
-                  | comparison_expr'''
+                  | comparison_expr
+                  | arithmetic_expr'''
     # 如果是比较表达式或其他复合表达式，则已经是一个Node对象
     if isinstance(p[1], Node):
         p[0] = p[1]
@@ -126,8 +129,12 @@ def p_expr_atom(p):
                  | PLACEHOLDER
                  | ID
                  | boolean_expr
-                 | list_expr'''
-    if isinstance(p[1], Node):
+                 | list_expr
+                 | LPAREN expression RPAREN'''
+    if p[1] == '(':
+        # 处理括号表达式，直接返回括号内的表达式节点
+        p[0] = p[2]
+    elif isinstance(p[1], Node):
         p[0] = p[1]
     else:
         p[0] = Node('Expression', value=p[1])
@@ -278,6 +285,28 @@ def p_comparison_expr(p):
         operator = None
     
     p[0] = Node('ComparisonExpr', [p[1], p[3]], operator)
+
+
+def p_arithmetic_expr(p):
+    '''arithmetic_expr : expression PLUS expression
+                       | expression MINUS expression
+                       | expression TIMES expression
+                       | expression DIVIDE expression'''
+    
+    # 根据规则索引判断使用的是哪个操作符
+    if p.slice[2].type == 'PLUS':
+        operator = '+'
+    elif p.slice[2].type == 'MINUS':
+        operator = '-'
+    elif p.slice[2].type == 'TIMES':
+        operator = '*'
+    elif p.slice[2].type == 'DIVIDE':
+        operator = '/'
+    else:
+        print(f"警告: 无法识别的操作符类型 {p.slice[2].type}")
+        operator = None
+    
+    p[0] = Node('ArithmeticExpr', [p[1], p[3]], operator)
 
 
 def p_error(p):

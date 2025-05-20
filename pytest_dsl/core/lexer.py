@@ -44,6 +44,10 @@ tokens = [
     'LE',        # 小于等于 <=
     'EQ',        # 等于 ==
     'NE',        # 不等于 !=
+    'PLUS',      # 加法 +
+    'MINUS',     # 减法 -
+    'TIMES',     # 乘法 *
+    'DIVIDE',    # 除法 /
 ] + list(reserved.values())
 
 # 正则表达式定义 token
@@ -60,6 +64,10 @@ t_GE = r'>='
 t_LE = r'<='
 t_EQ = r'=='
 t_NE = r'!='
+t_PLUS = r'\+'
+t_MINUS = r'-'
+t_TIMES = r'\*'
+t_DIVIDE = r'/'
 
 # 增加PLACEHOLDER规则，匹配 ${变量名} 格式
 t_PLACEHOLDER = r'\$\{[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*\}'
