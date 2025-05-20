@@ -21,17 +21,35 @@ precedence = (
 
 def p_start(p):
     '''start : metadata statements teardown
-             | metadata statements'''
+             | metadata statements
+             | statements teardown
+             | statements'''
 
     if len(p) == 4:
         p[0] = Node('Start', [p[1], p[2], p[3]])
+    elif len(p) == 3:
+        # 判断第二个元素是teardown还是statements
+        if p[2].type == 'Teardown':
+            p[0] = Node('Start', [Node('Metadata', []), p[1], p[2]])
+        else:
+            p[0] = Node('Start', [p[1], p[2]])
     else:
-        p[0] = Node('Start', [p[1], p[2]])
+        # 没有metadata和teardown
+        p[0] = Node('Start', [Node('Metadata', []), p[1]])
 
 
 def p_metadata(p):
-    '''metadata : metadata_items'''
-    p[0] = Node('Metadata', p[1])
+    '''metadata : metadata_items
+                | empty'''
+    if p[1]:
+        p[0] = Node('Metadata', p[1])
+    else:
+        p[0] = Node('Metadata', [])
+
+
+def p_empty(p):
+    '''empty :'''
+    p[0] = None
 
 
 def p_metadata_items(p):
