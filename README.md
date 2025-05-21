@@ -119,11 +119,11 @@ pytest-dsl允许在DSL文件中直接定义自定义关键字，类似于编程�
 @keyword 拼接字符串 (前缀, 后缀="默认后缀") do
     # 直接使用关键字参数
     [打印],内容: "拼接前缀: ${前缀} 和后缀: ${后缀}"
-    
+
     # 保存到变量中
     结果变量 = "${前缀}${后缀}"
     [打印],内容: "拼接结果: ${结果变量}"
-    
+
     # 返回结果
     return ${结果变量}
 end
@@ -158,11 +158,11 @@ end
 @keyword 拼接字符串 (前缀, 后缀="我是默认值哦") do
     # 直接使用关键字参数
     [打印],内容:'拼接前缀: ${前缀} 和后缀: ${后缀}'
-    
+
     # 保存到变量中
     结果变量 = "${前缀}${后缀}"
     [打印],内容:'拼接结果: ${结果变量}'
-    
+
     # 返回结果
     return ${结果变量}
 end
@@ -281,7 +281,7 @@ from pytest_dsl.core.auto_decorator import auto_dsl
 @auto_dsl("./api_tests")  # 加载指定目录下所有的.auto或.dsl文件
 class TestAPI:
     """API测试类
-    
+
     该类将自动加载api_tests目录下的所有DSL文件作为测试方法
     """
     pass
@@ -381,7 +381,7 @@ def call_microservice(**kwargs):
     method = kwargs.get('method_name')
     params = kwargs.get('params', {})
     context = kwargs.get('context')
-    
+
     # 实现微服务调用逻辑
     result = your_microservice_client.call(service, method, params)
     return result
@@ -422,13 +422,135 @@ def call_microservice(**kwargs):
 - **完整测试生命周期**：内置teardown、变量管理和断言机制
 - **非侵入式设计**：以"旁路模式"扩展现有pytest项目，不影响原有测试代码
 
+## 远程关键字功能
+
+pytest-dsl支持远程关键字调用，允许您在不同的机器或服务上执行关键字，实现分布式测试。
+
+### 启动远程关键字服务
+
+安装pytest-dsl后，可以使用内置命令启动远程关键字服务：
+
+```bash
+# 使用默认配置启动（localhost:8270）
+pytest-dsl-server
+
+# 自定义主机和端口
+pytest-dsl-server --host 0.0.0.0 --port 8888
+
+# 使用API密钥保护服务
+pytest-dsl-server --api-key your_secret_key
+```
+
+#### 分布式测试环境配置
+
+在分布式测试环境中，您可以在多台机器上启动远程关键字服务：
+
+1. **主测试机**：运行测试脚本的机器
+2. **远程执行机**：运行远程关键字服务的机器
+
+配置步骤：
+
+1. 在每台远程执行机上安装pytest-dsl：
+   ```bash
+   pip install pytest-dsl
+   ```
+
+2. 在每台远程执行机上启动远程关键字服务：
+   ```bash
+   # 确保监听所有网络接口，以便外部可访问
+   pytest-dsl-server --host 0.0.0.0 --port 8270
+   ```
+
+3. 在主测试机上编写测试脚本，使用`@remote`指令连接到远程服务：
+   ```python
+   # 连接到多台远程执行机
+   @remote: "http://machine1-ip:8270/" as machine1
+   @remote: "http://machine2-ip:8270/" as machine2
+
+   # 在不同机器上执行关键字
+   machine1|[打印],内容: "在机器1上执行"
+   machine2|[打印],内容: "在机器2上执行"
+   ```
+
+### 远程关键字语法
+
+```python
+# 导入远程关键字服务器
+@remote: "http://keyword-server:8270/" as machineone
+@remote: "http://keyword-server2:8270/" as machinetwo
+
+# 远程关键字调用
+machineone|[打印],内容: "这是通过远程服务器执行的关键字"
+结果 = machineone|[拼接字符串],前缀: "Hello, ",后缀: "Remote World!"
+```
+
+### 远程关键字测试示例
+
+```python
+@name: "远程关键字测试"
+@description: "测试远程关键字的基本功能"
+@tags: ["remote", "keywords"]
+@author: "Felix"
+@date: 2024-05-21
+
+# 导入远程关键字服务器
+@remote: "http://localhost:8270/" as machineone
+
+# 基本打印测试
+machineone|[打印],内容: "这是通过远程服务器执行的关键字"
+
+# 随机数生成测试
+随机数 = [生成随机数],最小值: 1,最大值: 100
+machineone|[打印],内容: "远程生成的随机数: ${随机数}"
+```
+
+> **注意**：当前远程关键字模式在HTTP请求关键字上支持的不是太好，后续会优化关键字实现，提升远程关键字的功能和稳定性。
+
+### 远程关键字服务安全性
+
+在生产环境中使用远程关键字服务时，请注意以下安全建议：
+
+1. **使用API密钥认证**：
+   ```bash
+   pytest-dsl-server --api-key your_secure_key
+   ```
+   然后在测试脚本中使用API密钥连接：
+   ```python
+   @remote: "http://server:8270/?api_key=your_secure_key" as secure_server
+   ```
+
+2. **限制网络访问**：
+   - 在内部网络或VPN中使用远程关键字服务
+   - 使用防火墙限制对服务端口的访问
+   - 考虑使用SSH隧道连接到远程服务
+
+3. **监控服务**：
+   - 定期检查服务日志
+   - 监控异常访问模式
+   - 在不需要时关闭服务
+
+### 远程关键字最佳实践
+
+1. **合理分配关键字**：
+   - 将计算密集型关键字放在性能更好的机器上
+   - 将特定环境依赖的关键字放在对应环境的机器上
+
+2. **错误处理**：
+   - 添加适当的错误处理机制，处理远程服务不可用的情况
+   - 使用超时设置避免长时间等待
+
+3. **变量传递**：
+   - 注意远程关键字执行后，变量会返回到本地上下文
+   - 大型数据应考虑使用文件或数据库共享，而不是直接通过变量传递
+
 ## 进阶文档
 
 - [完整DSL语法指南](./docs/自动化关键字DSL语法设计.md)
-- [创建自定义关键字](./pytest_dsl/docs/custom_keywords.md) 
+- [创建自定义关键字](./pytest_dsl/docs/custom_keywords.md)
 - [HTTP测试关键字](./docs/api.md)
 - [断言关键字详解](./docs/assertion_keywords.md)
 - [HTTP断言重试机制](./docs/http_assertion_retry.md)
+- [远程关键字语法示例](./docs/remote_syntax_example.md)
 
 ## 贡献与支持
 
@@ -440,4 +562,4 @@ MIT License
 
 ---
 
-开始使用pytest-dsl，释放测试自动化的无限可能！ 
+开始使用pytest-dsl，释放测试自动化的无限可能！

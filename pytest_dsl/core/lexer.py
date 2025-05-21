@@ -12,7 +12,8 @@ reserved = {
     'False': 'FALSE',   # 添加布尔值支持
     'return': 'RETURN',  # 添加return关键字支持
     'else': 'ELSE',   # 添加else关键字支持
-    'if': 'IF'  # 添加if关键字支持
+    'if': 'IF',  # 添加if关键字支持
+    'as': 'AS'   # 添加as关键字支持，用于远程关键字别名
 }
 
 # token 名称列表
@@ -38,6 +39,7 @@ tokens = [
     'DATA_KEYWORD',  # Add new token for @data keyword
     'KEYWORD_KEYWORD',  # 添加@keyword关键字
     'IMPORT_KEYWORD',   # 添加@import关键字
+    'REMOTE_KEYWORD',   # 添加@remote关键字
     'GT',        # 大于 >
     'LT',        # 小于 <
     'GE',        # 大于等于 >=
@@ -48,6 +50,7 @@ tokens = [
     'MINUS',     # 减法 -
     'TIMES',     # 乘法 *
     'DIVIDE',    # 除法 /
+    'PIPE',      # 管道符 |，用于远程关键字调用
 ] + list(reserved.values())
 
 # 正则表达式定义 token
@@ -71,6 +74,14 @@ t_DIVIDE = r'/'
 
 # 增加PLACEHOLDER规则，匹配 ${变量名} 格式
 t_PLACEHOLDER = r'\$\{[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*\}'
+
+# 添加管道符的正则表达式定义
+t_PIPE = r'\|'
+
+# 添加@remote关键字的token规则
+def t_REMOTE_KEYWORD(t):
+    r'@remote'
+    return t
 
 
 def t_DATE(t):

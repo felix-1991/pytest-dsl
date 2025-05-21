@@ -68,7 +68,8 @@ def p_metadata_item(p):
                     | AUTHOR_KEYWORD COLON metadata_value
                     | DATE_KEYWORD COLON DATE
                     | DATA_KEYWORD COLON data_source
-                    | IMPORT_KEYWORD COLON STRING'''
+                    | IMPORT_KEYWORD COLON STRING
+                    | REMOTE_KEYWORD COLON STRING AS ID'''
     if p[1] == '@tags':
         p[0] = Node(p[1], value=p[4])
     elif p[1] == '@data':
@@ -76,7 +77,12 @@ def p_metadata_item(p):
         data_info = p[3]  # 这是一个包含 file 和 format 的字典
         p[0] = Node(p[1], value=data_info, children=None)
     elif p[1] == '@import':
+        # 检查是否是远程导入格式
         p[0] = Node(p[1], value=p[3])
+    elif p[1] == '@remote':
+        # 对于远程关键字导入，存储URL和别名
+        print(f"解析远程关键字导入: URL={p[3]}, 别名={p[5]}")
+        p[0] = Node('RemoteImport', value={'url': p[3], 'alias': p[5]})
     else:
         p[0] = Node(p[1], value=p[3])
 
@@ -114,6 +120,7 @@ def p_statements(p):
 def p_statement(p):
     '''statement : assignment
                 | keyword_call
+                | remote_keyword_call
                 | loop
                 | custom_keyword
                 | return_statement
@@ -123,9 +130,12 @@ def p_statement(p):
 
 def p_assignment(p):
     '''assignment : ID EQUALS expression
-                 | ID EQUALS keyword_call'''
+                 | ID EQUALS keyword_call
+                 | ID EQUALS remote_keyword_call'''
     if isinstance(p[3], Node) and p[3].type == 'KeywordCall':
         p[0] = Node('AssignmentKeywordCall', [p[3]], p[1])
+    elif isinstance(p[3], Node) and p[3].type == 'RemoteKeywordCall':
+        p[0] = Node('AssignmentRemoteKeywordCall', [p[3]], p[1])
     else:
         p[0] = Node('Assignment', value=p[1], children=[p[3]])
 
@@ -284,7 +294,7 @@ def p_comparison_expr(p):
                       | expr_atom LE expr_atom
                       | expr_atom EQ expr_atom
                       | expr_atom NE expr_atom'''
-    
+
     # 根据规则索引判断使用的是哪个操作符
     if p.slice[2].type == 'GT':
         operator = '>'
@@ -301,7 +311,7 @@ def p_comparison_expr(p):
     else:
         print(f"警告: 无法识别的操作符类型 {p.slice[2].type}")
         operator = None
-    
+
     p[0] = Node('ComparisonExpr', [p[1], p[3]], operator)
 
 
@@ -310,7 +320,7 @@ def p_arithmetic_expr(p):
                        | expression MINUS expression
                        | expression TIMES expression
                        | expression DIVIDE expression'''
-    
+
     # 根据规则索引判断使用的是哪个操作符
     if p.slice[2].type == 'PLUS':
         operator = '+'
@@ -323,7 +333,7 @@ def p_arithmetic_expr(p):
     else:
         print(f"警告: 无法识别的操作符类型 {p.slice[2].type}")
         operator = None
-    
+
     p[0] = Node('ArithmeticExpr', [p[1], p[3]], operator)
 
 
@@ -337,3 +347,12 @@ def p_error(p):
 
 def get_parser(debug=False):
     return yacc.yacc(debug=debug)
+
+# 定义远程关键字调用的语法规则
+def p_remote_keyword_call(p):
+    '''remote_keyword_call : ID PIPE LBRACKET ID RBRACKET COMMA parameter_list
+                          | ID PIPE LBRACKET ID RBRACKET'''
+    if len(p) == 8:
+        p[0] = Node('RemoteKeywordCall', [p[7]], {'alias': p[1], 'keyword': p[4]})
+    else:
+        p[0] = Node('RemoteKeywordCall', [[]], {'alias': p[1], 'keyword': p[4]})
