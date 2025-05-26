@@ -395,20 +395,40 @@ class DSLExecutor:
         result = self.execute(keyword_call_node)
 
         if result is not None:
+            # 处理新的统一返回格式（支持远程关键字模式）
+            if isinstance(result, dict) and 'result' in result:
+                # 提取主要返回值
+                main_result = result['result']
+
+                # 处理captures字段中的变量
+                captures = result.get('captures', {})
+                for capture_var, capture_value in captures.items():
+                    if capture_var.startswith('g_'):
+                        global_context.set_variable(capture_var, capture_value)
+                    else:
+                        self.variable_replacer.local_variables[capture_var] = capture_value
+                        self.test_context.set(capture_var, capture_value)
+
+                # 将主要结果赋值给指定变量
+                actual_result = main_result
+            else:
+                # 传统格式，直接使用结果
+                actual_result = result
+
             # 检查变量名是否以g_开头，如果是则设置为全局变量
             if var_name.startswith('g_'):
-                global_context.set_variable(var_name, result)
+                global_context.set_variable(var_name, actual_result)
                 allure.attach(
-                    f"全局变量: {var_name}\n值: {result}",
+                    f"全局变量: {var_name}\n值: {actual_result}",
                     name="全局变量赋值",
                     attachment_type=allure.attachment_type.TEXT
                 )
             else:
                 # 存储在本地变量字典和测试上下文中
-                self.variable_replacer.local_variables[var_name] = result
-                self.test_context.set(var_name, result)  # 同时添加到测试上下文
+                self.variable_replacer.local_variables[var_name] = actual_result
+                self.test_context.set(var_name, actual_result)  # 同时添加到测试上下文
                 allure.attach(
-                    f"变量: {var_name}\n值: {result}",
+                    f"变量: {var_name}\n值: {actual_result}",
                     name="赋值详情",
                     attachment_type=allure.attachment_type.TEXT
                 )
@@ -560,20 +580,42 @@ class DSLExecutor:
         result = self.execute(remote_keyword_call_node)
 
         if result is not None:
+            # 注意：远程关键字客户端已经处理了新格式的返回值，
+            # 这里接收到的result应该已经是主要返回值，而不是完整的字典格式
+            # 但为了保险起见，我们仍然检查是否为新格式
+            if isinstance(result, dict) and 'result' in result:
+                # 如果仍然是新格式（可能是嵌套的远程调用），提取主要返回值
+                main_result = result['result']
+
+                # 处理captures字段中的变量
+                captures = result.get('captures', {})
+                for capture_var, capture_value in captures.items():
+                    if capture_var.startswith('g_'):
+                        global_context.set_variable(capture_var, capture_value)
+                    else:
+                        self.variable_replacer.local_variables[capture_var] = capture_value
+                        self.test_context.set(capture_var, capture_value)
+
+                # 将主要结果赋值给指定变量
+                actual_result = main_result
+            else:
+                # 传统格式或已经处理过的格式，直接使用结果
+                actual_result = result
+
             # 检查变量名是否以g_开头，如果是则设置为全局变量
             if var_name.startswith('g_'):
-                global_context.set_variable(var_name, result)
+                global_context.set_variable(var_name, actual_result)
                 allure.attach(
-                    f"全局变量: {var_name}\n值: {result}",
+                    f"全局变量: {var_name}\n值: {actual_result}",
                     name="全局变量赋值",
                     attachment_type=allure.attachment_type.TEXT
                 )
             else:
                 # 存储在本地变量字典和测试上下文中
-                self.variable_replacer.local_variables[var_name] = result
-                self.test_context.set(var_name, result)  # 同时添加到测试上下文
+                self.variable_replacer.local_variables[var_name] = actual_result
+                self.test_context.set(var_name, actual_result)  # 同时添加到测试上下文
                 allure.attach(
-                    f"变量: {var_name}\n值: {result}",
+                    f"变量: {var_name}\n值: {actual_result}",
                     name="赋值详情",
                     attachment_type=allure.attachment_type.TEXT
                 )

@@ -558,8 +558,11 @@ def _process_assertions_with_unified_retry(http_req, retry_config):
                     retry_assertion_indexes = [a['index'] for a in still_retryable_assertions]
                     retry_assertions = [http_req.config.get('asserts', [])[idx] for idx in retry_assertion_indexes]
 
-                    # 只处理需要重试的断言
-                    results, new_failed_assertions = http_req.process_asserts(specific_asserts=retry_assertions)
+                    # 创建索引映射：新索引 -> 原始索引
+                    index_mapping = {new_idx: orig_idx for new_idx, orig_idx in enumerate(retry_assertion_indexes)}
+
+                    # 只处理需要重试的断言，传递索引映射
+                    results, new_failed_assertions = http_req.process_asserts(specific_asserts=retry_assertions, index_mapping=index_mapping)
 
                     # 如果所有断言都通过了，检查全部断言
                     if not new_failed_assertions:
