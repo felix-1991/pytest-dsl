@@ -46,8 +46,6 @@
 | 客户端 | 字符串 | 否 | YAML变量文件中定义的HTTP客户端配置名称，不提供则使用默认客户端 |
 | 配置 | YAML字符串 | 是 | 包含请求、捕获和断言的YAML配置 |
 | 保存响应 | 字符串 | 否 | 将完整响应保存到指定变量名中，便于后续使用 |
-| 重试次数 | 整数 | 否 | 请求失败时的重试次数，默认为0 |
-| 重试间隔 | 整数 | 否 | 重试间隔时间（秒），默认为1 |
 | 禁用授权 | 布尔值 | 否 | 禁用客户端配置中的授权机制，默认为false |
 | 断言重试次数 | 整数 | 否 | 断言失败时的重试次数，默认为0，用于分析类API等需要数据准备时间的场景 |
 | 断言重试间隔 | 整数 | 否 | 断言重试间隔时间（秒），默认为1 |
@@ -99,7 +97,6 @@ request:
   proxies:  # 代理设置
     http: http://proxy.example.com:8080
     https: https://proxy.example.com:8080
-  disable_auth: false  # 是否禁用客户端配置中的授权机制
 ```
 
 ### captures 部分
@@ -172,7 +169,7 @@ http_clients:
     timeout: 30
     verify_ssl: true
     session: true  # 是否保持会话
-  
+
   staging:  # 测试环境客户端配置
     base_url: https://staging-api.example.com
     headers:

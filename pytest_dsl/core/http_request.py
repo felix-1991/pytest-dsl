@@ -13,7 +13,8 @@ from pytest_dsl.core.http_client import http_client_manager
 
 # 定义支持的比较操作符
 COMPARISON_OPERATORS = {
-    "eq", "neq", "lt", "lte", "gt", "gte", "in", "not_in", "matches"
+    "eq", "neq", "lt", "lte", "gt", "gte", "in", "not_in", "matches",
+    "contains", "not_contains", "startswith", "endswith"
 }
 
 # 定义支持的断言类型
@@ -24,7 +25,7 @@ ASSERTION_TYPES = {
 
 # 操作符和断言类型重叠的集合（可以作为二者使用的）
 DUAL_PURPOSE = {
-    "contains", "not_contains", "matches", "in", "not_in"
+    "contains", "not_contains", "matches", "in", "not_in", "startswith", "endswith"
 }
 
 
@@ -333,7 +334,6 @@ class HTTPRequest:
         # 处理断言重试配置
         # 1. 只使用独立的retry_assertions配置
         retry_assertions_config = self.config.get('retry_assertions', {})
-        has_dedicated_retry_config = bool(retry_assertions_config)
 
         # 2. 向后兼容: 检查全局retry配置（仅作为默认值使用）
         retry_config = self.config.get('retry', {})
@@ -428,26 +428,46 @@ class HTTPRequest:
                         # 这是标准的断言类型格式 ["jsonpath", "$.id", "exists"]
                         assertion_type = potential_assertion_type
 
-                        # 检查断言类型是否有效
-                        if assertion_type not in ASSERTION_TYPES:
-                            raise ValueError(f"不支持的断言类型: {assertion_type} 在 {assertion}")
-
-                        # 检查此断言类型是否需要预期值
-                        if assertion_type not in ["exists", "not_exists"]:
-                            # 特殊处理类型断言，它确实需要一个值但在这种格式中没有提供
-                            if assertion_type == "type":
-                                raise ValueError(f"断言类型 'type' 需要预期值(string/number/boolean/array/object/null)，但未提供: {assertion}")
-                            # 断言类型作为操作符
-                            expected_value = None
-                            compare_operator = assertion_type  # 使用断言类型作为操作符
+                        # 特殊处理schema断言，因为schema值可能是字典
+                        if assertion_type == "schema" or isinstance(assertion_type, dict):
+                            if isinstance(assertion_type, dict):
+                                # 这是 ["body", "schema", {schema_dict}] 格式
+                                assertion_type = "schema"
+                                expected_value = potential_assertion_type
+                                compare_operator = "schema"
+                                extraction_path = None  # body提取器不需要路径
+                            else:
+                                # 这是 ["jsonpath", "$.data", "schema"] 格式，需要在4参数中处理
+                                expected_value = None
+                                compare_operator = assertion_type
                         else:
-                            expected_value = None
-                            compare_operator = assertion_type  # 存在性断言的操作符就是断言类型本身
-            elif len(assertion) == 4:  # 带操作符的断言 ["jsonpath", "$.id", "eq", 1] 或特殊断言 ["jsonpath", "$.type", "type", "string"]
+                            # 检查断言类型是否有效
+                            if assertion_type not in ASSERTION_TYPES:
+                                raise ValueError(f"不支持的断言类型: {assertion_type} 在 {assertion}")
+
+                            # 检查此断言类型是否需要预期值
+                            if assertion_type not in ["exists", "not_exists"]:
+                                # 特殊处理类型断言，它确实需要一个值但在这种格式中没有提供
+                                if assertion_type == "type":
+                                    raise ValueError(f"断言类型 'type' 需要预期值(string/number/boolean/array/object/null)，但未提供: {assertion}")
+                                # 断言类型作为操作符
+                                expected_value = None
+                                compare_operator = assertion_type  # 使用断言类型作为操作符
+                            else:
+                                expected_value = None
+                                compare_operator = assertion_type  # 存在性断言的操作符就是断言类型本身
+            elif len(assertion) == 4:  # 带操作符的断言 ["jsonpath", "$.id", "eq", 1] 或特殊断言 ["jsonpath", "$.type", "type", "string"] 或长度断言 ["body", "length", "gt", 50]
                 extraction_path = assertion[1]
 
+                # 特殊处理长度断言：["body", "length", "gt", 50]
+                if extraction_path == "length" and assertion[2] in COMPARISON_OPERATORS:
+                    # 这是4参数的长度断言格式
+                    extraction_path = None  # body提取器不需要路径
+                    assertion_type = "length"
+                    compare_operator = assertion[2]  # 比较操作符
+                    expected_value = assertion[3]  # 预期长度值
                 # 检查第三个元素是否是操作符
-                if assertion[2] in COMPARISON_OPERATORS or assertion[2] in DUAL_PURPOSE:
+                elif assertion[2] in COMPARISON_OPERATORS or assertion[2] in DUAL_PURPOSE:
                     # 这是操作符形式的断言
                     assertion_type = "value"  # 标记为值比较
                     compare_operator = assertion[2]  # 比较操作符
@@ -1101,6 +1121,16 @@ class HTTPRequest:
             elif isinstance(actual_value, (list, tuple, dict)):
                 return expected_value not in actual_value
             return True
+        elif operator == "startswith":
+            # startswith操作符检查actual是否以expected开头
+            if not isinstance(actual_value, str):
+                actual_value = str(actual_value) if actual_value is not None else ""
+            return actual_value.startswith(str(expected_value))
+        elif operator == "endswith":
+            # endswith操作符检查actual是否以expected结尾
+            if not isinstance(actual_value, str):
+                actual_value = str(actual_value) if actual_value is not None else ""
+            return actual_value.endswith(str(expected_value))
         elif operator == "matches":
             # matches操作符使用正则表达式进行匹配
             if not isinstance(actual_value, str):

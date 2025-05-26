@@ -1,5 +1,4 @@
 import xmlrpc.client
-import json
 from functools import partial
 import logging
 
@@ -165,20 +164,21 @@ class RemoteKeywordClient:
                 # 处理捕获的变量 - 这里需要访问本地上下文
                 if 'captures' in return_data and return_data['captures']:
                     print(f"远程关键字捕获的变量: {return_data['captures']}")
-                    # 注意：这里无法直接设置到本地上下文，因为没有context参数
-                    # 这个功能需要在DSL解析器层面处理
 
                 # 处理会话状态
                 if 'session_state' in return_data and return_data['session_state']:
                     print(f"远程关键字会话状态: {return_data['session_state']}")
-                    # 会话状态同步也需要在更高层处理
 
                 # 处理响应数据
                 if 'response' in return_data and return_data['response']:
                     print(f"远程关键字响应数据: 已接收")
 
-                # 返回主要结果，保持向后兼容
-                if 'result' in return_data:
+                # 检查是否为新的统一返回格式（包含captures等字段）
+                if 'captures' in return_data or 'session_state' in return_data or 'metadata' in return_data:
+                    # 返回完整的新格式，让DSL执行器处理变量捕获
+                    return return_data
+                elif 'result' in return_data:
+                    # 返回主要结果，保持向后兼容
                     return return_data['result']
                 else:
                     return return_data

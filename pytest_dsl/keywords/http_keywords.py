@@ -227,8 +227,7 @@ def _normalize_retry_config(config, assert_retry_count=None, assert_retry_interv
     {'name': '配置', 'mapping': 'config', 'description': '包含请求、捕获和断言的YAML配置'},
     {'name': '会话', 'mapping': 'session', 'description': '会话名称，用于在多个请求间保持会话状态'},
     {'name': '保存响应', 'mapping': 'save_response', 'description': '将完整响应保存到指定变量名中'},
-    {'name': '重试次数', 'mapping': 'retry_count', 'description': '请求失败时的重试次数'},
-    {'name': '重试间隔', 'mapping': 'retry_interval', 'description': '重试间隔时间（秒）'},
+    {'name': '禁用授权', 'mapping': 'disable_auth', 'description': '禁用客户端配置中的授权机制，默认为false'},
     {'name': '模板', 'mapping': 'template', 'description': '使用YAML变量文件中定义的请求模板'},
     {'name': '断言重试次数', 'mapping': 'assert_retry_count', 'description': '断言失败时的重试次数'},
     {'name': '断言重试间隔', 'mapping': 'assert_retry_interval', 'description': '断言重试间隔时间（秒）'}
@@ -244,8 +243,7 @@ def http_request(context, **kwargs):
         config: YAML配置
         session: 会话名称
         save_response: 保存响应的变量名
-        retry_count: 重试次数
-        retry_interval: 重试间隔
+        disable_auth: 禁用客户端配置中的授权机制
         template: 模板名称
         assert_retry_count: 断言失败时的重试次数
         assert_retry_interval: 断言重试间隔时间（秒）
@@ -257,8 +255,7 @@ def http_request(context, **kwargs):
     config = kwargs.get('config', '{}')
     session_name = kwargs.get('session')
     save_response = kwargs.get('save_response')
-    retry_count = kwargs.get('retry_count')
-    retry_interval = kwargs.get('retry_interval')
+    disable_auth = kwargs.get('disable_auth', False)
     template_name = kwargs.get('template')
     assert_retry_count = kwargs.get('assert_retry_count')
     assert_retry_interval = kwargs.get('assert_retry_interval')
@@ -320,7 +317,7 @@ def http_request(context, **kwargs):
         http_req = HTTPRequest(config, client_name, session_name)
 
         # 执行请求
-        response = http_req.execute()
+        response = http_req.execute(disable_auth=disable_auth)
 
         # 处理捕获
         captured_values = http_req.captured_values
@@ -620,48 +617,4 @@ def _process_assertions_with_unified_retry(http_req, retry_config):
             raise AssertionError(enhanced_error) from final_err
 
 
-# 移除旧的重试函数，使用统一的重试机制
-# 以下函数保留用于向后兼容，但内部逻辑已更改为调用统一重试函数
-def _process_assertions_with_retry(http_req, retry_count, retry_interval):
-    """处理断言并支持重试（向后兼容函数）
-
-    Args:
-        http_req: HTTP请求对象
-        retry_count: 重试次数
-        retry_interval: 重试间隔（秒）
-    """
-    # 创建统一的重试配置
-    retry_config = {
-        'enabled': True,
-        'count': retry_count,
-        'interval': retry_interval,
-        'all': True,
-        'indices': [],
-        'specific': {}
-    }
-
-    # 使用统一的重试处理函数
-    return _process_assertions_with_unified_retry(http_req, retry_config)
-
-
-def _process_config_based_assertions_with_retry(http_req):
-    """基于配置处理断言重试（向后兼容函数）
-
-    Args:
-        http_req: HTTP请求对象
-    """
-    # 从配置中获取重试信息
-    retry_assertions_config = http_req.config.get('retry_assertions', {})
-
-    # 创建统一的重试配置
-    retry_config = {
-        'enabled': True,
-        'count': retry_assertions_config.get('count', 3),
-        'interval': retry_assertions_config.get('interval', 1.0),
-        'all': retry_assertions_config.get('all', False),
-        'indices': retry_assertions_config.get('indices', []),
-        'specific': retry_assertions_config.get('specific', {})
-    }
-
-    # 使用统一的重试处理函数
-    return _process_assertions_with_unified_retry(http_req, retry_config)
+# 注意：旧的重试函数已被移除，现在使用统一的重试机制
