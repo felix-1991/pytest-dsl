@@ -9,12 +9,16 @@ import yaml
 import json
 import os
 import time
+import logging
 from typing import Dict, Any, Union
 
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.core.http_request import HTTPRequest
 from pytest_dsl.core.yaml_vars import yaml_vars
 from pytest_dsl.core.context import TestContext
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 def _process_file_reference(reference: Union[str, Dict[str, Any]], allow_vars: bool = True, test_context: TestContext = None) -> Any:
     """处理文件引用，加载外部文件内容
@@ -338,8 +342,50 @@ def http_request(context, **kwargs):
                 # 不需要重试，直接断言
                 http_req.process_asserts()
 
-        # 返回捕获的变量
-        return captured_values
+        # 获取会话状态（如果使用了会话）
+        session_state = None
+        if session_name:
+            try:
+                from pytest_dsl.core.http_client import http_client_manager
+                session_client = http_client_manager.get_session(session_name, client_name)
+                if session_client and session_client._session:
+                    session_state = {
+                        "cookies": dict(session_client._session.cookies),
+                        "headers": dict(session_client._session.headers)
+                    }
+            except Exception as e:
+                # 会话状态获取失败不影响主要功能
+                logger.warning(f"获取会话状态失败: {str(e)}")
+
+        # 准备响应数据（如果需要保存响应）
+        response_data = None
+        if save_response:
+            # 确保响应数据是可序列化的
+            try:
+                import json
+                json.dumps(response.__dict__)
+                response_data = response.__dict__
+            except (TypeError, AttributeError):
+                # 如果无法序列化，转换为基本信息
+                response_data = {
+                    "status_code": getattr(response, 'status_code', None),
+                    "headers": dict(getattr(response, 'headers', {})),
+                    "text": getattr(response, 'text', ''),
+                    "url": getattr(response, 'url', '')
+                }
+
+        # 统一返回格式 - 支持远程关键字模式
+        return {
+            "result": captured_values,  # 主要返回值保持兼容
+            "captures": captured_values,  # 明确的捕获变量
+            "session_state": {session_name: session_state} if session_state else {},
+            "response": response_data,  # 完整响应（如果需要）
+            "metadata": {
+                "response_time": getattr(response, 'elapsed', None),
+                "status_code": getattr(response, 'status_code', None),
+                "url": getattr(response, 'url', '')
+            }
+        }
 
 
 def _deep_merge(dict1, dict2):

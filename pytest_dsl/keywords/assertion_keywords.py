@@ -14,24 +14,24 @@ from pytest_dsl.core.keyword_manager import keyword_manager
 
 def _extract_jsonpath(json_data: Union[Dict, List], path: str) -> Any:
     """使用JSONPath从JSON数据中提取值
-    
+
     Args:
         json_data: 要提取数据的JSON对象或数组
         path: JSONPath表达式
-        
+
     Returns:
         提取的值或值列表
-    
+
     Raises:
         ValueError: 如果JSONPath表达式无效或找不到匹配项
     """
     try:
         if isinstance(json_data, str):
             json_data = json.loads(json_data)
-        
+
         jsonpath_expr = jsonpath.parse(path)
         matches = [match.value for match in jsonpath_expr.find(json_data)]
-        
+
         if not matches:
             return None
         elif len(matches) == 1:
@@ -44,12 +44,12 @@ def _extract_jsonpath(json_data: Union[Dict, List], path: str) -> Any:
 
 def _compare_values(actual: Any, expected: Any, operator: str = "==") -> bool:
     """比较两个值
-    
+
     Args:
         actual: 实际值
         expected: 预期值
         operator: 比较运算符 (==, !=, >, <, >=, <=, contains, not_contains, matches, and, or, not)
-        
+
     Returns:
         比较结果 (True/False)
     """
@@ -101,32 +101,32 @@ def _compare_values(actual: Any, expected: Any, operator: str = "==") -> bool:
 ])
 def assert_condition(**kwargs):
     """执行表达式断言
-    
+
     Args:
         condition: 断言条件表达式
         message: 断言失败时的错误消息
-        
+
     Returns:
         断言结果 (True/False)
-        
+
     Raises:
         AssertionError: 如果断言失败
     """
     condition = kwargs.get('condition')
     message = kwargs.get('message', '断言失败')
     context = kwargs.get('context')
-    
+
     # 简单解析表达式，支持 ==, !=, >, <, >=, <=, contains, not_contains, matches, in, and, or, not
     # 格式: "left_value operator right_value" 或 "boolean_expression"
     operators = ["==", "!=", ">", "<", ">=", "<=", "contains", "not_contains", "matches", "in", "and", "or", "not"]
-    
+
     # 先检查是否包含这些操作符
     operator_used = None
     for op in operators:
         if f" {op} " in condition:
             operator_used = op
             break
-    
+
     if not operator_used:
         # 如果没有找到操作符，尝试作为布尔表达式直接求值
         try:
@@ -142,36 +142,36 @@ def assert_condition(**kwargs):
             return True
         except Exception as e:
             raise AssertionError(f"{message}. 无法解析条件表达式: {condition}. 错误: {str(e)}")
-    
+
     # 解析左值和右值
     left_value, right_value = condition.split(f" {operator_used} ", 1)
     left_value = left_value.strip()
     right_value = right_value.strip()
-    
+
     # 移除引号（如果有）
     if left_value.startswith('"') and left_value.endswith('"'):
         left_value = left_value[1:-1]
     elif left_value.startswith("'") and left_value.endswith("'"):
         left_value = left_value[1:-1]
-        
+
     if right_value.startswith('"') and right_value.endswith('"'):
         right_value = right_value[1:-1]
     elif right_value.startswith("'") and right_value.endswith("'"):
         right_value = right_value[1:-1]
-    
+
     # 记录原始值（用于调试）
     allure.attach(
         f"原始左值: {left_value}\n原始右值: {right_value}\n操作符: {operator_used}",
         name="表达式解析",
         attachment_type=allure.attachment_type.TEXT
     )
-    
+
     # 对左值进行变量替换和表达式计算
     try:
         # 如果左值包含变量引用，先进行变量替换
         if '${' in left_value:
             left_value = context.executor.variable_replacer.replace_in_string(left_value)
-        
+
         # 检查是否需要计算表达式
         if any(op in str(left_value) for op in ['+', '-', '*', '/', '%', '(', ')']):
             try:
@@ -187,7 +187,7 @@ def assert_condition(**kwargs):
                     attachment_type=allure.attachment_type.TEXT
                 )
                 raise ValueError(f"表达式计算错误: {str(e)}")
-        
+
         # 处理布尔值字符串和数字字符串
         if isinstance(left_value, str):
             if left_value.lower() in ('true', 'false'):
@@ -210,13 +210,13 @@ def assert_condition(**kwargs):
             attachment_type=allure.attachment_type.TEXT
         )
         raise
-    
+
     # 对右值进行变量替换和表达式计算
     try:
         # 如果右值包含变量引用，先进行变量替换
         if '${' in right_value:
             right_value = context.executor.variable_replacer.replace_in_string(right_value)
-        
+
         # 检查是否需要计算表达式
         if any(op in str(right_value) for op in ['+', '-', '*', '/', '%', '(', ')']):
             try:
@@ -232,7 +232,7 @@ def assert_condition(**kwargs):
                     attachment_type=allure.attachment_type.TEXT
                 )
                 raise ValueError(f"表达式计算错误: {str(e)}")
-        
+
         # 处理布尔值字符串
         if isinstance(right_value, str):
             if right_value.lower() in ('true', 'false'):
@@ -246,7 +246,7 @@ def assert_condition(**kwargs):
             attachment_type=allure.attachment_type.TEXT
         )
         raise
-    
+
     # 类型转换和特殊处理
     if operator_used == "contains":
         # 特殊处理字符串包含操作
@@ -285,7 +285,7 @@ def assert_condition(**kwargs):
             # 尝试将右值解析为列表或字典
             if isinstance(right_value, str):
                 right_value = eval(right_value)
-            
+
             # 如果是字典，检查键
             if isinstance(right_value, dict):
                 result = left_value in right_value.keys()
@@ -310,17 +310,17 @@ def assert_condition(**kwargs):
                 right_value = float(right_value)
             except:
                 pass
-        
+
         # 记录类型转换后的值（用于调试）
         allure.attach(
             f"类型转换后左值: {left_value} ({type(left_value).__name__})\n类型转换后右值: {right_value} ({type(right_value).__name__})",
             name="类型转换",
             attachment_type=allure.attachment_type.TEXT
         )
-        
+
         # 执行比较
         result = _compare_values(left_value, right_value, operator_used)
-    
+
     # 记录和处理断言结果
     if not result:
         error_details = f"""
@@ -337,7 +337,7 @@ def assert_condition(**kwargs):
             attachment_type=allure.attachment_type.TEXT
         )
         raise AssertionError(error_details)
-    
+
     # 记录成功的断言
     allure.attach(
         f"实际值: {left_value}\n预期值: {right_value}\n操作符: {operator_used}",
@@ -356,17 +356,17 @@ def assert_condition(**kwargs):
 ])
 def assert_json(**kwargs):
     """执行JSON断言
-    
+
     Args:
         json_data: JSON数据（字符串或对象）
         jsonpath: JSONPath表达式
         expected_value: 预期的值
         operator: 比较操作符，默认为"=="
         message: 断言失败时的错误消息
-        
+
     Returns:
         断言结果 (True/False)
-        
+
     Raises:
         AssertionError: 如果断言失败
         ValueError: 如果JSONPath无效或找不到匹配项
@@ -376,27 +376,27 @@ def assert_json(**kwargs):
     expected_value = kwargs.get('expected_value')
     operator = kwargs.get('operator', '==')
     message = kwargs.get('message', 'JSON断言失败')
-    
+
     # 解析JSON（如果需要）
     if isinstance(json_data, str):
         try:
             json_data = json.loads(json_data)
         except json.JSONDecodeError as e:
             raise ValueError(f"无效的JSON数据: {str(e)}")
-    
+
     # 使用JSONPath提取值
     actual_value = _extract_jsonpath(json_data, path)
-    
+
     # 记录提取的值
     allure.attach(
         f"JSONPath: {path}\n提取值: {actual_value}",
         name="JSONPath提取结果",
         attachment_type=allure.attachment_type.TEXT
     )
-    
+
     # 比较值
     result = _compare_values(actual_value, expected_value, operator)
-    
+
     # 记录和处理断言结果
     if not result:
         allure.attach(
@@ -405,7 +405,7 @@ def assert_json(**kwargs):
             attachment_type=allure.attachment_type.TEXT
         )
         raise AssertionError(message)
-    
+
     # 记录成功的断言
     allure.attach(
         f"实际值: {actual_value}\n预期值: {expected_value}\n操作符: {operator}",
@@ -422,21 +422,23 @@ def assert_json(**kwargs):
 ])
 def extract_json(**kwargs):
     """从JSON数据中提取值并保存到变量
-    
+
     Args:
         json_data: JSON数据（字符串或对象）
         jsonpath: JSONPath表达式
         variable: 存储提取值的变量名
-        
+        context: 测试上下文
+
     Returns:
-        提取的值
-        
+        提取的值或包含提取值的字典（远程模式）
+
     Raises:
         ValueError: 如果JSONPath无效或找不到匹配项
     """
     json_data = kwargs.get('json_data')
     path = kwargs.get('jsonpath')
     variable = kwargs.get('variable')
+    context = kwargs.get('context')
 
     # 解析JSON（如果需要）
     if isinstance(json_data, str):
@@ -444,19 +446,31 @@ def extract_json(**kwargs):
             json_data = json.loads(json_data)
         except json.JSONDecodeError as e:
             raise ValueError(f"无效的JSON数据: {str(e)}")
-    
+
     # 使用JSONPath提取值
     value = _extract_jsonpath(json_data, path)
-    
+
+    # 将提取的值设置到上下文中（本地模式）
+    if context and variable:
+        context.set(variable, value)
+
     # 记录提取的值
     allure.attach(
         f"JSONPath: {path}\n提取值: {value}\n保存到变量: {variable}",
         name="JSON数据提取",
         attachment_type=allure.attachment_type.TEXT
     )
-    
-    # 返回提取的值用于变量赋值
-    return value
+
+    # 统一返回格式 - 支持远程关键字模式
+    return {
+        "result": value,  # 主要返回值保持兼容
+        "captures": {variable: value} if variable else {},  # 明确的捕获变量
+        "session_state": {},
+        "metadata": {
+            "jsonpath": path,
+            "variable_name": variable
+        }
+    }
 
 
 @keyword_manager.register('类型断言', [
@@ -466,22 +480,22 @@ def extract_json(**kwargs):
 ])
 def assert_type(**kwargs):
     """断言值的类型
-    
+
     Args:
         value: 要检查的值
         type: 预期的类型 (string, number, boolean, list, object, null)
         message: 断言失败时的错误消息
-        
+
     Returns:
         断言结果 (True/False)
-        
+
     Raises:
         AssertionError: 如果断言失败
     """
     value = kwargs.get('value')
     expected_type = kwargs.get('type')
     message = kwargs.get('message', '类型断言失败')
-    
+
     # 检查类型
     if expected_type == 'string':
         result = isinstance(value, str)
@@ -508,7 +522,7 @@ def assert_type(**kwargs):
         result = value is None
     else:
         raise ValueError(f"不支持的类型: {expected_type}")
-    
+
     # 记录和处理断言结果
     if not result:
         actual_type = type(value).__name__
@@ -518,7 +532,7 @@ def assert_type(**kwargs):
             attachment_type=allure.attachment_type.TEXT
         )
         raise AssertionError(message)
-    
+
     # 记录成功的断言
     allure.attach(
         f"值: {value}\n类型: {expected_type}",
@@ -536,16 +550,16 @@ def assert_type(**kwargs):
 ])
 def compare_values(**kwargs):
     """比较两个值
-    
+
     Args:
         actual: 实际值
         expected: 预期值
         operator: 比较操作符，默认为"=="
         message: 断言失败时的错误消息
-        
+
     Returns:
         比较结果 (True/False)
-        
+
     Raises:
         AssertionError: 如果比较失败
     """
@@ -553,7 +567,7 @@ def compare_values(**kwargs):
     expected = kwargs.get('expected')
     operator = kwargs.get('operator', '==')
     message = kwargs.get('message', '数据比较失败')
-    
+
     # 处理布尔值字符串和表达式
     if isinstance(actual, str):
         # 检查是否需要计算表达式
@@ -571,7 +585,7 @@ def compare_values(**kwargs):
             actual = actual.lower() == 'true'
         elif actual.lower() in ('yes', 'no', '1', '0', 't', 'f', 'y', 'n'):
             actual = actual.lower() in ('yes', '1', 't', 'y')
-    
+
     if isinstance(expected, str):
         # 检查是否需要计算表达式
         if any(op in expected for op in ['+', '-', '*', '/', '%', '(', ')']):
@@ -588,10 +602,10 @@ def compare_values(**kwargs):
             expected = expected.lower() == 'true'
         elif expected.lower() in ('yes', 'no', '1', '0', 't', 'f', 'y', 'n'):
             expected = expected.lower() in ('yes', '1', 't', 'y')
-    
+
     # 比较值
     result = _compare_values(actual, expected, operator)
-    
+
     # 记录和处理比较结果
     if not result:
         allure.attach(
@@ -600,11 +614,11 @@ def compare_values(**kwargs):
             attachment_type=allure.attachment_type.TEXT
         )
         raise AssertionError(message)
-    
+
     # 记录成功的比较
     allure.attach(
         f"实际值: {actual}\n预期值: {expected}\n操作符: {operator}",
         name="数据比较成功",
         attachment_type=allure.attachment_type.TEXT
     )
-    return result 
+    return result

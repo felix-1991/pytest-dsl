@@ -504,7 +504,20 @@ machineone|[打印],内容: "这是通过远程服务器执行的关键字"
 machineone|[打印],内容: "远程生成的随机数: ${随机数}"
 ```
 
-> **注意**：当前远程关键字模式在HTTP请求关键字上支持的不是太好，后续会优化关键字实现，提升远程关键字的功能和稳定性。
+### 远程关键字功能特性
+
+远程关键字功能已经完全支持所有内置关键字，包括：
+
+- ✅ **HTTP请求关键字**：完整支持变量捕获、会话管理和响应保存
+- ✅ **断言关键字**：支持各种断言操作
+- ✅ **全局变量管理**：远程和本地环境独立的全局变量空间
+- ✅ **JSON操作**：JSON提取和断言功能
+- ✅ **工具关键字**：随机数生成、字符串操作等
+- ✅ **时间关键字**：时间获取和格式化
+
+详细的使用指南和开发文档请参考：
+- 📖 [远程关键字使用指南](./docs/remote-keywords-usage.md)
+- 🛠️ [远程关键字开发指南](./docs/remote-keywords-development.md)
 
 ### 远程关键字服务安全性
 
@@ -545,12 +558,17 @@ machineone|[打印],内容: "远程生成的随机数: ${随机数}"
 
 ## 进阶文档
 
+### 核心功能文档
 - [完整DSL语法指南](./docs/自动化关键字DSL语法设计.md)
 - [创建自定义关键字](./pytest_dsl/docs/custom_keywords.md)
 - [HTTP测试关键字](./docs/api.md)
 - [断言关键字详解](./docs/assertion_keywords.md)
 - [HTTP断言重试机制](./docs/http_assertion_retry.md)
-- [远程关键字语法示例](./docs/remote_syntax_example.md)
+
+### 远程关键字文档
+- 📖 [远程关键字使用指南](./docs/remote-keywords-usage.md) - 如何使用远程关键字功能
+- 🛠️ [远程关键字开发指南](./docs/remote-keywords-development.md) - 如何开发支持远程模式的关键字
+- [远程关键字语法示例](./docs/remote_syntax_example.md) - 基础语法示例
 
 ## 贡献与支持
 

@@ -94,53 +94,27 @@ class RemoteKeywordServer:
             # 添加默认的步骤名称
             exec_kwargs['step_name'] = name
 
-            # 为HTTP请求关键字创建测试上下文
+            # 创建测试上下文（所有关键字都需要）
             from pytest_dsl.core.context import TestContext
             test_context = TestContext()
-
-            # 添加context参数，这对于HTTP请求关键字是必需的
             exec_kwargs['context'] = test_context
 
-            # 映射参数
+            # 映射参数（通用逻辑）
             for param_name, param_value in args_dict.items():
-                # 如果参数名在映射中，使用映射后的名称
                 if param_name in mapping:
                     exec_kwargs[mapping[param_name]] = param_value
                 else:
-                    # 否则直接使用原始参数名
                     exec_kwargs[param_name] = param_value
-
-                # 如果有保存响应参数，确保在上下文中创建该变量
-                if param_name == '保存响应' and param_value:
-                    test_context.set(param_value, {})
 
             # 执行关键字
             result = keyword_manager.execute(name, **exec_kwargs)
 
-            # 如果有保存响应参数，从上下文中获取响应并返回
-            if 'save_response' in exec_kwargs and exec_kwargs['save_response']:
-                response_var = exec_kwargs['save_response']
-                response_data = test_context.get(response_var)
-                # 确保响应数据是可序列化的
-                if response_data and not self._is_serializable(response_data):
-                    # 尝试转换为可序列化的格式
-                    if hasattr(response_data, '__dict__'):
-                        response_data = response_data.__dict__
-                    else:
-                        response_data = str(response_data)
-                # 更新结果中的响应数据
-                if isinstance(result, dict):
-                    result[response_var] = response_data
-                else:
-                    result = {response_var: response_data}
-
-            # 处理不可序列化的结果
-            if not self._is_serializable(result):
-                result = str(result)
+            # 处理返回结果
+            return_data = self._process_keyword_result(result, test_context)
 
             return {
                 'status': 'PASS',
-                'return': result
+                'return': return_data
             }
         except Exception as e:
             exc_type, exc_value, exc_tb = sys.exc_info()
@@ -166,6 +140,55 @@ class RemoteKeywordServer:
 
         func = keyword_info['func']
         return inspect.getdoc(func) or ""
+
+    def _process_keyword_result(self, result, test_context):
+        """处理关键字执行结果，确保可序列化并提取上下文变量
+
+        Args:
+            result: 关键字执行结果
+            test_context: 测试上下文
+
+        Returns:
+            处理后的结果
+        """
+        # 如果结果已经是新格式（包含captures等），直接返回
+        if isinstance(result, dict) and ('captures' in result or 'session_state' in result):
+            # 确保结果可序列化
+            return self._ensure_serializable(result)
+
+        # 对于传统格式的结果，包装成新格式
+        processed_result = {
+            "result": result,
+            "captures": {},
+            "session_state": {},
+            "metadata": {}
+        }
+
+        # 从上下文中提取可能的变量（这是为了向后兼容）
+        # 注意：这只是一个备用方案，新的关键字应该主动返回所需数据
+        if hasattr(test_context, '_variables'):
+            # 只提取在执行过程中新增的变量
+            processed_result["captures"] = dict(test_context._variables)
+
+        return self._ensure_serializable(processed_result)
+
+    def _ensure_serializable(self, obj):
+        """确保对象可以被序列化为JSON"""
+        if self._is_serializable(obj):
+            return obj
+
+        # 如果不能序列化，尝试转换
+        if isinstance(obj, dict):
+            serializable_dict = {}
+            for key, value in obj.items():
+                serializable_dict[key] = self._ensure_serializable(value)
+            return serializable_dict
+        elif isinstance(obj, (list, tuple)):
+            return [self._ensure_serializable(item) for item in obj]
+        elif hasattr(obj, '__dict__'):
+            return self._ensure_serializable(obj.__dict__)
+        else:
+            return str(obj)
 
     def _is_serializable(self, obj):
         """检查对象是否可以被序列化为JSON"""
