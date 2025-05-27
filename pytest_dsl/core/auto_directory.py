@@ -32,6 +32,9 @@ _teardown_executed = set()
 # 常量定义
 SETUP_FILE_NAME = "setup.auto"
 TEARDOWN_FILE_NAME = "teardown.auto"
+# 支持.dsl扩展名的setup和teardown文件
+SETUP_DSL_FILE_NAME = "setup.dsl"
+TEARDOWN_DSL_FILE_NAME = "teardown.dsl"
 TMP_DIR = "/tmp"
 LOCK_FILE_SUFFIX = ".lock"
 EXECUTED_FILE_SUFFIX = ".lock.executed"
@@ -39,11 +42,11 @@ EXECUTED_FILE_SUFFIX = ".lock.executed"
 
 def get_lock_file_path(dir_path: str, is_setup: bool) -> str:
     """获取锁文件路径
-    
+
     Args:
         dir_path: 目录路径
         is_setup: 是否为setup锁文件
-        
+
     Returns:
         str: 锁文件路径
     """
@@ -53,7 +56,7 @@ def get_lock_file_path(dir_path: str, is_setup: bool) -> str:
 
 def execute_hook_file(file_path: Path, is_setup: bool, dir_path_str: str) -> None:
     """执行setup或teardown钩子文件
-    
+
     Args:
         file_path: 钩子文件路径
         is_setup: 是否为setup钩子
@@ -62,12 +65,12 @@ def execute_hook_file(file_path: Path, is_setup: bool, dir_path_str: str) -> Non
     hook_type = "Setup" if is_setup else "Teardown"
     executed_set = _setup_executed if is_setup else _teardown_executed
     lock_file = get_lock_file_path(dir_path_str, is_setup)
-    
+
     # 检查是否已执行过
     if dir_path_str in executed_set:
         logger.info(f"{hook_type} for directory already executed: {dir_path_str}")
         return
-    
+
     # 使用filelock获取锁并执行
     with FileLock(lock_file):
         if dir_path_str not in executed_set:  # 再次检查，防止在获取锁期间被其他进程执行
