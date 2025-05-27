@@ -277,7 +277,7 @@ remote_server|[断言],条件: "'${final_remote_env}' == 'production'",消息: "
 [打印],内容: "=== 远程关键字综合功能测试完成 ==="
 [打印],内容: "✅ 所有综合功能测试通过！"
 
-@teardown do
+teardown do
     [打印],内容: "执行综合测试清理..."
 
     # 清理全局变量

@@ -19,6 +19,6 @@ end
 
 [打印],内容:'循环结束'
 
-@teardown do
+teardown do
     [打印],内容:'变量和循环测试完成!'
-end 
+end

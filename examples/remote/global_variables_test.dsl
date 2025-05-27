@@ -187,11 +187,11 @@ for i in range(1, 4) do
     current_local = [获取全局变量],变量名: "shared_counter"
     new_local_value = ${current_local} + 1
     [设置全局变量],变量名: "shared_counter",值: ${new_local_value}
-    
+
     current_remote = remote_server|[获取全局变量],变量名: "remote_shared_counter"
     new_remote_value = ${current_remote} + 1
     remote_server|[设置全局变量],变量名: "remote_shared_counter",值: ${new_remote_value}
-    
+
     [打印],内容: "第${i}次更新 - 本地计数器: ${new_local_value}, 远程计数器: ${new_remote_value}"
 end
 
@@ -228,9 +228,9 @@ remote_persistent_token = remote_server|[获取全局变量],变量名: "remote_
 [打印],内容: "=== 远程全局变量功能测试完成 ==="
 [打印],内容: "✅ 所有全局变量功能测试通过！"
 
-@teardown do
+teardown do
     [打印],内容: "清理测试全局变量..."
-    
+
     # 清理本地全局变量
     try
         [删除全局变量],变量名: "local_config"
@@ -247,7 +247,7 @@ remote_persistent_token = remote_server|[获取全局变量],变量名: "remote_
     catch error
         [打印],内容: "本地变量清理完成（部分变量可能已不存在）"
     end
-    
+
     # 清理远程全局变量
     try
         remote_server|[删除全局变量],变量名: "remote_config"
@@ -264,6 +264,6 @@ remote_persistent_token = remote_server|[获取全局变量],变量名: "remote_
     catch error
         [打印],内容: "远程变量清理完成（部分变量可能已不存在）"
     end
-    
+
     [打印],内容: "远程全局变量测试清理完成"
 end

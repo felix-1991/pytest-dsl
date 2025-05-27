@@ -13,7 +13,9 @@ reserved = {
     'return': 'RETURN',  # 添加return关键字支持
     'else': 'ELSE',   # 添加else关键字支持
     'if': 'IF',  # 添加if关键字支持
-    'as': 'AS'   # 添加as关键字支持，用于远程关键字别名
+    'as': 'AS',   # 添加as关键字支持，用于远程关键字别名
+    'function': 'FUNCTION',  # 添加function关键字支持，用于自定义关键字定义
+    'teardown': 'TEARDOWN'   # 添加teardown关键字支持，用于清理操作
 }
 
 # token 名称列表
@@ -35,9 +37,7 @@ tokens = [
     'TAGS_KEYWORD',
     'AUTHOR_KEYWORD',
     'DATE_KEYWORD',
-    'TEARDOWN_KEYWORD',
     'DATA_KEYWORD',  # Add new token for @data keyword
-    'KEYWORD_KEYWORD',  # 添加@keyword关键字
     'IMPORT_KEYWORD',   # 添加@import关键字
     'REMOTE_KEYWORD',   # 添加@remote关键字
     'GT',        # 大于 >
@@ -132,18 +132,8 @@ def t_DATE_KEYWORD(t):
     return t
 
 
-def t_TEARDOWN_KEYWORD(t):
-    r'@teardown'
-    return t
-
-
 def t_DATA_KEYWORD(t):
     r'@data'
-    return t
-
-
-def t_KEYWORD_KEYWORD(t):
-    r'@keyword'
     return t
 
 

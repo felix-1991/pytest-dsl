@@ -89,6 +89,6 @@
             all: true
     ''',步骤名称:"纯配置式重试示例"
 
-@teardown do
+teardown do
     [打印],内容:'增强断言重试测试完成!'
-end 
+end

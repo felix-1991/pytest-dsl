@@ -231,7 +231,7 @@ def p_parameter_item(p):
 
 
 def p_teardown(p):
-    '''teardown : TEARDOWN_KEYWORD DO statements END'''
+    '''teardown : TEARDOWN DO statements END'''
     p[0] = Node('Teardown', [p[3]])
 
 
@@ -241,7 +241,7 @@ def p_data_source(p):
 
 
 def p_custom_keyword(p):
-    '''custom_keyword : KEYWORD_KEYWORD ID LPAREN param_definitions RPAREN DO statements END'''
+    '''custom_keyword : FUNCTION ID LPAREN param_definitions RPAREN DO statements END'''
     p[0] = Node('CustomKeyword', [p[4], p[7]], p[2])
 
 

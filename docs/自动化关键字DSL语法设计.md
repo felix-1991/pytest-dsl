@@ -18,7 +18,7 @@ message = "Hello, pytest-dsl!"
 number = 5
 
 # 自定义关键字（函数）定义
-@keyword 打印消息 (内容) do
+function 打印消息 (内容) do
     [打印],内容:${内容}
 end
 
@@ -49,7 +49,7 @@ end
 '''
 
 # 清理操作
-@teardown do
+teardown do
     [打印],内容:"测试结束"
 end
 ```
@@ -148,7 +148,7 @@ end
 可以在DSL文件中定义自定义关键字，类似于编程语言中的函数：
 
 ```python
-@keyword 拼接字符串 (前缀, 后缀="默认后缀") do
+function 拼接字符串 (前缀, 后缀="默认后缀") do
     结果 = "${前缀}${后缀}"
     [打印],内容: "拼接结果: ${结果}"
     return ${结果}
@@ -171,10 +171,10 @@ end
 
 ### 收尾清理（Teardown）
 
-使用`@teardown`定义测试后的清理操作：
+使用`teardown`定义测试后的清理操作：
 
 ```python
-@teardown do
+teardown do
     [打印],内容:"测试结束"
     [删除文件],路径:"temp.txt"
 end

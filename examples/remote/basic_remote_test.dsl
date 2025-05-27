@@ -122,6 +122,6 @@ remote_type_check = remote_server|[类型断言],值: 123,类型: "number",消�
 [打印],内容: "=== 基础远程关键字测试完成 ==="
 [打印],内容: "✅ 所有基础功能测试通过！"
 
-@teardown do
+teardown do
     [打印],内容: "基础远程关键字测试清理完成"
 end
