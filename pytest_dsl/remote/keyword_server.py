@@ -16,6 +16,9 @@ class RemoteKeywordServer:
         self.server = None
         self.api_key = api_key
 
+        # 变量存储
+        self.shared_variables = {}  # 存储共享变量
+
         # 注册内置关键字
         self._register_builtin_keywords()
 
@@ -36,6 +39,13 @@ class RemoteKeywordServer:
         self.server.register_function(self.get_keyword_arguments)
         self.server.register_function(self.get_keyword_documentation)
         self.server.register_function(self.authenticate)
+
+        # 注册变量同步方法
+        self.server.register_function(self.sync_variables_from_client)
+        self.server.register_function(self.get_variables_for_client)
+        self.server.register_function(self.set_shared_variable)
+        self.server.register_function(self.get_shared_variable)
+        self.server.register_function(self.list_shared_variables)
 
         print(f"远程关键字服务器已启动，监听地址: {self.host}:{self.port}")
         self.server.serve_forever()
@@ -197,6 +207,159 @@ class RemoteKeywordServer:
             return True
         except (TypeError, OverflowError):
             return False
+
+    def sync_variables_from_client(self, variables, api_key=None):
+        """接收客户端同步的变量
+
+        Args:
+            variables: 客户端发送的变量字典
+            api_key: API密钥(可选)
+
+        Returns:
+            dict: 同步结果
+        """
+        # 验证API密钥
+        if self.api_key and not self.authenticate(api_key):
+            return {
+                'status': 'error',
+                'error': '认证失败：无效的API密钥'
+            }
+
+        try:
+            # 更新共享变量
+            for name, value in variables.items():
+                self.shared_variables[name] = value
+                print(f"接收到客户端变量: {name}")
+
+            return {
+                'status': 'success',
+                'message': f'成功同步 {len(variables)} 个变量'
+            }
+        except Exception as e:
+            return {
+                'status': 'error',
+                'error': f'同步变量失败: {str(e)}'
+            }
+
+    def get_variables_for_client(self, api_key=None):
+        """获取要发送给客户端的变量
+
+        Args:
+            api_key: API密钥(可选)
+
+        Returns:
+            dict: 变量数据
+        """
+        # 验证API密钥
+        if self.api_key and not self.authenticate(api_key):
+            return {
+                'status': 'error',
+                'error': '认证失败：无效的API密钥'
+            }
+
+        try:
+            return {
+                'status': 'success',
+                'variables': self.shared_variables.copy()
+            }
+        except Exception as e:
+            return {
+                'status': 'error',
+                'error': f'获取变量失败: {str(e)}'
+            }
+
+    def set_shared_variable(self, name, value, api_key=None):
+        """设置共享变量
+
+        Args:
+            name: 变量名
+            value: 变量值
+            api_key: API密钥(可选)
+
+        Returns:
+            dict: 设置结果
+        """
+        # 验证API密钥
+        if self.api_key and not self.authenticate(api_key):
+            return {
+                'status': 'error',
+                'error': '认证失败：无效的API密钥'
+            }
+
+        try:
+            self.shared_variables[name] = value
+            print(f"设置共享变量: {name} = {value}")
+            return {
+                'status': 'success',
+                'message': f'成功设置变量 {name}'
+            }
+        except Exception as e:
+            return {
+                'status': 'error',
+                'error': f'设置变量失败: {str(e)}'
+            }
+
+    def get_shared_variable(self, name, api_key=None):
+        """获取共享变量
+
+        Args:
+            name: 变量名
+            api_key: API密钥(可选)
+
+        Returns:
+            dict: 变量值或错误信息
+        """
+        # 验证API密钥
+        if self.api_key and not self.authenticate(api_key):
+            return {
+                'status': 'error',
+                'error': '认证失败：无效的API密钥'
+            }
+
+        try:
+            if name in self.shared_variables:
+                return {
+                    'status': 'success',
+                    'value': self.shared_variables[name]
+                }
+            else:
+                return {
+                    'status': 'error',
+                    'error': f'变量 {name} 不存在'
+                }
+        except Exception as e:
+            return {
+                'status': 'error',
+                'error': f'获取变量失败: {str(e)}'
+            }
+
+    def list_shared_variables(self, api_key=None):
+        """列出所有共享变量
+
+        Args:
+            api_key: API密钥(可选)
+
+        Returns:
+            dict: 变量列表
+        """
+        # 验证API密钥
+        if self.api_key and not self.authenticate(api_key):
+            return {
+                'status': 'error',
+                'error': '认证失败：无效的API密钥'
+            }
+
+        try:
+            return {
+                'status': 'success',
+                'variables': list(self.shared_variables.keys()),
+                'count': len(self.shared_variables)
+            }
+        except Exception as e:
+            return {
+                'status': 'error',
+                'error': f'列出变量失败: {str(e)}'
+            }
 
 def main():
     """启动远程关键字服务器的主函数"""

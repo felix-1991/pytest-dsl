@@ -1,0 +1,35 @@
+# 远程服务器配置示例
+# 该文件展示如何在YAML中配置远程关键字服务器，实现全局自动加载
+
+
+# 全局变量（这些会被同步到远程服务器）
+g_environment: "test"
+g_base_url: "https://api.example.com"
+g_timeout: 30
+g_retry_count: 3
+
+# 其他YAML变量配置
+test_data:
+  username: "testuser"
+  password: "password123"
+
+api_config:
+  base_url: "https://api.example.com"
+  timeout: 30
+
+# HTTP客户端配置（会被同步到远程服务器）
+http_clients:
+  default:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-client/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+
+# API端点配置（会被同步到远程服务器）
+api_endpoints:
+  login: "/auth/login"
+  logout: "/auth/logout"
+  user_info: "/user/profile"

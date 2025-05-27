@@ -1,0 +1,86 @@
+# 变量同步配置示例
+
+# 远程服务器配置
+remote_servers:
+  server1:
+    url: "http://localhost:8270/"
+    alias: "main_server"
+    sync_config:
+      enabled: true                    # 总开关
+      sync_global_vars: true           # 同步全局变量（g_开头）
+      sync_yaml_vars: true             # 同步YAML配置变量
+
+  server2:
+    url: "http://localhost:8271/"
+    alias: "backup_server"
+    api_key: "backup_api_key"
+# 全局变量（这些会被同步）
+g_environment: "test"
+g_base_url: "https://api.example.com"
+g_timeout: 30
+g_retry_count: 3
+
+# 测试数据（这些也会被同步）
+test_data:
+  users:
+    admin:
+      username: "admin"
+      password: "admin123"
+    user1:
+      username: "testuser"
+      password: "test123"
+  
+  endpoints:
+    login: "/api/auth/login"
+    logout: "/api/auth/logout"
+    profile: "/api/user/profile"
+
+# HTTP客户端配置（这些会被同步）
+http_clients:
+  default:
+    base_url: "${g_base_url}"
+    headers:
+      User-Agent: "pytest-dsl-client/1.0"
+      Accept: "application/json"
+    timeout: "${g_timeout}"
+    verify_ssl: true
+    session: true
+    
+  api_client:
+    base_url: "${g_base_url}"
+    headers:
+      User-Agent: "pytest-dsl-api-client/1.0"
+      Accept: "application/json"
+      Content-Type: "application/json"
+    timeout: "${g_timeout}"
+    verify_ssl: true
+    session: true
+    retry:
+      max_retries: "${g_retry_count}"
+      retry_interval: 1
+      retry_on_status: [500, 502, 503, 504]
+
+# API端点配置（这些会被同步）
+api_endpoints:
+  auth:
+    login:
+      method: "POST"
+      path: "/api/auth/login"
+      headers:
+        Content-Type: "application/json"
+    logout:
+      method: "POST"
+      path: "/api/auth/logout"
+      
+  user:
+    profile:
+      method: "GET"
+      path: "/api/user/profile"
+      headers:
+        Authorization: "Bearer ${access_token}"
+    update_profile:
+      method: "PUT"
+      path: "/api/user/profile"
+      headers:
+        Authorization: "Bearer ${access_token}"
+        Content-Type: "application/json"

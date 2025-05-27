@@ -398,7 +398,7 @@ def call_microservice(**kwargs):
 │   └── api_tests/     # DSL测试文件目录
 │       ├── login.dsl
 │       └── users.dsl
-├── vars/              # 变量文件
+├── config/              # 变量文件
 │   ├── dev.yaml       # 开发环境配置
 │   └── prod.yaml      # 生产环境配置
 └── pytest.ini         # pytest配置
@@ -474,6 +474,8 @@ pytest-dsl-server --api-key your_secret_key
 
 ### 远程关键字语法
 
+#### 方式一：DSL中导入（适合临时使用）
+
 ```python
 # 导入远程关键字服务器
 @remote: "http://keyword-server:8270/" as machineone
@@ -482,6 +484,34 @@ pytest-dsl-server --api-key your_secret_key
 # 远程关键字调用
 machineone|[打印],内容: "这是通过远程服务器执行的关键字"
 结果 = machineone|[拼接字符串],前缀: "Hello, ",后缀: "Remote World!"
+```
+
+#### 方式二：YAML配置自动加载（推荐用于全局配置）
+
+在`config/vars.yaml`或其他YAML配置文件中添加：
+
+```yaml
+# 远程服务器配置
+remote_servers:
+  main_server:
+    url: "http://localhost:8270/"
+    alias: "main"
+    api_key: "your_api_key_here"  # 可选
+    sync_config:                  # 可选
+      sync_global_vars: true
+      sync_yaml_vars: true
+
+  backup_server:
+    url: "http://backup-host:8270/"
+    alias: "backup"
+```
+
+然后在DSL中直接使用：
+
+```python
+# 无需@remote导入，直接使用YAML中配置的服务器
+main|[打印],内容: "使用主服务器"
+backup|[打印],内容: "使用备用服务器"
 ```
 
 ### 远程关键字测试示例
@@ -498,6 +528,59 @@ machineone|[打印],内容: "这是通过远程服务器执行的关键字"
 
 # 基本打印测试
 machineone|[打印],内容: "这是通过远程服务器执行的关键字"
+```
+
+## 变量传递功能
+
+pytest-dsl提供了简洁的变量传递功能，在首次连接远程关键字服务器时，自动传递全局变量和YAML配置变量，方便远程关键字访问本地的配置信息。
+
+### 功能特性
+
+- **自动传递**：连接时自动传递全局变量（g_开头）和YAML配置变量
+- **简化配置**：无需复杂的同步设置，开箱即用
+- **参数传递**：其他变量仍可通过参数传递机制使用
+- **中心存储**：远程服务器存储传递过来的变量，供远程关键字使用
+
+### 基本使用
+
+```python
+# 设置全局变量（会自动传递到远程服务器）
+g_test_user = "admin"
+g_test_password = "password123"
+g_base_url = "https://api.example.com"
+
+# 导入远程关键字服务器（连接时自动传递变量）
+@remote: "http://localhost:8270/" as remote_server
+
+# 远程关键字可以直接使用传递过去的全局变量
+remote_server|[HTTP请求],url: "${g_base_url}/api/login"
+
+# 其他变量通过参数传递
+local_data = "本地数据"
+remote_server|[打印],内容: local_data
+```
+
+### 配置选项
+
+可以通过sync_config参数控制传递行为：
+
+```python
+# 自定义传递配置
+sync_config = {
+    'sync_global_vars': True,   # 是否传递全局变量
+    'sync_yaml_vars': True,     # 是否传递YAML配置变量
+}
+
+# 使用自定义配置连接
+client = RemoteKeywordClient(sync_config=sync_config)
+```
+
+### 应用场景
+
+1. **配置共享**：将测试配置（API地址、超时时间等）传递给远程服务器
+2. **环境变量**：共享环境相关的全局变量
+3. **认证信息**：传递用户名、密码等认证相关变量
+4. **测试数据**：共享测试用的基础数据
 
 # 随机数生成测试
 随机数 = [生成随机数],最小值: 1,最大值: 100
@@ -568,6 +651,7 @@ machineone|[打印],内容: "远程生成的随机数: ${随机数}"
 ### 远程关键字文档
 - 📖 [远程关键字使用指南](./docs/remote-keywords-usage.md) - 如何使用远程关键字功能
 - 🛠️ [远程关键字开发指南](./docs/remote-keywords-development.md) - 如何开发支持远程模式的关键字
+- ⚙️ [YAML远程服务器配置指南](./docs/yaml_remote_servers.md) - 如何通过YAML配置自动加载远程服务器
 - [远程关键字语法示例](./docs/remote_syntax_example.md) - 基础语法示例
 
 ## 贡献与支持

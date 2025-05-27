@@ -2,7 +2,7 @@
 test_data:
   username: "testuser"
   password: "password123"
-  
+
 api_config:
   base_url: "https://api.example.com"
   timeout: 30
@@ -19,7 +19,7 @@ http_clients:
     timeout: 30
     verify_ssl: true
     session: true
-  
+
   jsonplaceholder:  # JSONPlaceholder API客户端
     base_url: https://jsonplaceholder.typicode.com
     headers:
@@ -45,7 +45,7 @@ http_clients:
     auth:
       type: custom
       provider_name: hmac_aws_auth
-  
+
   jwt_auth:
     base_url: https://httpbin.org
     headers:
@@ -57,7 +57,7 @@ http_clients:
     auth:
       type: custom
       provider_name: jwt_refresh_auth
-  
+
   wechat_auth:
     base_url: https://httpbin.org
     headers:
@@ -69,7 +69,7 @@ http_clients:
     auth:
       type: custom
       provider_name: wechat_miniapp_auth
-  
+
   multi_step_auth:
     base_url: https://httpbin.org
     headers:
@@ -181,4 +181,19 @@ http_templates:
 api_test_data:
   username: test_user
   password: password123
-  user_id: 10 
+  user_id: 10
+
+# 远程服务器配置（可选）
+# 取消注释以下配置来启用自动远程服务器连接
+# remote_servers:
+#   main_server:
+#     url: "http://localhost:8270/"
+#     alias: "main"
+#     api_key: "your_api_key_here"  # 可选
+#     sync_config:                  # 可选
+#       sync_global_vars: true
+#       sync_yaml_vars: true
+#
+#   backup_server:
+#     url: "http://backup-host:8270/"
+#     alias: "backup"

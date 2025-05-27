@@ -1,0 +1,47 @@
+# 测试用远程服务器配置
+# 用于验证YAML自动加载远程服务器功能
+
+# 远程服务器配置
+remote_servers:
+  # 主测试服务器
+  main_server:
+    url: "http://localhost:8270/"
+    alias: "main"
+    sync_config:
+      sync_global_vars: true
+      sync_yaml_vars: true
+
+  # 备用测试服务器（如果需要）
+  test_server:
+    url: "http://localhost:8271/"
+    alias: "test"
+    sync_config:
+      sync_global_vars: true
+      sync_yaml_vars: false
+
+# 全局变量（会自动同步到远程服务器）
+g_test_environment: "yaml_config_test"
+g_base_url: "https://api.test.com"
+g_timeout: 30
+
+# 测试数据
+test_data:
+  username: "yaml_test_user"
+  password: "yaml_test_pass"
+
+# HTTP客户端配置（会被同步）
+http_clients:
+  default:
+    base_url: https://httpbin.org
+    headers:
+      User-Agent: pytest-dsl-yaml-test/1.0
+      Accept: application/json
+    timeout: 30
+    verify_ssl: true
+    session: true
+
+# API端点配置
+api_endpoints:
+  login: "/auth/login"
+  logout: "/auth/logout"
+  test: "/test/endpoint"

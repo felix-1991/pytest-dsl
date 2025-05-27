@@ -10,13 +10,19 @@ logger = logging.getLogger(__name__)
 class RemoteKeywordClient:
     """远程关键字客户端，用于连接远程关键字服务器并执行关键字"""
 
-    def __init__(self, url='http://localhost:8270/', api_key=None, alias=None):
+    def __init__(self, url='http://localhost:8270/', api_key=None, alias=None, sync_config=None):
         self.url = url
         self.server = xmlrpc.client.ServerProxy(url, allow_none=True)
         self.keyword_cache = {}
         self.param_mappings = {}  # 存储每个关键字的参数映射
         self.api_key = api_key
         self.alias = alias or url.replace('http://', '').replace('https://', '').split(':')[0]
+
+        # 变量传递配置（简化版）
+        self.sync_config = sync_config or {
+            'sync_global_vars': True,   # 连接时传递全局变量（g_开头）
+            'sync_yaml_vars': True,     # 连接时传递YAML配置变量
+        }
 
     def connect(self):
         """连接到远程服务器并获取可用关键字"""
@@ -26,6 +32,10 @@ class RemoteKeywordClient:
             print(f"RemoteKeywordClient: 获取到 {len(keyword_names)} 个关键字")
             for name in keyword_names:
                 self._register_remote_keyword(name)
+
+            # 连接时传递变量到远程服务器
+            self._send_initial_variables()
+
             logger.info(f"已连接到远程关键字服务器: {self.url}, 别名: {self.alias}")
             print(f"RemoteKeywordClient: 成功连接到远程服务器 {self.url}, 别名: {self.alias}")
             return True
@@ -189,6 +199,86 @@ class RemoteKeywordClient:
             traceback = '\n'.join(result.get('traceback', []))
             raise Exception(f"远程关键字执行失败: {error_msg}\n{traceback}")
 
+    def _send_initial_variables(self):
+        """连接时发送初始变量到远程服务器"""
+        try:
+            variables_to_send = {}
+
+            # 收集全局变量
+            if self.sync_config.get('sync_global_vars', True):
+                variables_to_send.update(self._collect_global_variables())
+
+            # 收集YAML变量
+            if self.sync_config.get('sync_yaml_vars', True):
+                variables_to_send.update(self._collect_yaml_variables())
+
+            if variables_to_send:
+                try:
+                    # 调用远程服务器的变量接收接口
+                    result = self.server.sync_variables_from_client(variables_to_send, self.api_key)
+                    if result.get('status') == 'success':
+                        print(f"成功传递 {len(variables_to_send)} 个变量到远程服务器")
+                    else:
+                        print(f"传递变量到远程服务器失败: {result.get('error', '未知错误')}")
+                except Exception as e:
+                    print(f"调用远程变量接口失败: {str(e)}")
+            else:
+                print("没有需要传递的变量")
+
+        except Exception as e:
+            logger.warning(f"初始变量传递失败: {str(e)}")
+            print(f"初始变量传递失败: {str(e)}")
+
+    def _collect_global_variables(self):
+        """收集全局变量"""
+        from pytest_dsl.core.global_context import global_context
+        variables = {}
+
+        # 获取所有全局变量（包括g_开头的变量）
+        try:
+            # 这里需要访问全局上下文的内部存储
+            # 由于GlobalContext使用文件存储，我们需要直接读取
+            import json
+            import os
+            from filelock import FileLock
+
+            storage_file = global_context._storage_file
+            lock_file = global_context._lock_file
+
+            if os.path.exists(storage_file):
+                with FileLock(lock_file):
+                    with open(storage_file, 'r', encoding='utf-8') as f:
+                        stored_vars = json.load(f)
+                        # 只同步g_开头的全局变量
+                        for name, value in stored_vars.items():
+                            if name.startswith('g_'):
+                                variables[name] = value
+        except Exception as e:
+            logger.warning(f"收集全局变量失败: {str(e)}")
+
+        return variables
+
+    def _collect_yaml_variables(self):
+        """收集YAML配置变量"""
+        from pytest_dsl.core.yaml_vars import yaml_vars
+        variables = {}
+
+        try:
+            # 获取所有YAML变量
+            yaml_data = yaml_vars._variables
+            if yaml_data:
+                # 只传递特定的配置项，避免传递敏感信息
+                sync_keys = ['http_clients', 'api_endpoints', 'test_data']
+                for key in sync_keys:
+                    if key in yaml_data:
+                        variables[f'yaml_{key}'] = yaml_data[key]
+        except Exception as e:
+            logger.warning(f"收集YAML变量失败: {str(e)}")
+
+        return variables
+
+
+
 # 远程关键字客户端管理器
 class RemoteKeywordManager:
     """远程关键字客户端管理器，管理多个远程服务器连接"""
@@ -196,19 +286,20 @@ class RemoteKeywordManager:
     def __init__(self):
         self.clients = {}  # 别名 -> 客户端实例
 
-    def register_remote_server(self, url, alias, api_key=None):
+    def register_remote_server(self, url, alias, api_key=None, sync_config=None):
         """注册远程关键字服务器
 
         Args:
             url: 服务器URL
             alias: 服务器别名
             api_key: API密钥(可选)
+            sync_config: 变量同步配置(可选)
 
         Returns:
             bool: 是否成功连接
         """
         print(f"RemoteKeywordManager: 正在注册远程服务器 {url} 别名 {alias}")
-        client = RemoteKeywordClient(url=url, api_key=api_key, alias=alias)
+        client = RemoteKeywordClient(url=url, api_key=api_key, alias=alias, sync_config=sync_config)
         success = client.connect()
 
         if success:
@@ -239,6 +330,8 @@ class RemoteKeywordManager:
             raise Exception(f"未找到别名为 {alias} 的远程服务器")
 
         return client._execute_remote_keyword(name=keyword_name, **kwargs)
+
+
 
 # 创建全局远程关键字管理器实例
 remote_keyword_manager = RemoteKeywordManager()
