@@ -111,13 +111,14 @@ class DSLExecutor:
             if value in self.variable_replacer.local_variables:
                 return self.variable_replacer.local_variables[value]
 
-            # 定义变量引用模式
-            pattern = r'\$\{([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\}'
+            # 定义扩展的变量引用模式，支持数组索引和字典键访问
+            pattern = r'\$\{([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*(?:(?:\.[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)|(?:\[[^\]]+\]))*)\}'
             # 检查整个字符串是否完全匹配单一变量引用模式
             match = re.fullmatch(pattern, value)
             if match:
-                var_name = match.group(1)
-                return self.variable_replacer.get_variable(var_name)
+                var_ref = match.group(1)
+                # 使用新的变量路径解析器
+                return self.variable_replacer._parse_variable_path(var_ref)
             else:
                 # 如果不是单一变量，则替换字符串中的所有变量引用
                 return self.variable_replacer.replace_in_string(value)

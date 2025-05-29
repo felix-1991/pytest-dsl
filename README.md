@@ -1,10 +1,25 @@
 # pytest-dsl: 强大的关键字驱动测试自动化框架
 
-pytest-dsl是一个基于pytest的关键字驱动测试框架，使用自定义的领域特定语言(DSL)来编写测试用例，使测试更加直观、易读和易维护。它不仅限于API测试，更是一个可以应对各种测试场景的通用自动化框架。
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://python.org)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![PyPI Version](https://img.shields.io/pypi/v/pytest-dsl.svg)](https://pypi.org/project/pytest-dsl/)
 
-## 快速入门
+> 🚀 **让测试自动化变得简单直观** - 使用自然语言风格的DSL编写测试，无需复杂编程技能
 
-### 安装
+pytest-dsl是一个革命性的关键字驱动测试框架，基于pytest构建，通过自定义的领域特定语言(DSL)让测试编写变得像写文档一样简单。无论是API测试、UI测试还是其他自动化场景，都能轻松应对。
+
+## ✨ 核心特性
+
+- 🎯 **门槛上手低** - 自然语言风格，只需少量编程基础
+- 🔧 **高度可扩展** - 轻松创建自定义关键字
+- 🌐 **分布式执行** - 支持远程关键字调用
+- 🔄 **无缝集成** - 完美兼容pytest生态
+- 📊 **丰富报告** - 集成Allure测试报告
+- 🛡️ **企业级** - 支持变量管理、环境隔离
+
+## 🚀 5分钟快速开始
+
+### 第一步：安装
 
 ```bash
 # 使用 pip 安装
@@ -14,106 +29,149 @@ pip install pytest-dsl
 uv pip install pytest-dsl
 ```
 
-### 第一个DSL测试
+### 第二步：创建第一个测试
 
-创建第一个DSL文件，命名为`hello.dsl`：
+创建文件 `hello.dsl`：
 
 ```python
+@name: "我的第一个测试"
+@description: "学习pytest-dsl的第一步"
+
+# 定义变量
 message = "Hello, pytest-dsl!"
+count = 3
 
-# 使用[打印]关键字输出消息
-[打印],内容: ${message}
+# 打印欢迎消息
+[打印], 内容: ${message}
 
-# 使用简单循环结构
-for i in range(1, 3) do
-    [打印],内容: "循环次数: ${i}"
+# 简单循环
+for i in range(1, ${count} + 1) do
+    [打印], 内容: "第 ${i} 次循环"
 end
 
+# 测试断言
+[断言], 条件: "${count} == 3", 消息: "计数器应该等于3"
+
 teardown do
-    [打印],内容: "测试完成!"
+    [打印], 内容: "测试完成！"
 end
 ```
 
-### 直接运行DSL文件
-
-安装pytest-dsl后，无需其他配置即可通过命令行直接执行DSL文件：
+### 第三步：运行测试
 
 ```bash
-# 运行单个DSL文件
+# 直接运行DSL文件
 pytest-dsl hello.dsl
 
-# 也可以执行目录下的所有DSL文件
+# 运行目录下所有DSL文件
 pytest-dsl tests/
 ```
 
-### 简单算术示例
+🎉 **恭喜！** 您已经成功运行了第一个pytest-dsl测试！
 
-创建`arithmetic.dsl`文件，测试基本运算：
+## 📚 基础教程
 
-```python
-@name: "算术运算示例"
+### 1. 基本语法入门
 
-# 基本运算
-a = 10
-b = 5
-sum = a + b
-product = a * b
-
-# 输出结果
-[打印],内容: "a + b = ${sum}"
-[打印],内容: "a * b = ${product}"
-
-# 条件判断
-if a > b do
-    [打印],内容: "a 大于 b"
-end
-```
-
-## 基础语法
-
-### 变量与流程控制
-
-pytest-dsl支持变量定义、条件判断和循环结构：
+#### 变量和数据类型
 
 ```python
-@name: "测试变量定义、条件判断和循环结构"
-# 变量定义
+# 字符串变量
 name = "pytest-dsl"
 version = "1.0.0"
 
+# 数字变量
+port = 8080
+
+# 列表
+users = ["alice", "bob", "charlie"]
+```
+
+#### 流程控制
+
+```python
 # 条件判断
-if version == "1.0.0" do
-    [打印],内容: "当前是正式版"
+status = "success"
+if status == "success" do
+    [打印], 内容: "测试通过"
 else
-    [打印],内容: "当前是开发版"
+    [打印], 内容: "测试失败"
 end
 
 # 循环结构
-count = 3
-for i in range(1, ${count}) do
-    [打印],内容: "循环次数: ${i}"
+num = 4
+for i in range(1, num) do
+    [打印], 内容: "执行第 ${i} 次"
 end
+
 ```
 
-### 内置关键字
+### 2. 内置关键字详解
 
-DSL提供多种内置关键字满足基本测试需求：
+#### 基础关键字
 
 ```python
-@name: 使用内置关键字
 # 打印输出
-[打印],内容: "测试开始执行"
+[打印], 内容: "Hello World"
 
 # 断言测试
-[断言],条件: "1 + 1 == 2",消息: "基本算术断言失败"
+[断言], 条件: "1 + 1 == 2", 消息: "数学计算错误"
+
+# 等待
+[等待], 秒数: 2
+
+# 生成随机数
+random_num = [生成随机数], 最小值: 1, 最大值: 100
+[打印], 内容: "随机数: ${random_num}"
 ```
 
-### 自定义关键字（函数）
+#### 变量操作
 
-pytest-dsl允许在DSL文件中直接定义自定义关键字，类似于编程语言中的函数：
+```python
+[设置全局变量], 变量名: "test_env", 值: "development"
+
+# 获取全局变量
+env = [获取全局变量], 变量名: "test_env"
+[打印], 内容: "当前环境: ${env}"
+```
+
+### 3. 自定义关键字（函数）
+
+自定义关键字让您可以封装复用的测试逻辑：
 
 ```python
 @name: "自定义关键字示例"
+
+# 定义一个计算器关键字
+function 计算器 (操作, 数字1, 数字2=0) do
+    if ${操作} == "加法" do
+        [打印],内容: "执行加法操作"
+        结果 = ${数字1} + ${数字2}
+    else
+        结果 = 12
+    end
+
+    [打印], 内容: "${数字1} ${操作} ${数字2} = ${结果}"
+    return ${结果}
+end
+
+# 使用自定义关键字
+sum_result = [计算器], 操作: "加法", 数字1: 10, 数字2: 5
+product_result = [计算器], 操作: "其他", 数字1: 3, 数字2: 4
+
+# 验证结果
+[断言], 条件: "${sum_result} == 15", 消息: "加法计算错误"
+[断言], 条件: "${product_result} == 12", 消息: "其他计算错误"
+```
+
+#### 资源文件复用
+
+将常用关键字保存在资源文件中（`.resource`），实现跨项目复用：
+
+**创建资源文件 `utils.resource`：**
+
+```python
+@name: "通用工具关键字"
 
 # 定义一个简单的关键字（函数）
 function 拼接字符串 (前缀, 后缀="默认后缀") do
@@ -127,568 +185,825 @@ function 拼接字符串 (前缀, 后缀="默认后缀") do
     # 返回结果
     return ${结果变量}
 end
+```
+
+**在测试中使用资源文件：**
+
+```python
+@name: "使用资源文件示例"
+@import: "utils.resource"
 
 # 使用自定义关键字
 问候语 = [拼接字符串],前缀: "你好, ",后缀: "世界"
-[打印],内容: ${问候语}  # 输出: 你好, 世界
 
 # 只传递必要参数，使用默认值
 简单问候 = [拼接字符串],前缀: "你好"
 [打印],内容: ${简单问候}  # 输出: 你好默认后缀
 ```
 
-自定义关键字可以保存在独立的资源文件中（`.resource`），通过`@import`导入使用：
+### 4. API测试入门
+
+#### 简单的GET请求
 
 ```python
-# 导入资源文件
-@import: "path/to/common_utils.resource"
+@name: "API测试入门"
+@description: "学习基本的API测试方法"
 
-# 使用导入的关键字
-结果 = [拼接字符串],前缀: "开始",后缀: "结束"
-```
-
-资源文件的定义示例（`common_utils.resource`）：
-
-```python
-@name: 通用工具关键字
-@description: 包含一些常用的工具关键字
-@author: Felix
-@date: 2024-06-11
-
-function 拼接字符串 (前缀, 后缀="我是默认值哦") do
-    # 直接使用关键字参数
-    [打印],内容:'拼接前缀: ${前缀} 和后缀: ${后缀}'
-
-    # 保存到变量中
-    结果变量 = "${前缀}${后缀}"
-    [打印],内容:'拼接结果: ${结果变量}'
-
-    # 返回结果
-    return ${结果变量}
-end
-
-function 计算长度 (文本) do
-    # 在实际场景中，可能会使用更复杂的逻辑
-    [打印],内容:'计算文本: ${文本} 的长度'
-    长度 = 10  # 为简化示例，这里使用固定值
-    [打印],内容:'计算得到长度: ${长度}'
-    return ${长度}
-end
-```
-
-## API测试示例
-
-创建`api_test.dsl`文件进行简单的API测试：
-
-```python
-@name: "API测试示例"
-@description: "演示基本的API接口测试"
-@tags: ["API", "HTTP"]
-
-# 执行GET请求
-[HTTP请求],客户端: "default",配置: '''
+# 简单的GET请求
+[HTTP请求], 客户端: "default", 配置: '''
     method: GET
     url: https://jsonplaceholder.typicode.com/posts/1
     asserts:
         - ["status", "eq", 200]
-        - ["jsonpath", "$.id", "eq", 1]
-''',步骤名称: "获取文章详情"
+        - ["jsonpath", "$.title", "contains", "sunt"]
+''', 步骤名称: "获取文章详情"
+```
 
-# 捕获响应数据
-[HTTP请求],客户端: "default",配置: '''
+#### 带参数的请求
+
+```python
+# 带查询参数的GET请求
+[HTTP请求], 客户端: "default", 配置: '''
     method: GET
     url: https://jsonplaceholder.typicode.com/posts
     request:
         params:
             userId: 1
-    captures:
-        post_count: ["jsonpath", "$", "length"]
+            _limit: 5
     asserts:
         - ["status", "eq", 200]
-''',步骤名称: "获取用户文章列表"
-
-# 输出捕获的变量
-[打印],内容: "用户文章数量: ${post_count}"
+        - ["jsonpath", "$", "length", "eq", 5]
+''', 步骤名称: "获取用户文章列表"
 ```
 
-在实际测试文件中使用导入的关键字示例（`custom_test.dsl`）：
+#### 数据捕获和变量使用
 
 ```python
-@name: 自定义关键字测试
-@description: 测试自定义关键字功能
-@tags: [测试, 自定义关键字]
-@author: Felix
-@date: 2024-06-11
+# 捕获响应数据
+[HTTP请求], 客户端: "default", 配置: '''
+    method: GET
+    url: https://jsonplaceholder.typicode.com/users/1
+    captures:
+        user_name: ["jsonpath", "$.name"]
+        user_email: ["jsonpath", "$.email"]
+    asserts:
+        - ["status", "eq", 200]
+''', 步骤名称: "获取用户信息"
 
-# 导入资源文件
-@import: "resources/common_utils.resource"
+# 使用捕获的变量
+[打印], 内容: "用户名: ${user_name}"
+[打印], 内容: "邮箱: ${user_email}"
 
-# 定义测试输入参数
-前缀值 = "你好, "
-后缀值 = "世界"
-
-# 测试拼接字符串关键字
-[打印],内容:'测试拼接字符串关键字'
-拼接结果 = [拼接字符串],前缀:${前缀值},后缀:${后缀值}
-[打印],内容:'获取到拼接结果: ${拼接结果}'
-
-# 使用默认参数
-拼接结果2 = [拼接字符串],前缀:"hello"
-[打印],内容:'获取到拼接结果2: ${拼接结果2}'
-
-# 测试第二个关键字
-[打印],内容:'测试计算长度关键字'
-测试文本 = "这是测试文本"
-文本长度 = [计算长度],文本:${测试文本}
-[打印],内容:'获取到文本长度: ${文本长度}'
-
-# 测试断言
-[断言],条件:'${拼接结果} == "你好, 世界"',消息:'字符串拼接不匹配'
-[断言],条件:'${文本长度} == 10',消息:'长度不匹配'
-
-teardown do
-    [打印],内容:'自定义关键字测试完成'
-end
+# 在后续请求中使用
+[HTTP请求], 客户端: "default", 配置: '''
+    method: GET
+    url: https://jsonplaceholder.typicode.com/posts
+    request:
+        params:
+            userId: 1
+    asserts:
+        - ["status", "eq", 200]
+''', 步骤名称: "根据用户ID获取文章"
 ```
 
-## 使用YAML变量文件
+## 🚀 进阶功能
 
-创建`variables.yaml`文件管理测试配置：
+### 1. 环境配置管理
+
+#### YAML变量文件
+
+创建 `config/dev.yaml` 管理开发环境配置：
 
 ```yaml
-# variables.yaml
+# 环境配置
+environment: "development"
+debug: true
+
+# API配置
 api:
   base_url: "https://jsonplaceholder.typicode.com"
   timeout: 30
+  retry_count: 3
+
+# HTTP客户端配置
+http_clients:
+  default:
+    base_url: "${api.base_url}"
+    timeout: ${api.timeout}
+    headers:
+      Content-Type: "application/json"
+      User-Agent: "pytest-dsl/1.0"
+
+# 测试数据
+test_users:
+  admin:
+    username: "admin"
+    password: "admin123"
+  normal:
+    username: "user"
+    password: "user123"
+
+# 数据库配置
+database:
+  host: "localhost"
+  port: 5432
+  name: "test_db"
 ```
 
-执行测试时加载变量文件：
+#### 使用配置文件
 
 ```bash
-pytest-dsl api_test.dsl --yaml-vars variables.yaml
+# 运行时指定配置文件
+pytest-dsl tests/ --yaml-vars config/dev.yaml
 ```
 
-## 与pytest集成
-
-除了直接使用命令行工具外，pytest-dsl还可以与pytest无缝集成，扩展测试能力。
-
-### 创建pytest测试类
+#### 在DSL中使用配置
 
 ```python
-# test_api.py
-from pytest_dsl.core.auto_decorator import auto_dsl
+@name: "使用环境配置"
 
-@auto_dsl("./api_tests")  # 加载指定目录下所有的.auto或.dsl文件
-class TestAPI:
-    """API测试类
+# 直接使用YAML中的变量
+[打印], 内容: "当前环境: ${environment}"
+[打印], 内容: "API地址: ${api.base_url}"
 
-    该类将自动加载api_tests目录下的所有DSL文件作为测试方法
-    """
-    pass
-```
+# 使用嵌套配置（支持增强的变量访问语法）
+admin_user = ${test_users.admin.username}
+admin_pass = ${test_users.admin.password}
 
-### 使用pytest运行测试
+# 支持数组索引访问
+first_user = ${users_array[0].name}
+last_user = ${users_array[-1].name}
 
-```bash
-# 运行所有测试
-pytest
+# 支持字典键访问
+api_server = ${config_map["api-server"]}
+timeout_config = ${config_map['timeout']}
 
-# 运行特定测试文件
-pytest test_api.py
-
-# 使用pytest参数和插件
-pytest -v --alluredir=./reports
-```
-
-### 使用Allure生成和查看报告
-
-pytest-dsl已与Allure报告框架集成，可以生成美观、交互式的测试报告。
-
-```bash
-# 运行测试并生成Allure报告数据
-pytest --alluredir=./allure-results
-
-# 生成HTML报告并启动本地服务器查看
-allure serve ./allure-results
-
-# 或生成HTML报告到指定目录
-allure generate ./allure-results -o ./allure-report
-# 然后可以打开 ./allure-report/index.html 查看报告
-```
-
-Allure报告会自动包含以下信息：
-- 测试步骤和执行状态
-- HTTP请求和响应详情
-- 断言结果和失败原因
-- 测试执行时间和性能数据
-- 测试标签和分类信息
-
-通过Allure报告，您可以更直观地分析测试结果，快速定位问题。
-
-## 更多功能
-
-### 断言重试功能
-
-对于异步API或需要一定处理时间的请求，可以使用断言重试功能：
-
-```python
-[HTTP请求],客户端: "default",配置: '''
-    method: GET
-    url: https://httpbin.org/delay/2
-    asserts:
-        - ["status", "eq", 200]
-        - ["response_time", "lt", 1000]  # 这个断言可能失败
-''',断言重试次数: 3,断言重试间隔: 1
-```
-
-### 数据驱动测试
-
-使用CSV文件测试多组数据：
-
-```python
-@name: "批量测试"
-@data: "test_data.csv" using csv
-
-# 使用CSV数据中的"username"和"password"列
-[HTTP请求],客户端: "default",配置: '''
+[HTTP请求], 客户端: "default", 配置: '''
     method: POST
-    url: https://example.com/api/login
+    url: ${api.base_url}/auth/login
     request:
         json:
-            username: "${username}"
-            password: "${password}"
+            username: "${admin_user}"
+            password: "${admin_pass}"
     asserts:
-        - ["status", "eq", ${expected_status}]
+        - ["status", "eq", 200]
+''', 步骤名称: "管理员登录"
+```
+
+### 2. 增强的变量访问语法
+
+pytest-dsl 支持类似 Python 的强大变量访问语法：
+
+#### 支持的语法类型
+
+```python
+# 基本变量访问
+${variable_name}
+
+# 点号访问（对象属性）
+${object.property}
+${nested.object.property}
+
+# 数组索引访问
+${array[0]}          # 第一个元素
+${array[-1]}         # 最后一个元素
+
+# 字典键访问
+${dict["key"]}       # 使用双引号
+${dict['key']}       # 使用单引号
+
+# 混合访问模式
+${users[0].name}                    # 数组中对象的属性
+${data["users"][0]["name"]}         # 嵌套字典和数组
+${config.servers[0].endpoints["api"]} # 复杂嵌套结构
+```
+
+#### 实际使用示例
+
+```yaml
+# YAML配置文件
+users:
+  - id: 1
+    name: "张三"
+    roles: ["admin", "user"]
+    profile:
+      email: "zhangsan@example.com"
+      settings:
+        theme: "dark"
+
+config:
+  "api-server": "https://api.example.com"
+  "timeout": 30
+```
+
+```python
+# DSL测试文件
+@name: "变量访问语法示例"
+
+# 数组访问
+first_user = ${users[0].name}
+[打印], 内容: "第一个用户: ${first_user}"
+
+# 嵌套访问
+user_theme = ${users[0].profile.settings.theme}
+[打印], 内容: "用户主题: ${user_theme}"
+
+# 字典键访问
+api_server = ${config["api-server"]}
+[打印], 内容: "API服务器: ${api_server}"
+
+# 在字符串中使用
+[打印], 内容: "用户${users[0].name}的角色是${users[0].roles[0]}"
+```
+
+详细文档请参考：[增强的变量访问语法](docs/enhanced_variable_access.md)
+
+### 3. 数据驱动测试
+
+#### CSV数据驱动
+
+注意：这种数据驱动模式只有用pytest命令运行的时候才可以
+
+创建 `test_data.csv`：
+
+```csv
+username,password,expected_status,test_case
+admin,admin123,200,管理员登录成功
+user,user123,200,普通用户登录成功
+invalid,wrong,401,错误密码登录失败
+"",admin123,400,空用户名登录失败
+```
+
+使用CSV数据：
+
+```python
+@name: "登录功能测试"
+@data: "test_data.csv" using csv
+@description: "使用CSV数据测试登录功能"
+
+# CSV中的每一行都会执行一次这个测试
+[打印], 内容: "测试用例: ${test_case}"
+[打印], 内容: "用户名: ${username}, 密码: ${password}, 期望状态: ${expected_status}"
+
+# 模拟HTTP请求（实际应该是真实的API调用）
+[打印], 内容: "模拟登录请求..."
+
+# 简单的条件判断来模拟不同的测试结果
+if "${username}" == "admin" do
+    [打印], 内容: "管理员登录测试"
+else
+    [打印], 内容: "无效用户登录测试"
+end
+
+[打印], 内容: "测试用例: ${test_case} - 完成"
+```
+
+### 3. 断言重试机制
+
+对于异步API或需要等待的场景：
+
+```python
+# 带重试的断言
+[HTTP请求], 客户端: "default", 配置: '''
+    method: GET
+    url: https://jsonplaceholder.typicode.com/posts/1
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$.id", "eq", 1]
+''', 断言重试次数: 3, 断言重试间隔: 1, 步骤名称: "测试断言重试机制"
+```
+
+### 4. 远程关键字功能
+
+pytest-dsl支持分布式测试，可以在不同机器上执行关键字：
+
+#### 启动远程服务
+
+```bash
+# 在远程机器上启动关键字服务
+pytest-dsl-server --host 0.0.0.0 --port 8270
+
+# 带API密钥的安全启动
+pytest-dsl-server --host 0.0.0.0 --port 8270 --api-key your_secret_key
+```
+
+#### 使用远程关键字
+
+**方式一：DSL中直接连接**
+
+```python
+@name: "远程关键字测试"
+@remote: "http://remote-server:8270/" as remote_machine
+
+# 在远程机器上执行关键字
+remote_machine|[打印], 内容: "这在远程机器上执行"
+result = remote_machine|[生成随机数], 最小值: 1, 最大值: 100
+[打印], 内容: "远程生成的随机数: ${result}"
+```
+
+**方式二：YAML配置自动加载（推荐）**
+
+在 `config/vars.yaml` 中配置：
+
+```yaml
+remote_servers:
+  main_server:
+    url: "http://server1:8270/"
+    alias: "server1"
+    api_key: "your_api_key"
+    sync_config:
+      sync_global_vars: true
+      sync_yaml_vars: true
+
+  backup_server:
+    url: "http://server2:8270/"
+    alias: "server2"
+```
+
+然后直接使用：
+
+```python
+# 无需@remote导入，直接使用
+server1|[HTTP请求], 客户端: "default", 配置: '''
+    method: GET
+    url: https://jsonplaceholder.typicode.com/posts/1
+'''
+
+server2|[打印], 内容: "备用服务器执行"
+```
+
+#### 无缝变量传递
+
+客户端的变量会自动传递到远程服务器：
+
+```python
+# 客户端定义的变量
+api_url = "https://jsonplaceholder.typicode.com"
+user_token = "abc123"
+
+# 远程服务器可以直接使用这些变量
+remote_machine|[HTTP请求], 客户端: "default", 配置: '''
+    method: GET
+    url: ${api_url}/users/1
+    request:
+        headers:
+            Authorization: "Bearer ${user_token}"
 '''
 ```
 
-## 自定义关键字
+## 📋 实战案例
 
-pytest-dsl的真正强大之处在于能够轻松创建自定义关键字，扩展测试能力到任何领域：
+### 完整的API测试项目
+
+让我们创建一个完整的API测试项目来演示pytest-dsl的强大功能：
+
+#### 项目结构
+
+```
+my-api-tests/
+├── config/
+│   ├── dev.yaml          # 开发环境配置
+│   ├── prod.yaml         # 生产环境配置
+│   └── base.yaml         # 基础配置
+├── resources/
+│   ├── auth.resource     # 认证相关关键字
+│   └── utils.resource    # 工具关键字
+├── tests/
+│   ├── auth/
+│   │   ├── login.dsl     # 登录测试
+│   │   └── logout.dsl    # 登出测试
+│   ├── users/
+│   │   ├── create_user.dsl
+│   │   └── get_user.dsl
+│   └── data/
+│       └── users.csv     # 测试数据
+├── test_runner.py        # pytest集成
+└── pytest.ini           # pytest配置
+```
+
+#### 基础配置 `config/base.yaml`
+
+```yaml
+# 通用配置
+app_name: "My API"
+version: "1.0.0"
+
+# HTTP客户端配置
+http_clients:
+  default:
+    timeout: 30
+    headers:
+      Content-Type: "application/json"
+      User-Agent: "${app_name}/${version}"
+```
+
+#### 开发环境配置 `config/dev.yaml`
+
+```yaml
+# 继承基础配置
+extends: "base.yaml"
+
+# 开发环境特定配置
+environment: "development"
+debug: true
+
+api:
+  base_url: "https://jsonplaceholder.typicode.com"
+
+# 测试用户
+test_users:
+  admin:
+    username: "admin"
+    password: "admin123"
+  normal:
+    username: "testuser"
+    password: "test123"
+
+# 数据库配置
+database:
+  host: "localhost"
+  port: 5432
+  name: "test_db"
+```
+
+#### 认证关键字 `resources/auth.resource`
+
+```python
+@name: "认证相关关键字"
+@description: "处理登录、登出等认证操作"
+
+function 用户登录 (用户名, 密码, 客户端="default") do
+    [打印], 内容: "模拟用户登录: ${用户名}"
+
+    # 模拟HTTP登录请求
+    [HTTP请求], 客户端: ${客户端}, 配置: '''
+        method: GET
+        url: https://jsonplaceholder.typicode.com/users/1
+        captures:
+            access_token: ["jsonpath", "$.id"]
+            user_id: ["jsonpath", "$.id"]
+        asserts:
+            - ["status", "eq", 200]
+    ''', 步骤名称: "用户登录: ${用户名}"
+
+    # 设置全局token供后续请求使用
+    [设置全局变量], 变量名: "auth_token", 值: ${access_token}
+    [设置全局变量], 变量名: "current_user_id", 值: ${user_id}
+
+    return ${access_token}
+end
+
+function 用户登出 (客户端="default") do
+    token = [获取全局变量], 变量名: "auth_token"
+    [打印], 内容: "模拟用户登出，token: ${token}"
+
+    # 模拟HTTP登出请求
+    [HTTP请求], 客户端: ${客户端}, 配置: '''
+        method: GET
+        url: https://jsonplaceholder.typicode.com/posts/1
+        asserts:
+            - ["status", "eq", 200]
+    ''', 步骤名称: "用户登出"
+
+    # 清除认证信息
+    [设置全局变量], 变量名: "auth_token", 值: ""
+    [设置全局变量], 变量名: "current_user_id", 值: ""
+end
+```
+
+#### 登录测试 `tests/auth/login.dsl`
+
+```python
+@name: "用户登录功能测试"
+@description: "测试用户登录的各种场景"
+@tags: ["auth", "login"]
+@import: "resources/auth.resource"
+
+# 测试管理员登录
+admin_token = [用户登录], 用户名: ${test_users.admin.username}, 密码: ${test_users.admin.password}
+[断言], 条件: "${admin_token} != ''", 消息: "管理员登录失败"
+
+# 验证登录状态（模拟）
+[HTTP请求], 客户端: "default", 配置: '''
+    method: GET
+    url: https://jsonplaceholder.typicode.com/users/1
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$.name", "exists"]
+''', 步骤名称: "验证登录状态"
+
+# 测试登出
+[用户登出]
+
+teardown do
+    [打印], 内容: "登录测试完成"
+end
+```
+
+#### pytest集成 `test_runner.py`
+
+```python
+from pytest_dsl.core.auto_decorator import auto_dsl
+
+@auto_dsl("./tests")
+class TestAPI:
+    """API自动化测试套件
+
+    自动加载tests目录下的所有DSL文件
+    """
+    pass
+
+@auto_dsl("./tests/auth")
+class TestAuth:
+    """认证模块测试"""
+    pass
+
+@auto_dsl("./tests/users")
+class TestUsers:
+    """用户模块测试"""
+    pass
+```
+
+#### 运行测试
+
+```bash
+# 使用开发环境配置运行所有测试
+pytest-dsl tests/ --yaml-vars config/dev.yaml
+
+# 使用pytest运行（支持更多选项）
+pytest test_runner.py --yaml-vars config/dev.yaml -v
+
+# 生成Allure报告
+pytest test_runner.py --yaml-vars config/dev.yaml --alluredir=reports
+allure serve reports
+```
+
+## 🔧 扩展开发
+
+### 创建自定义关键字
+
+pytest-dsl的强大之处在于可以轻松扩展自定义关键字：
+
+#### 基础关键字开发
 
 ```python
 # keywords/my_keywords.py
 from pytest_dsl.core.keyword_manager import keyword_manager
 
-@keyword_manager.register('调用微服务', [
-    {'name': '服务名', 'mapping': 'service_name', 'description': '微服务名称'},
-    {'name': '方法名', 'mapping': 'method_name', 'description': '要调用的方法'},
-    {'name': '参数', 'mapping': 'params', 'description': '调用参数'}
+@keyword_manager.register('数据库查询', [
+    {'name': '查询语句', 'mapping': 'sql', 'description': 'SQL查询语句'},
+    {'name': '数据库', 'mapping': 'database', 'description': '数据库连接名', 'default': 'default'}
 ])
-def call_microservice(**kwargs):
-    """调用内部微服务接口"""
-    service = kwargs.get('service_name')
-    method = kwargs.get('method_name')
-    params = kwargs.get('params', {})
+def database_query(**kwargs):
+    """执行数据库查询"""
+    sql = kwargs.get('sql')
+    database = kwargs.get('database', 'default')
     context = kwargs.get('context')
 
-    # 实现微服务调用逻辑
-    result = your_microservice_client.call(service, method, params)
+    # 从上下文获取数据库配置
+    db_config = context.get_variable('database')
+
+    # 实现数据库查询逻辑
+    # connection = create_connection(db_config)
+    # result = connection.execute(sql)
+
+    # 模拟查询结果
+    result = [{"id": 1, "name": "test"}]
+
     return result
+
+@keyword_manager.register('发送邮件', [
+    {'name': '收件人', 'mapping': 'to_email', 'description': '收件人邮箱'},
+    {'name': '主题', 'mapping': 'subject', 'description': '邮件主题'},
+    {'name': '内容', 'mapping': 'content', 'description': '邮件内容'}
+])
+def send_email(**kwargs):
+    """发送邮件通知"""
+    to_email = kwargs.get('to_email')
+    subject = kwargs.get('subject')
+    content = kwargs.get('content')
+
+    # 实现邮件发送逻辑
+    print(f"发送邮件到 {to_email}: {subject}")
+
+    return True
 ```
 
-## 完整项目结构
+#### 在DSL中使用自定义关键字
 
-```
-测试项目/
-├── keywords/          # 自定义关键字
-│   └── api_keywords.py
-├── tests/             # 测试用例
-│   ├── test_api.py    # 使用@auto_dsl装饰器的测试类
-│   └── api_tests/     # DSL测试文件目录
-│       ├── login.dsl
-│       └── users.dsl
-├── config/              # 变量文件
-│   ├── dev.yaml       # 开发环境配置
-│   └── prod.yaml      # 生产环境配置
-└── pytest.ini         # pytest配置
+```python
+@name: "使用自定义关键字测试"
+
+# 使用数据库查询关键字
+users = [数据库查询], 查询语句: "SELECT * FROM users WHERE active = 1"
+[打印], 内容: "查询到 ${len(users)} 个活跃用户"
+
+# 发送测试报告邮件
+[发送邮件], 收件人: "admin@example.com", 主题: "测试报告", 内容: "测试已完成"
 ```
 
-## 为什么选择pytest-dsl？
+#### 支持远程模式的关键字
 
-- **降低自动化门槛**：不需要专业编程技能也能编写自动化测试
-- **关注测试逻辑**：不必纠结于编程细节，专注业务测试逻辑
-- **统一测试框架**：通过扩展关键字包覆盖多种测试类型
-- **无缝集成pytest**：兼容pytest的所有插件和功能
-- **可定制性强**：通过自定义关键字实现任何特定领域的测试需求
-- **旁路模式扩展**：不干扰现有测试代码，可平滑演进
+```python
+from pytest_dsl.core.keyword_manager import keyword_manager
 
-## 核心优势
+@keyword_manager.register('文件操作', [
+    {'name': '操作类型', 'mapping': 'operation', 'description': '操作类型：read/write/delete'},
+    {'name': '文件路径', 'mapping': 'file_path', 'description': '文件路径'},
+    {'name': '内容', 'mapping': 'content', 'description': '文件内容（写入时使用）', 'default': ''}
+])
+def file_operation(**kwargs):
+    """文件操作关键字，支持远程执行"""
+    operation = kwargs.get('operation')
+    file_path = kwargs.get('file_path')
+    content = kwargs.get('content', '')
 
-- **关键字驱动架构**：使用高级抽象关键字描述测试步骤，无需编写复杂代码
-- **易读的DSL语法**：自然语言风格的测试描述，降低学习门槛
-- **高度可扩展**：轻松创建自定义关键字满足特定领域需求
-- **统一测试框架**：通过扩展关键字包支持多种测试类型
-- **完整测试生命周期**：内置teardown、变量管理和断言机制
-- **非侵入式设计**：以"旁路模式"扩展现有pytest项目，不影响原有测试代码
+    if operation == 'read':
+        # 读取文件
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    elif operation == 'write':
+        # 写入文件
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return True
+    elif operation == 'delete':
+        # 删除文件
+        import os
+        os.remove(file_path)
+        return True
 
-## 远程关键字功能
+    return False
+```
 
-pytest-dsl支持远程关键字调用，允许您在不同的机器或服务上执行关键字，实现分布式测试。
+### 关键字开发最佳实践
 
-### 启动远程关键字服务
+1. **参数验证**：始终验证输入参数
+2. **错误处理**：提供清晰的错误信息
+3. **文档说明**：为每个关键字提供详细的文档
+4. **返回值**：确保关键字有明确的返回值
+5. **上下文使用**：合理使用context获取全局变量
 
-安装pytest-dsl后，可以使用内置命令启动远程关键字服务：
+## 🚀 部署运维
+
+### 与pytest集成
+
+```python
+# test_runner.py
+from pytest_dsl.core.auto_decorator import auto_dsl
+
+@auto_dsl("./tests")
+class TestAPI:
+    """自动加载tests目录下的所有DSL文件"""
+    pass
+```
+
+### 生成测试报告
 
 ```bash
-# 使用默认配置启动（localhost:8270）
-pytest-dsl-server
+# 生成Allure报告
+pytest test_runner.py --alluredir=reports
+allure serve reports
 
-# 自定义主机和端口
-pytest-dsl-server --host 0.0.0.0 --port 8888
-
-# 使用API密钥保护服务
-pytest-dsl-server --api-key your_secret_key
+# 生成HTML报告
+pytest test_runner.py --html=report.html --self-contained-html
 ```
 
-#### 分布式测试环境配置
+### CI/CD集成
 
-在分布式测试环境中，您可以在多台机器上启动远程关键字服务：
-
-1. **主测试机**：运行测试脚本的机器
-2. **远程执行机**：运行远程关键字服务的机器
-
-配置步骤：
-
-1. 在每台远程执行机上安装pytest-dsl：
-   ```bash
-   pip install pytest-dsl
-   ```
-
-2. 在每台远程执行机上启动远程关键字服务：
-   ```bash
-   # 确保监听所有网络接口，以便外部可访问
-   pytest-dsl-server --host 0.0.0.0 --port 8270
-   ```
-
-3. 在主测试机上编写测试脚本，使用`@remote`指令连接到远程服务：
-   ```python
-   # 连接到多台远程执行机
-   @remote: "http://machine1-ip:8270/" as machine1
-   @remote: "http://machine2-ip:8270/" as machine2
-
-   # 在不同机器上执行关键字
-   machine1|[打印],内容: "在机器1上执行"
-   machine2|[打印],内容: "在机器2上执行"
-   ```
-
-### 远程关键字语法
-
-#### 方式一：DSL中导入（适合临时使用）
-
-```python
-# 导入远程关键字服务器
-@remote: "http://keyword-server:8270/" as machineone
-@remote: "http://keyword-server2:8270/" as machinetwo
-
-# 远程关键字调用
-machineone|[打印],内容: "这是通过远程服务器执行的关键字"
-结果 = machineone|[拼接字符串],前缀: "Hello, ",后缀: "Remote World!"
-```
-
-#### 方式二：YAML配置自动加载（推荐用于全局配置）
-
-在`config/vars.yaml`或其他YAML配置文件中添加：
+#### GitHub Actions示例
 
 ```yaml
-# 远程服务器配置
-remote_servers:
-  main_server:
-    url: "http://localhost:8270/"
-    alias: "main"
-    api_key: "your_api_key_here"  # 可选
-    sync_config:                  # 可选
-      sync_global_vars: true
-      sync_yaml_vars: true
+# .github/workflows/test.yml
+name: API Tests
 
-  backup_server:
-    url: "http://backup-host:8270/"
-    alias: "backup"
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        pip install pytest-dsl allure-pytest
+
+    - name: Run tests
+      run: |
+        pytest-dsl tests/ --yaml-vars config/ci.yaml --alluredir=allure-results
+
+    - name: Generate report
+      uses: simple-elf/allure-report-action@master
+      if: always()
+      with:
+        allure_results: allure-results
+        allure_history: allure-history
 ```
 
-然后在DSL中直接使用：
+### Docker部署
 
-```python
-# 无需@remote导入，直接使用YAML中配置的服务器
-main|[打印],内容: "使用主服务器"
-backup|[打印],内容: "使用备用服务器"
+```dockerfile
+# Dockerfile
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+
+CMD ["pytest-dsl", "tests/", "--yaml-vars", "config/prod.yaml"]
 ```
 
-### 远程关键字测试示例
-
-```python
-@name: "远程关键字测试"
-@description: "测试远程关键字的基本功能"
-@tags: ["remote", "keywords"]
-@author: "Felix"
-@date: 2024-05-21
-
-# 导入远程关键字服务器
-@remote: "http://localhost:8270/" as machineone
-
-# 基本打印测试
-machineone|[打印],内容: "这是通过远程服务器执行的关键字"
-```
-
-## 无缝变量传递功能
-
-pytest-dsl提供了革命性的无缝变量传递功能，客户端的变量会自动传递到服务端，服务端使用时完全透明，无需任何前缀或特殊语法。
-
-### 功能特性
-
-- **🔄 无缝传递**：客户端变量自动传递到远程服务器，服务端使用时无需前缀
-- **🛡️ 智能过滤**：自动过滤敏感信息（password、secret、key等）
-- **⚡ 零配置**：无需复杂的同步设置，开箱即用
-- **🎯 优先级保持**：保持变量访问优先级（本地 > 同步）
-- **🔒 完全隔离**：不同服务器的变量完全隔离，互不影响
-
-### 基本使用
-
-**客户端配置 (vars.yaml)**：
-```yaml
-# 全局变量
-g_base_url: "https://api.example.com"
-
-# HTTP客户端配置
-http_clients:
-  default:
-    base_url: "${g_base_url}"
-    timeout: 30
-
-# 测试数据
-test_data:
-  username: "testuser"
-  email: "test@example.com"
-
-# 敏感信息（会被自动过滤）
-password: "secret123"
-api_key: "sk-1234567890"
-```
-
-**DSL测试脚本**：
-```python
-# 导入远程关键字服务器（连接时自动传递变量）
-@remote: "http://localhost:8270/" as remote_server
-
-# 远程关键字直接使用客户端变量，无需前缀！
-remote_server|[HTTP请求], 客户端: "default", 配置: '''
-request:
-  method: GET
-  url: ${g_base_url}/api/data
-  headers:
-    X-User: ${test_data.username}
-    X-Email: ${test_data.email}
-'''
-
-# 全局变量也可以直接使用
-remote_server|[打印], 内容: "API地址: ${g_base_url}"
-```
-
-### 配置选项
-
-可以通过sync_config参数控制传递行为：
-
-```python
-# 自定义传递配置
-sync_config = {
-    'sync_global_vars': True,   # 是否传递全局变量
-    'sync_yaml_vars': True,     # 是否传递YAML配置变量
-}
-
-# 使用自定义配置连接
-client = RemoteKeywordClient(sync_config=sync_config)
-```
-
-### 应用场景
-
-1. **🌐 跨环境测试**：客户端配置自动传递到不同环境的远程服务器
-2. **🔧 配置统一管理**：HTTP客户端、数据库连接等配置在客户端统一管理
-3. **🏢 企业级部署**：测试配置集中管理，远程执行节点自动获取
-4. **🔒 安全隔离**：敏感信息自动过滤，确保安全性
-5. **⚡ 性能优化**：计算密集型任务在远程高性能服务器执行，配置无缝传递
-
-# 随机数生成测试
-随机数 = [生成随机数],最小值: 1,最大值: 100
-machineone|[打印],内容: "远程生成的随机数: ${随机数}"
-```
-
-### 远程关键字功能特性
-
-远程关键字功能已经完全支持所有内置关键字，包括：
-
-- ✅ **HTTP请求关键字**：完整支持变量捕获、会话管理和响应保存
-- ✅ **断言关键字**：支持各种断言操作
-- ✅ **全局变量管理**：远程和本地环境独立的全局变量空间
-- ✅ **JSON操作**：JSON提取和断言功能
-- ✅ **工具关键字**：随机数生成、字符串操作等
-- ✅ **时间关键字**：时间获取和格式化
-
-详细的使用指南和开发文档请参考：
-- 📖 [远程关键字使用指南](./docs/remote-keywords-usage.md)
-- 🛠️ [远程关键字开发指南](./docs/remote-keywords-development.md)
-
-### 远程关键字服务安全性
-
-在生产环境中使用远程关键字服务时，请注意以下安全建议：
-
-1. **使用API密钥认证**：
-   ```bash
-   pytest-dsl-server --api-key your_secure_key
-   ```
-   然后在测试脚本中使用API密钥连接：
-   ```python
-   @remote: "http://server:8270/?api_key=your_secure_key" as secure_server
-   ```
-
-2. **限制网络访问**：
-   - 在内部网络或VPN中使用远程关键字服务
-   - 使用防火墙限制对服务端口的访问
-   - 考虑使用SSH隧道连接到远程服务
-
-3. **监控服务**：
-   - 定期检查服务日志
-   - 监控异常访问模式
-   - 在不需要时关闭服务
-
-### 远程关键字最佳实践
-
-1. **合理分配关键字**：
-   - 将计算密集型关键字放在性能更好的机器上
-   - 将特定环境依赖的关键字放在对应环境的机器上
-
-2. **错误处理**：
-   - 添加适当的错误处理机制，处理远程服务不可用的情况
-   - 使用超时设置避免长时间等待
-
-3. **变量传递**：
-   - 注意远程关键字执行后，变量会返回到本地上下文
-   - 大型数据应考虑使用文件或数据库共享，而不是直接通过变量传递
-
-## 进阶文档
+## 📖 参考文档
 
 ### 核心功能文档
 - [完整DSL语法指南](./docs/自动化关键字DSL语法设计.md)
-- [创建自定义关键字](./pytest_dsl/docs/custom_keywords.md)
-- [HTTP测试关键字](./docs/api.md)
-- [断言关键字详解](./docs/assertion_keywords.md)
+- [HTTP测试关键字详解](./docs/api.md)
+- [断言关键字使用指南](./docs/assertion_keywords.md)
 - [HTTP断言重试机制](./docs/http_assertion_retry.md)
 
 ### 远程关键字文档
-- 📖 [远程关键字使用指南](./docs/remote-keywords-usage.md) - 如何使用远程关键字功能
-- 🛠️ [远程关键字开发指南](./docs/remote-keywords-development.md) - 如何开发支持远程模式的关键字
-- 🔧 [远程服务器Hook机制指南](./docs/remote-hooks-guide.md) - 如何使用hook机制扩展远程服务器功能和实现自定义授权
-- ⚙️ [YAML远程服务器配置指南](./docs/yaml_remote_servers.md) - 如何通过YAML配置自动加载远程服务器
-- 🔄 [YAML变量无缝传递功能](./docs/yaml_vars_seamless_sync.md) - 如何实现客户端YAML变量的无缝传递
-- [远程关键字语法示例](./docs/remote_syntax_example.md) - 基础语法示例
+- 📖 [远程关键字使用指南](./docs/remote-keywords-usage.md)
+- 🛠️ [远程关键字开发指南](./docs/remote-keywords-development.md)
+- 🔧 [远程服务器Hook机制](./docs/remote-hooks-guide.md)
+- ⚙️ [YAML远程服务器配置](./docs/yaml_remote_servers.md)
+- 🔄 [变量无缝传递功能](./docs/yaml_vars_seamless_sync.md)
 
-## 贡献与支持
+### 示例和最佳实践
+- [远程关键字验证示例](./examples/remote/)
+- [配置文件示例](./examples/config/)
 
-我们欢迎您的贡献和反馈！如有问题，请提交issue或PR。
+## 🎯 为什么选择pytest-dsl？
 
-## 许可证
+### 核心优势
 
-MIT License
+- **🎯 零门槛上手** - 自然语言风格，测试人员无需编程基础
+- **🔧 高度可扩展** - 轻松创建自定义关键字，适应任何测试场景
+- **🌐 分布式支持** - 内置远程关键字功能，支持大规模分布式测试
+- **🔄 无缝集成** - 完美兼容pytest生态，可渐进式迁移
+- **📊 丰富报告** - 集成Allure，提供专业级测试报告
+- **🛡️ 企业级特性** - 支持环境隔离、变量管理、安全认证
+
+### 适用场景
+
+- **API接口测试** - 完整的HTTP测试支持
+- **微服务测试** - 分布式测试能力
+- **回归测试** - 数据驱动和批量执行
+- **集成测试** - 跨系统测试协调
+- **性能测试** - 结合其他工具进行性能测试
+
+## 🤝 贡献与支持
+
+我们欢迎您的贡献和反馈！
+
+- 🐛 [报告问题](https://github.com/your-repo/pytest-dsl/issues)
+- 💡 [功能建议](https://github.com/your-repo/pytest-dsl/discussions)
+- 🔧 [提交PR](https://github.com/your-repo/pytest-dsl/pulls)
+
+## 📄 许可证
+
+MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ---
 
-开始使用pytest-dsl，释放测试自动化的无限可能！
+## 📋 示例验证
+
+本README.md中的大部分示例都已经过验证，确保可以正常运行。验证示例位于 `examples/readme_validation/` 目录中。
+
+### 运行验证
+
+```bash
+# 进入验证目录
+cd examples/readme_validation
+
+# 运行所有验证示例
+python run_all_tests.py
+
+# 或者运行单个示例
+pytest-dsl hello.dsl
+pytest-dsl api_basic.dsl
+```
+
+### 验证覆盖
+
+- ✅ 基础语法和内置关键字
+- ✅ 自定义关键字和资源文件
+- ✅ API测试功能
+- ✅ YAML配置管理
+- ✅ 变量访问语法
+- ✅ 断言重试机制
+- ✅ 认证功能示例
+- ✅ 数据驱动测试（pytest集成）
+
+---
+
+🚀 **开始使用pytest-dsl，让测试自动化变得简单而强大！**

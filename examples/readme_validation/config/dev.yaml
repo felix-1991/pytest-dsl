@@ -1,0 +1,33 @@
+# 环境配置
+environment: "development"
+debug: true
+
+# API配置
+api:
+  base_url: "https://jsonplaceholder.typicode.com"
+  timeout: 30
+  retry_count: 3
+
+# HTTP客户端配置
+http_clients:
+  default:
+    base_url: "https://jsonplaceholder.typicode.com"
+    timeout: 30
+    headers:
+      Content-Type: "application/json"
+      User-Agent: "pytest-dsl/1.0"
+
+# 测试数据
+test_users:
+  admin:
+    username: "admin"
+    password: "admin123"
+  normal:
+    username: "user"
+    password: "user123"
+
+# 数据库配置
+database:
+  host: "localhost"
+  port: 5432
+  name: "test_db"

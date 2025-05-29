@@ -72,8 +72,9 @@ t_MINUS = r'-'
 t_TIMES = r'\*'
 t_DIVIDE = r'/'
 
-# 增加PLACEHOLDER规则，匹配 ${变量名} 格式
-t_PLACEHOLDER = r'\$\{[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*\}'
+# 增加PLACEHOLDER规则，匹配 ${变量名} 格式，支持点号、数组索引和字典键访问
+# 匹配: ${variable}, ${obj.prop}, ${arr[0]}, ${dict["key"]}, ${obj[0].prop} 等
+t_PLACEHOLDER = r'\$\{[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*(?:(?:\.[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)|(?:\[[^\]]+\]))*\}'
 
 # 添加管道符的正则表达式定义
 t_PIPE = r'\|'
