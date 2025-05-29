@@ -65,7 +65,8 @@ def main():
         "variable_access.dsl",
         "assertion_retry.dsl",
         "auth_test.dsl",
-        "test_dict_support.dsl"
+        "test_dict_support.dsl",
+        "test_if_elif_else.dsl",
     ]
 
     # 数据驱动测试需要用pytest运行，这里只做语法检查

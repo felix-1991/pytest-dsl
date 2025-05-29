@@ -12,6 +12,7 @@ reserved = {
     'False': 'FALSE',   # 添加布尔值支持
     'return': 'RETURN',  # 添加return关键字支持
     'else': 'ELSE',   # 添加else关键字支持
+    'elif': 'ELIF',   # 添加elif关键字支持
     'if': 'IF',  # 添加if关键字支持
     'as': 'AS',   # 添加as关键字支持，用于远程关键字别名
     'function': 'FUNCTION',  # 添加function关键字支持，用于自定义关键字定义

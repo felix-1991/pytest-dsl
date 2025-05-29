@@ -513,24 +513,37 @@ class DSLExecutor:
 
     @allure.step("执行条件语句")
     def _handle_if_statement(self, node):
-        """处理if-else语句
+        """处理if-elif-else语句
 
         Args:
-            node: IfStatement节点，包含条件表达式、if分支和可选的else分支
+            node: IfStatement节点，包含条件表达式、if分支、可选的elif分支和可选的else分支
         """
+        # 首先检查if条件
         condition = self.eval_expression(node.children[0])
 
-        # 将条件转换为布尔值进行评估
         if condition:
             # 执行if分支
             with allure.step("执行if分支"):
                 return self.execute(node.children[1])
-        elif len(node.children) > 2:
-            # 如果存在else分支且条件为假，则执行else分支
-            with allure.step("执行else分支"):
-                return self.execute(node.children[2])
 
-        # 如果条件为假且没有else分支，则不执行任何操作
+        # 如果if条件为假，检查elif分支
+        for i in range(2, len(node.children)):
+            child = node.children[i]
+
+            # 如果是ElifClause节点
+            if hasattr(child, 'type') and child.type == 'ElifClause':
+                elif_condition = self.eval_expression(child.children[0])
+                if elif_condition:
+                    with allure.step(f"执行elif分支 {i-1}"):
+                        return self.execute(child.children[1])
+
+            # 如果是普通的statements节点（else分支）
+            elif not hasattr(child, 'type') or child.type == 'Statements':
+                # 这是else分支，只有在所有前面的条件都为假时才执行
+                with allure.step("执行else分支"):
+                    return self.execute(child)
+
+        # 如果所有条件都为假且没有else分支，则不执行任何操作
         return None
 
     def _execute_remote_keyword_call(self, node):

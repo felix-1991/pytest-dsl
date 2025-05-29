@@ -304,11 +304,35 @@ def p_return_statement(p):
 
 def p_if_statement(p):
     '''if_statement : IF expression DO statements END
-                   | IF expression DO statements ELSE statements END'''
+                   | IF expression DO statements elif_clauses END
+                   | IF expression DO statements ELSE statements END
+                   | IF expression DO statements elif_clauses ELSE statements END'''
     if len(p) == 6:
+        # if condition do statements end
         p[0] = Node('IfStatement', [p[2], p[4]], None)
-    else:
+    elif len(p) == 7:
+        # if condition do statements elif_clauses end
+        p[0] = Node('IfStatement', [p[2], p[4]] + p[5], None)
+    elif len(p) == 8:
+        # if condition do statements else statements end
         p[0] = Node('IfStatement', [p[2], p[4], p[6]], None)
+    else:
+        # if condition do statements elif_clauses else statements end
+        p[0] = Node('IfStatement', [p[2], p[4]] + p[5] + [p[7]], None)
+
+
+def p_elif_clauses(p):
+    '''elif_clauses : elif_clause
+                    | elif_clause elif_clauses'''
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = [p[1]] + p[2]
+
+
+def p_elif_clause(p):
+    '''elif_clause : ELIF expression DO statements'''
+    p[0] = Node('ElifClause', [p[2], p[4]], None)
 
 
 def p_comparison_expr(p):
