@@ -90,6 +90,15 @@ class DSLExecutor:
                 item_value = self.eval_expression(item)
                 result.append(item_value)
             return result
+        elif expr_node.type == 'DictExpr':
+            # 处理字典表达式
+            result = {}
+            for item in expr_node.children:
+                # 每个item是DictItem节点，包含键和值
+                key_value = self.eval_expression(item.children[0])
+                value_value = self.eval_expression(item.children[1])
+                result[key_value] = value_value
+            return result
         elif expr_node.type == 'BooleanExpr':
             # 处理布尔值表达式
             return expr_node.value

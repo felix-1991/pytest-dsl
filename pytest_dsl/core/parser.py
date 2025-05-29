@@ -158,6 +158,7 @@ def p_expr_atom(p):
                  | ID
                  | boolean_expr
                  | list_expr
+                 | dict_expr
                  | LPAREN expression RPAREN'''
     if p[1] == '(':
         # 处理括号表达式，直接返回括号内的表达式节点
@@ -195,6 +196,29 @@ def p_list_items(p):
 def p_list_item(p):
     '''list_item : expression'''
     p[0] = p[1]
+
+
+def p_dict_expr(p):
+    '''dict_expr : LBRACE dict_items RBRACE
+                 | LBRACE RBRACE'''
+    if len(p) == 4:
+        p[0] = Node('DictExpr', children=p[2])
+    else:
+        p[0] = Node('DictExpr', children=[])  # 空字典
+
+
+def p_dict_items(p):
+    '''dict_items : dict_item
+                  | dict_item COMMA dict_items'''
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = [p[1]] + p[3]
+
+
+def p_dict_item(p):
+    '''dict_item : expression COLON expression'''
+    p[0] = Node('DictItem', children=[p[1], p[3]])
 
 
 def p_loop(p):

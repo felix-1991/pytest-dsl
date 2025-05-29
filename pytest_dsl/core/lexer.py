@@ -29,6 +29,8 @@ tokens = [
     'RPAREN',
     'LBRACKET',
     'RBRACKET',
+    'LBRACE',    # 左大括号 {，用于字典字面量
+    'RBRACE',    # 右大括号 }，用于字典字面量
     'COLON',
     'COMMA',
     'PLACEHOLDER',
@@ -58,6 +60,8 @@ t_LPAREN = r'\('
 t_RPAREN = r'\)'
 t_LBRACKET = r'\['
 t_RBRACKET = r'\]'
+t_LBRACE = r'\{'
+t_RBRACE = r'\}'
 t_COLON = r':'
 t_COMMA = r','
 t_EQUALS = r'='
