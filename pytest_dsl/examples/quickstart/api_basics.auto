@@ -50,6 +50,6 @@
         - ["jsonpath", "$.title", "eq", "测试标题"]
 ''',步骤名称:'创建新文章'
 
-@teardown do
+teardown do
     [打印],内容:'API测试完成!'
 end 

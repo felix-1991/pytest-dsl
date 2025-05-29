@@ -86,6 +86,6 @@
 
 [打印],内容:'段落文本: ${p_text}'
 
-@teardown do
+teardown do
     [打印],内容:'HTTP高级测试完成!'
 end 

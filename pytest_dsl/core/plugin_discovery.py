@@ -114,15 +114,8 @@ def scan_local_keywords() -> None:
     """
     扫描本地keywords目录中的关键字
     
-    1. 先尝试导入内置的keywords包（向后兼容）
-    2. 再查找并导入用户项目根目录下的keywords目录中的Python模块
+    再查找并导入用户项目根目录下的keywords目录中的Python模块
     """
-    # 1. 尝试导入内置的keywords包
-    try:
-        import keywords
-    except ImportError:
-        print("提示: 未找到内置关键字包")
-    
     # 2. 查找并导入用户项目中的keywords目录
     try:
         # 获取当前工作目录，通常是用户项目的根目录

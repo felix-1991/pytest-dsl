@@ -185,6 +185,6 @@ remote_post_result = remote_server|[HTTP请求],客户端: "default",配置: '''
 [打印],内容: "=== 远程HTTP请求功能测试完成 ==="
 [打印],内容: "✅ 所有HTTP功能测试通过！"
 
-@teardown do
+teardown do
     [打印],内容: "远程HTTP请求测试清理完成"
 end

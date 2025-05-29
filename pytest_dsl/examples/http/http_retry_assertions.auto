@@ -86,6 +86,6 @@
             all: true  # 重试所有断言
     ''',步骤名称:"全局断言重试示例"
 
-@teardown do
+teardown do
     [打印],内容:'断言重试测试完成!'
 end 

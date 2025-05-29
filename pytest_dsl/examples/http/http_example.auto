@@ -142,6 +142,6 @@
 [打印],内容:'获取的随机数: ${random_number}'
 [打印],内容:'断言重试测试完成!'
 
-@teardown do
+teardown do
     [打印],内容:'HTTP请求测试完成!'
 end 

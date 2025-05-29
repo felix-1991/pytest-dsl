@@ -53,6 +53,6 @@
 
 [打印],内容:'请求参数: ${args}'
 
-@teardown do
+teardown do
     [打印],内容:'YAML变量和模板测试完成!'
 end 

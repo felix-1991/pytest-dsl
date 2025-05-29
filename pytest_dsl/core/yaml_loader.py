@@ -97,7 +97,7 @@ def load_remote_servers_from_yaml():
         # 获取远程服务器配置
         remote_servers_config = yaml_vars.get_variable('remote_servers')
         if not remote_servers_config:
-            print("YAML配置中未找到remote_servers配置")
+            
             return
 
         print(f"发现 {len(remote_servers_config)} 个远程服务器配置")

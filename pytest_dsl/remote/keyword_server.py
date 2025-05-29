@@ -34,10 +34,26 @@ class RemoteKeywordServer:
         self._register_shutdown_handlers()
 
     def _register_builtin_keywords(self):
-        """注册所有内置关键字"""
-        # 确保所有内置关键字都已注册到keyword_manager
-        # 这里不需要显式导入，因为在启动时已经导入了所有关键字模块
-        print(f"已加载内置关键字，可用关键字数量: {len(keyword_manager._keywords)}")
+        """注册所有内置关键字，复用本地模式的加载逻辑"""
+        from pytest_dsl.core.plugin_discovery import load_all_plugins, scan_local_keywords
+
+        # 0. 首先加载内置关键字模块（确保内置关键字被注册）
+        print("正在加载内置关键字...")
+        try:
+            import pytest_dsl.keywords
+            print("内置关键字模块加载完成")
+        except ImportError as e:
+            print(f"加载内置关键字模块失败: {e}")
+
+        # 1. 加载所有已安装的关键字插件（与本地模式一致）
+        print("正在加载第三方关键字插件...")
+        load_all_plugins()
+
+        # 2. 扫描本地keywords目录中的关键字（与本地模式一致）
+        print("正在扫描本地关键字...")
+        scan_local_keywords()
+
+        print(f"关键字加载完成，可用关键字数量: {len(keyword_manager._keywords)}")
 
     def _register_shutdown_handlers(self):
         """注册关闭信号处理器"""
@@ -53,9 +69,13 @@ class RemoteKeywordServer:
         # 保存信号处理器引用
         self._shutdown_handler = shutdown_handler
 
-        # 注册信号处理器
-        signal.signal(signal.SIGINT, shutdown_handler)
-        signal.signal(signal.SIGTERM, shutdown_handler)
+        # 只在主线程中注册信号处理器
+        try:
+            signal.signal(signal.SIGINT, shutdown_handler)
+            signal.signal(signal.SIGTERM, shutdown_handler)
+        except ValueError:
+            # 如果不在主线程中，跳过信号处理器注册
+            print("警告: 无法在非主线程中注册信号处理器")
 
         # 注册atexit处理器
         atexit.register(self.shutdown)
@@ -491,8 +511,6 @@ class RemoteKeywordServer:
 def main():
     """启动远程关键字服务器的主函数"""
     import argparse
-    import os
-    import importlib.util
 
     parser = argparse.ArgumentParser(description='启动pytest-dsl远程关键字服务器')
     parser.add_argument('--host', default='localhost', help='服务器主机名')
@@ -502,13 +520,16 @@ def main():
 
     args = parser.parse_args()
 
-    # 加载扩展模块
+    # 在创建服务器之前加载额外的扩展模块（如果指定）
     if args.extensions:
+        print("正在加载额外的扩展模块...")
         _load_extensions(args.extensions)
 
     # 自动加载当前目录下的扩展
+    print("正在自动加载当前目录下的扩展...")
     _auto_load_extensions()
 
+    # 创建并启动服务器（服务器初始化时会自动加载标准关键字）
     server = RemoteKeywordServer(host=args.host, port=args.port, api_key=args.api_key)
     server.start()
 

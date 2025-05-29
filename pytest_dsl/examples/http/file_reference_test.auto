@@ -106,6 +106,6 @@ current_date = "2024-04-08T12:00:00Z"
 
 [打印],内容:'请求JSON已合并: ${request_json}'
 
-@teardown do
+teardown do
     [打印],内容:'外部文件引用测试完成!'
 end 

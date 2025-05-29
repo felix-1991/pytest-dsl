@@ -19,9 +19,3 @@ http_clients:
     timeout: 30
     verify_ssl: true
     session: true
-    auth:
-      type: custom
-      provider_name: custom_auth
-      username: admin
-      password: admin
-      version: 1.0.1

@@ -300,6 +300,6 @@ session_b_check = remote_server|[HTTP请求],客户端: "default",会话: "isola
 [打印],内容: "=== 远程会话管理功能测试完成 ==="
 [打印],内容: "✅ 所有会话管理功能测试通过！"
 
-@teardown do
+teardown do
     [打印],内容: "远程会话管理测试清理完成"
 end
