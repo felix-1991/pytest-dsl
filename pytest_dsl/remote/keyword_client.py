@@ -22,6 +22,11 @@ class RemoteKeywordClient:
         self.sync_config = sync_config or {
             'sync_global_vars': True,   # 连接时传递全局变量（g_开头）
             'sync_yaml_vars': True,     # 连接时传递YAML配置变量
+            'yaml_sync_keys': None,     # 指定要同步的YAML键列表，None表示同步所有（除了排除的）
+            'yaml_exclude_patterns': [  # 排除包含这些模式的YAML变量
+                'password', 'secret', 'key', 'token', 'credential', 'auth',
+                'private', 'remote_servers'  # 排除远程服务器配置避免循环
+            ]
         }
 
     def connect(self):
@@ -267,11 +272,45 @@ class RemoteKeywordClient:
             # 获取所有YAML变量
             yaml_data = yaml_vars._variables
             if yaml_data:
-                # 只传递特定的配置项，避免传递敏感信息
-                sync_keys = ['http_clients', 'api_endpoints', 'test_data']
-                for key in sync_keys:
-                    if key in yaml_data:
-                        variables[f'yaml_{key}'] = yaml_data[key]
+                # 检查同步配置中是否指定了特定的键
+                sync_keys = self.sync_config.get('yaml_sync_keys', None)
+                exclude_patterns = self.sync_config.get('yaml_exclude_patterns', [
+                    'password', 'secret', 'key', 'token', 'credential', 'auth',
+                    'private', 'remote_servers'  # 排除远程服务器配置避免循环
+                ])
+
+                if sync_keys:
+                    # 如果指定了特定键，只传递这些键，直接使用原始变量名
+                    for key in sync_keys:
+                        if key in yaml_data:
+                            variables[key] = yaml_data[key]
+                else:
+                    # 传递所有YAML变量，但排除敏感信息
+                    for key, value in yaml_data.items():
+                        # 检查是否包含敏感信息
+                        key_lower = key.lower()
+                        should_exclude = False
+
+                        for pattern in exclude_patterns:
+                            if pattern.lower() in key_lower:
+                                should_exclude = True
+                                break
+
+                        # 如果值是字符串，也检查是否包含敏感信息
+                        if not should_exclude and isinstance(value, str):
+                            value_lower = value.lower()
+                            for pattern in exclude_patterns:
+                                if pattern.lower() in value_lower and len(value) < 100:  # 只检查短字符串
+                                    should_exclude = True
+                                    break
+
+                        if not should_exclude:
+                            # 直接使用原始变量名，不添加yaml_前缀，实现无缝传递
+                            variables[key] = value
+                            print(f"传递YAML变量: {key}")
+                        else:
+                            print(f"跳过敏感YAML变量: {key}")
+
         except Exception as e:
             logger.warning(f"收集YAML变量失败: {str(e)}")
 

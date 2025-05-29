@@ -4,8 +4,16 @@ import inspect
 import json
 import sys
 import traceback
+import signal
+import atexit
+import threading
+import time
+from typing import Dict, Any, Callable, List
 
 from pytest_dsl.core.keyword_manager import keyword_manager
+from pytest_dsl.remote.hook_manager import hook_manager, HookType
+# 导入变量桥接模块，确保hook被注册
+from pytest_dsl.remote import variable_bridge
 
 class RemoteKeywordServer:
     """远程关键字服务器，提供关键字的远程调用能力"""
@@ -22,15 +30,91 @@ class RemoteKeywordServer:
         # 注册内置关键字
         self._register_builtin_keywords()
 
+        # 注册关闭信号处理
+        self._register_shutdown_handlers()
+
     def _register_builtin_keywords(self):
         """注册所有内置关键字"""
         # 确保所有内置关键字都已注册到keyword_manager
         # 这里不需要显式导入，因为在启动时已经导入了所有关键字模块
         print(f"已加载内置关键字，可用关键字数量: {len(keyword_manager._keywords)}")
 
+    def _register_shutdown_handlers(self):
+        """注册关闭信号处理器"""
+        def shutdown_handler(signum, frame):
+            if hasattr(self, '_shutdown_called') and self._shutdown_called:
+                return  # 避免重复处理信号
+            print(f"接收到信号 {signum}，正在关闭服务器...")
+
+            # 在新线程中执行关闭逻辑，避免阻塞信号处理器
+            shutdown_thread = threading.Thread(target=self._shutdown_in_thread, daemon=True)
+            shutdown_thread.start()
+
+        # 保存信号处理器引用
+        self._shutdown_handler = shutdown_handler
+
+        # 注册信号处理器
+        signal.signal(signal.SIGINT, shutdown_handler)
+        signal.signal(signal.SIGTERM, shutdown_handler)
+
+        # 注册atexit处理器
+        atexit.register(self.shutdown)
+
+    def _shutdown_in_thread(self):
+        """在独立线程中执行关闭逻辑"""
+        if hasattr(self, '_shutdown_called') and self._shutdown_called:
+            return  # 避免重复调用
+        self._shutdown_called = True
+
+        print("正在执行服务器关闭流程...")
+
+        # 执行关闭hook
+        try:
+            hook_manager.execute_hooks(
+                HookType.SERVER_SHUTDOWN,
+                server=self,
+                shared_variables=self.shared_variables
+            )
+        except Exception as e:
+            print(f"执行关闭hook时出错: {e}")
+
+        # 关闭XML-RPC服务器
+        if self.server:
+            try:
+                self.server.shutdown()
+                self.server.server_close()
+                print("服务器已关闭")
+            except Exception as e:
+                print(f"关闭服务器时出错: {e}")
+
+        print("服务器关闭完成")
+
+        # 给主线程一点时间完成清理
+        time.sleep(0.1)
+
+        # 强制退出
+        import os
+        os._exit(0)
+
     def start(self):
         """启动远程关键字服务器"""
-        self.server = xmlrpc.server.SimpleXMLRPCServer((self.host, self.port), allow_none=True)
+        try:
+            self.server = xmlrpc.server.SimpleXMLRPCServer((self.host, self.port), allow_none=True)
+        except OSError as e:
+            if "Address already in use" in str(e):
+                print(f"端口 {self.port} 已被占用，请使用其他端口或关闭占用该端口的进程")
+                return
+            else:
+                raise
+
+        # 执行启动前的hook
+        hook_manager.execute_hooks(
+            HookType.SERVER_STARTUP,
+            server=self,
+            shared_variables=self.shared_variables,
+            host=self.host,
+            port=self.port
+        )
         self.server.register_introspection_functions()
 
         # 注册核心方法
@@ -48,7 +132,21 @@ class RemoteKeywordServer:
         self.server.register_function(self.list_shared_variables)
 
         print(f"远程关键字服务器已启动，监听地址: {self.host}:{self.port}")
-        self.server.serve_forever()
+
+        try:
+            self.server.serve_forever()
+        except KeyboardInterrupt:
+            print("接收到中断信号，正在关闭服务器...")
+        finally:
+            self.shutdown()
+
+    def shutdown(self):
+        """关闭服务器（用于atexit处理器）"""
+        if hasattr(self, '_shutdown_called') and self._shutdown_called:
+            return  # 避免重复调用
+
+        # 调用线程化的关闭逻辑
+        self._shutdown_in_thread()
 
     def authenticate(self, api_key):
         """验证API密钥"""
@@ -116,8 +214,37 @@ class RemoteKeywordServer:
                 else:
                     exec_kwargs[param_name] = param_value
 
+            # 执行关键字执行前的hook
+            before_context = hook_manager.execute_hooks(
+                HookType.BEFORE_KEYWORD_EXECUTION,
+                server=self,
+                shared_variables=self.shared_variables,
+                keyword_name=name,
+                keyword_args=exec_kwargs,
+                test_context=test_context
+            )
+
+            # 从hook上下文中更新执行参数（hook可能修改了参数）
+            if 'keyword_args' in before_context.data:
+                exec_kwargs.update(before_context.data['keyword_args'])
+
             # 执行关键字
             result = keyword_manager.execute(name, **exec_kwargs)
+
+            # 执行关键字执行后的hook
+            after_context = hook_manager.execute_hooks(
+                HookType.AFTER_KEYWORD_EXECUTION,
+                server=self,
+                shared_variables=self.shared_variables,
+                keyword_name=name,
+                keyword_args=exec_kwargs,
+                keyword_result=result,
+                test_context=test_context
+            )
+
+            # 从hook上下文中获取可能修改的结果
+            if 'keyword_result' in after_context.data:
+                result = after_context.data['keyword_result']
 
             # 处理返回结果
             return_data = self._process_keyword_result(result, test_context)
@@ -364,16 +491,82 @@ class RemoteKeywordServer:
 def main():
     """启动远程关键字服务器的主函数"""
     import argparse
+    import os
+    import importlib.util
 
     parser = argparse.ArgumentParser(description='启动pytest-dsl远程关键字服务器')
     parser.add_argument('--host', default='localhost', help='服务器主机名')
     parser.add_argument('--port', type=int, default=8270, help='服务器端口')
     parser.add_argument('--api-key', help='API密钥，用于认证')
+    parser.add_argument('--extensions', help='扩展模块路径，多个路径用逗号分隔')
 
     args = parser.parse_args()
 
+    # 加载扩展模块
+    if args.extensions:
+        _load_extensions(args.extensions)
+
+    # 自动加载当前目录下的扩展
+    _auto_load_extensions()
+
     server = RemoteKeywordServer(host=args.host, port=args.port, api_key=args.api_key)
     server.start()
+
+
+def _load_extensions(extensions_arg):
+    """加载指定的扩展模块"""
+    import importlib.util
+    import os
+
+    extension_paths = [path.strip() for path in extensions_arg.split(',')]
+
+    for ext_path in extension_paths:
+        if not ext_path:
+            continue
+
+        try:
+            if os.path.isfile(ext_path) and ext_path.endswith('.py'):
+                # 加载单个Python文件
+                module_name = os.path.splitext(os.path.basename(ext_path))[0]
+                spec = importlib.util.spec_from_file_location(module_name, ext_path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                print(f"已加载扩展模块: {ext_path}")
+            elif os.path.isdir(ext_path):
+                # 加载目录下的所有Python文件
+                for filename in os.listdir(ext_path):
+                    if filename.endswith('.py') and not filename.startswith('_'):
+                        file_path = os.path.join(ext_path, filename)
+                        module_name = os.path.splitext(filename)[0]
+                        spec = importlib.util.spec_from_file_location(module_name, file_path)
+                        module = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(module)
+                        print(f"已加载扩展模块: {file_path}")
+            else:
+                # 尝试作为模块名导入
+                importlib.import_module(ext_path)
+                print(f"已导入扩展模块: {ext_path}")
+
+        except Exception as e:
+            print(f"加载扩展模块失败 {ext_path}: {str(e)}")
+
+
+def _auto_load_extensions():
+    """自动加载当前目录下的扩展"""
+    import os
+    import importlib.util
+
+    # 查找当前目录下的extensions目录
+    extensions_dir = os.path.join(os.getcwd(), 'extensions')
+    if os.path.isdir(extensions_dir):
+        print(f"发现扩展目录: {extensions_dir}")
+        _load_extensions(extensions_dir)
+
+    # 查找当前目录下的remote_extensions.py文件
+    remote_ext_file = os.path.join(os.getcwd(), 'remote_extensions.py')
+    if os.path.isfile(remote_ext_file):
+        print(f"发现扩展文件: {remote_ext_file}")
+        _load_extensions(remote_ext_file)
 
 if __name__ == '__main__':
     main()

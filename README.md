@@ -530,34 +530,58 @@ backup|[打印],内容: "使用备用服务器"
 machineone|[打印],内容: "这是通过远程服务器执行的关键字"
 ```
 
-## 变量传递功能
+## 无缝变量传递功能
 
-pytest-dsl提供了简洁的变量传递功能，在首次连接远程关键字服务器时，自动传递全局变量和YAML配置变量，方便远程关键字访问本地的配置信息。
+pytest-dsl提供了革命性的无缝变量传递功能，客户端的变量会自动传递到服务端，服务端使用时完全透明，无需任何前缀或特殊语法。
 
 ### 功能特性
 
-- **自动传递**：连接时自动传递全局变量（g_开头）和YAML配置变量
-- **简化配置**：无需复杂的同步设置，开箱即用
-- **参数传递**：其他变量仍可通过参数传递机制使用
-- **中心存储**：远程服务器存储传递过来的变量，供远程关键字使用
+- **🔄 无缝传递**：客户端变量自动传递到远程服务器，服务端使用时无需前缀
+- **🛡️ 智能过滤**：自动过滤敏感信息（password、secret、key等）
+- **⚡ 零配置**：无需复杂的同步设置，开箱即用
+- **🎯 优先级保持**：保持变量访问优先级（本地 > 同步）
+- **🔒 完全隔离**：不同服务器的变量完全隔离，互不影响
 
 ### 基本使用
 
-```python
-# 设置全局变量（会自动传递到远程服务器）
-g_test_user = "admin"
-g_test_password = "password123"
-g_base_url = "https://api.example.com"
+**客户端配置 (vars.yaml)**：
+```yaml
+# 全局变量
+g_base_url: "https://api.example.com"
 
+# HTTP客户端配置
+http_clients:
+  default:
+    base_url: "${g_base_url}"
+    timeout: 30
+
+# 测试数据
+test_data:
+  username: "testuser"
+  email: "test@example.com"
+
+# 敏感信息（会被自动过滤）
+password: "secret123"
+api_key: "sk-1234567890"
+```
+
+**DSL测试脚本**：
+```python
 # 导入远程关键字服务器（连接时自动传递变量）
 @remote: "http://localhost:8270/" as remote_server
 
-# 远程关键字可以直接使用传递过去的全局变量
-remote_server|[HTTP请求],url: "${g_base_url}/api/login"
+# 远程关键字直接使用客户端变量，无需前缀！
+remote_server|[HTTP请求], 客户端: "default", 配置: '''
+request:
+  method: GET
+  url: ${g_base_url}/api/data
+  headers:
+    X-User: ${test_data.username}
+    X-Email: ${test_data.email}
+'''
 
-# 其他变量通过参数传递
-local_data = "本地数据"
-remote_server|[打印],内容: local_data
+# 全局变量也可以直接使用
+remote_server|[打印], 内容: "API地址: ${g_base_url}"
 ```
 
 ### 配置选项
@@ -577,10 +601,11 @@ client = RemoteKeywordClient(sync_config=sync_config)
 
 ### 应用场景
 
-1. **配置共享**：将测试配置（API地址、超时时间等）传递给远程服务器
-2. **环境变量**：共享环境相关的全局变量
-3. **认证信息**：传递用户名、密码等认证相关变量
-4. **测试数据**：共享测试用的基础数据
+1. **🌐 跨环境测试**：客户端配置自动传递到不同环境的远程服务器
+2. **🔧 配置统一管理**：HTTP客户端、数据库连接等配置在客户端统一管理
+3. **🏢 企业级部署**：测试配置集中管理，远程执行节点自动获取
+4. **🔒 安全隔离**：敏感信息自动过滤，确保安全性
+5. **⚡ 性能优化**：计算密集型任务在远程高性能服务器执行，配置无缝传递
 
 # 随机数生成测试
 随机数 = [生成随机数],最小值: 1,最大值: 100
@@ -651,7 +676,9 @@ machineone|[打印],内容: "远程生成的随机数: ${随机数}"
 ### 远程关键字文档
 - 📖 [远程关键字使用指南](./docs/remote-keywords-usage.md) - 如何使用远程关键字功能
 - 🛠️ [远程关键字开发指南](./docs/remote-keywords-development.md) - 如何开发支持远程模式的关键字
+- 🔧 [远程服务器Hook机制指南](./docs/remote-hooks-guide.md) - 如何使用hook机制扩展远程服务器功能和实现自定义授权
 - ⚙️ [YAML远程服务器配置指南](./docs/yaml_remote_servers.md) - 如何通过YAML配置自动加载远程服务器
+- 🔄 [YAML变量无缝传递功能](./docs/yaml_vars_seamless_sync.md) - 如何实现客户端YAML变量的无缝传递
 - [远程关键字语法示例](./docs/remote_syntax_example.md) - 基础语法示例
 
 ## 贡献与支持

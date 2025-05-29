@@ -11,7 +11,6 @@ from pytest_dsl.core.context import TestContext
 import pytest_dsl.keywords
 from pytest_dsl.core.yaml_vars import yaml_vars
 from pytest_dsl.core.variable_utils import VariableReplacer
-from pytest_dsl.remote.keyword_client import remote_keyword_manager
 
 
 class DSLExecutor:
@@ -218,6 +217,8 @@ class DSLExecutor:
         Args:
             node: RemoteImport节点
         """
+        from pytest_dsl.remote.keyword_client import remote_keyword_manager
+
         remote_info = node.value
         url = self._replace_variables_in_string(remote_info['url'])
         alias = remote_info['alias']
@@ -531,6 +532,8 @@ class DSLExecutor:
         Returns:
             执行结果
         """
+        from pytest_dsl.remote.keyword_client import remote_keyword_manager
+
         call_info = node.value
         alias = call_info['alias']
         keyword_name = call_info['keyword']
