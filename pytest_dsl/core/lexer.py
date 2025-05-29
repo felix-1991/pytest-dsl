@@ -144,8 +144,12 @@ def t_IMPORT_KEYWORD(t):
 
 
 def t_NUMBER(t):
-    r'\d+'
-    t.value = int(t.value)
+    r'\d+(\.\d+)?'
+    # 如果包含小数点，转换为浮点数；否则转换为整数
+    if '.' in t.value:
+        t.value = float(t.value)
+    else:
+        t.value = int(t.value)
     return t
 
 
