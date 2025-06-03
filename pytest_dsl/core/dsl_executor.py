@@ -13,6 +13,16 @@ from pytest_dsl.core.yaml_vars import yaml_vars
 from pytest_dsl.core.variable_utils import VariableReplacer
 
 
+class BreakException(Exception):
+    """Break控制流异常"""
+    pass
+
+
+class ContinueException(Exception):
+    """Continue控制流异常"""
+    pass
+
+
 class DSLExecutor:
     """DSL执行器，负责执行解析后的AST
 
@@ -175,7 +185,7 @@ class DSLExecutor:
         """
         left_value = self.eval_expression(expr_node.children[0])
         right_value = self.eval_expression(expr_node.children[1])
-        operator = expr_node.value  # 操作符: +, -, *, /
+        operator = expr_node.value  # 操作符: +, -, *, /, %
 
         # 尝试类型转换 - 如果是字符串数字则转为数字
         if isinstance(left_value, str) and str(left_value).replace('.', '', 1).isdigit():
@@ -210,6 +220,11 @@ class DSLExecutor:
             if right_value == 0:
                 raise Exception("除法错误: 除数不能为0")
             return left_value / right_value
+        elif operator == '%':
+            # 模运算时检查除数是否为0
+            if right_value == 0:
+                raise Exception("模运算错误: 除数不能为0")
+            return left_value % right_value
         else:
             raise Exception(f"未知的算术操作符: {operator}")
 
@@ -458,7 +473,24 @@ class DSLExecutor:
             self.variable_replacer.local_variables[var_name] = i
             self.test_context.set(var_name, i)  # 同时添加到测试上下文
             with allure.step(f"循环轮次: {var_name} = {i}"):
-                self.execute(node.children[2])
+                try:
+                    self.execute(node.children[2])
+                except BreakException:
+                    # 遇到break语句，退出循环
+                    allure.attach(
+                        f"在 {var_name} = {i} 时遇到break语句，退出循环",
+                        name="循环Break",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    break
+                except ContinueException:
+                    # 遇到continue语句，跳过本次循环
+                    allure.attach(
+                        f"在 {var_name} = {i} 时遇到continue语句，跳过本次循环",
+                        name="循环Continue",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    continue
 
     def _execute_keyword_call(self, node):
         """执行关键字调用"""
@@ -510,6 +542,30 @@ class DSLExecutor:
         """
         expr_node = node.children[0]
         return self.eval_expression(expr_node)
+
+    @allure.step("执行break语句")
+    def _handle_break(self, node):
+        """处理break语句
+
+        Args:
+            node: Break节点
+
+        Raises:
+            BreakException: 抛出异常来实现break控制流
+        """
+        raise BreakException()
+
+    @allure.step("执行continue语句")
+    def _handle_continue(self, node):
+        """处理continue语句
+
+        Args:
+            node: Continue节点
+
+        Raises:
+            ContinueException: 抛出异常来实现continue控制流
+        """
+        raise ContinueException()
 
     @allure.step("执行条件语句")
     def _handle_if_statement(self, node):
@@ -664,7 +720,9 @@ class DSLExecutor:
             'CustomKeyword': lambda _: None,  # 添加对CustomKeyword节点的处理，只需注册不需执行
             'RemoteImport': self._handle_remote_import,
             'RemoteKeywordCall': self._execute_remote_keyword_call,
-            'AssignmentRemoteKeywordCall': self._handle_assignment_remote_keyword_call
+            'AssignmentRemoteKeywordCall': self._handle_assignment_remote_keyword_call,
+            'Break': self._handle_break,
+            'Continue': self._handle_continue
         }
 
         handler = handlers.get(node.type)

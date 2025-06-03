@@ -16,7 +16,9 @@ reserved = {
     'if': 'IF',  # 添加if关键字支持
     'as': 'AS',   # 添加as关键字支持，用于远程关键字别名
     'function': 'FUNCTION',  # 添加function关键字支持，用于自定义关键字定义
-    'teardown': 'TEARDOWN'   # 添加teardown关键字支持，用于清理操作
+    'teardown': 'TEARDOWN',   # 添加teardown关键字支持，用于清理操作
+    'break': 'BREAK',  # 添加break关键字支持，用于循环控制
+    'continue': 'CONTINUE'  # 添加continue关键字支持，用于循环控制
 }
 
 # token 名称列表
@@ -53,6 +55,7 @@ tokens = [
     'MINUS',     # 减法 -
     'TIMES',     # 乘法 *
     'DIVIDE',    # 除法 /
+    'MODULO',    # 模运算 %
     'PIPE',      # 管道符 |，用于远程关键字调用
 ] + list(reserved.values())
 
@@ -76,10 +79,13 @@ t_PLUS = r'\+'
 t_MINUS = r'-'
 t_TIMES = r'\*'
 t_DIVIDE = r'/'
+t_MODULO = r'%'
 
 # 增加PLACEHOLDER规则，匹配 ${变量名} 格式，支持点号、数组索引和字典键访问
 # 匹配: ${variable}, ${obj.prop}, ${arr[0]}, ${dict["key"]}, ${obj[0].prop} 等
-t_PLACEHOLDER = r'\$\{[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*(?:(?:\.[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)|(?:\[[^\]]+\]))*\}'
+t_PLACEHOLDER = (r'\$\{[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*'
+                 r'(?:(?:\.[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)'
+                 r'|(?:\[[^\]]+\]))*\}')
 
 # 添加管道符的正则表达式定义
 t_PIPE = r'\|'

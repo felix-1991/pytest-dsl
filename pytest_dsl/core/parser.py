@@ -14,7 +14,7 @@ precedence = (
     ('left', 'COMMA'),
     ('left', 'GT', 'LT', 'GE', 'LE', 'EQ', 'NE'),  # 比较运算符优先级
     ('left', 'PLUS', 'MINUS'),  # 加减运算符优先级
-    ('left', 'TIMES', 'DIVIDE'),  # 乘除运算符优先级
+    ('left', 'TIMES', 'DIVIDE', 'MODULO'),  # 乘除模运算符优先级
     ('right', 'EQUALS'),
 )
 
@@ -124,7 +124,9 @@ def p_statement(p):
                 | loop
                 | custom_keyword
                 | return_statement
-                | if_statement'''
+                | if_statement
+                | break_statement
+                | continue_statement'''
     p[0] = p[1]
 
 
@@ -302,6 +304,16 @@ def p_return_statement(p):
     p[0] = Node('Return', [p[2]])
 
 
+def p_break_statement(p):
+    '''break_statement : BREAK'''
+    p[0] = Node('Break', [])
+
+
+def p_continue_statement(p):
+    '''continue_statement : CONTINUE'''
+    p[0] = Node('Continue', [])
+
+
 def p_if_statement(p):
     '''if_statement : IF expression DO statements END
                    | IF expression DO statements elif_clauses END
@@ -367,7 +379,8 @@ def p_arithmetic_expr(p):
     '''arithmetic_expr : expression PLUS expression
                        | expression MINUS expression
                        | expression TIMES expression
-                       | expression DIVIDE expression'''
+                       | expression DIVIDE expression
+                       | expression MODULO expression'''
 
     # 根据规则索引判断使用的是哪个操作符
     if p.slice[2].type == 'PLUS':
@@ -378,6 +391,8 @@ def p_arithmetic_expr(p):
         operator = '*'
     elif p.slice[2].type == 'DIVIDE':
         operator = '/'
+    elif p.slice[2].type == 'MODULO':
+        operator = '%'
     else:
         print(f"警告: 无法识别的操作符类型 {p.slice[2].type}")
         operator = None

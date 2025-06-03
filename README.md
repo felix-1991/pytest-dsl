@@ -83,8 +83,32 @@ version = "1.0.0"
 # 数字变量
 port = 8080
 
+# 布尔值变量
+is_enabled = True
+is_disabled = False
+
 # 列表
 users = ["alice", "bob", "charlie"]
+
+# 字典
+user_info = {"name": "张三", "age": 30, "city": "北京"}
+
+# 嵌套字典
+config = {
+    "database": {
+        "host": "localhost",
+        "port": 3306,
+        "name": "test_db"
+    },
+    "api": {
+        "base_url": "https://api.example.com",
+        "timeout": 30
+    }
+}
+
+# 访问字典值
+username = ${user_info["name"]}
+db_host = ${config["database"]["host"]}
 ```
 
 #### 流程控制
@@ -98,12 +122,33 @@ else
     [打印], 内容: "测试失败"
 end
 
+# 使用布尔值的条件判断
+is_ready = True
+if ${is_ready} do
+    [打印], 内容: "系统就绪"
+end
+
 # 循环结构
 num = 4
 for i in range(1, num) do
     [打印], 内容: "执行第 ${i} 次"
 end
 
+# 循环中的break和continue
+for j in range(1, 11) do
+    # 跳过偶数
+    if ${j} % 2 == 0 do
+        continue
+    end
+    
+    # 当达到7时退出循环
+    if ${j} == 7 do
+        [打印], 内容: "达到7，退出循环"
+        break
+    end
+    
+    [打印], 内容: "奇数: ${j}"
+end
 ```
 
 ### 2. 内置关键字详解
@@ -1003,6 +1048,9 @@ pytest-dsl api_basic.dsl
 - ✅ 断言重试机制
 - ✅ 认证功能示例
 - ✅ 数据驱动测试（pytest集成）
+- ✅ 布尔值支持和条件判断
+- ✅ 字典定义和嵌套访问
+- ✅ 循环控制语句（break/continue）
 
 ---
 
