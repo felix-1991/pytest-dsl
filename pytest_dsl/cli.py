@@ -453,5 +453,33 @@ def main():
         sys.exit(1)
 
 
+def main_list_keywords():
+    """关键字列表命令的专用入口点"""
+    parser = argparse.ArgumentParser(description='查看pytest-dsl可用关键字列表')
+    parser.add_argument(
+        '--format', choices=['text', 'json'],
+        default='text',
+        help='输出格式：text(默认) 或 json'
+    )
+    parser.add_argument(
+        '--filter', type=str, default=None,
+        help='过滤关键字名称（支持部分匹配）'
+    )
+    parser.add_argument(
+        '--category',
+        choices=['builtin', 'custom', 'remote', 'all'],
+        default='all',
+        help='关键字类别：builtin(内置)、custom(自定义)、remote(远程)、all(全部，默认)'
+    )
+
+    args = parser.parse_args()
+
+    list_keywords(
+        output_format=args.format,
+        name_filter=args.filter,
+        category_filter=args.category
+    )
+
+
 if __name__ == '__main__':
     main()
