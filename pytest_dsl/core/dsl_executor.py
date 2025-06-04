@@ -23,6 +23,14 @@ class ContinueException(Exception):
     pass
 
 
+class ReturnException(Exception):
+    """Return控制流异常"""
+
+    def __init__(self, return_value=None):
+        self.return_value = return_value
+        super().__init__(f"Return with value: {return_value}")
+
+
 class DSLExecutor:
     """DSL执行器，负责执行解析后的AST
 
@@ -30,12 +38,14 @@ class DSLExecutor:
     - PYTEST_DSL_KEEP_VARIABLES=1: 执行完成后保留变量，用于单元测试中检查变量值
     - PYTEST_DSL_KEEP_VARIABLES=0: (默认) 执行完成后清空变量，用于正常DSL执行
     """
+
     def __init__(self):
         """初始化DSL执行器"""
         self.variables = {}
         self.test_context = TestContext()
         self.test_context.executor = self  # 让 test_context 能够访问到 executor
-        self.variable_replacer = VariableReplacer(self.variables, self.test_context)
+        self.variable_replacer = VariableReplacer(
+            self.variables, self.test_context)
         self.imported_files = set()  # 跟踪已导入的文件，避免循环导入
 
     def set_current_data(self, data):
@@ -279,7 +289,8 @@ class DSLExecutor:
                     # 导入自定义关键字管理器
                     from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
                     # 注册自定义关键字
-                    custom_keyword_manager._register_custom_keyword(stmt, "current_file")
+                    custom_keyword_manager._register_custom_keyword(
+                        stmt, "current_file")
 
     def _handle_start(self, node):
         """处理开始节点"""
@@ -377,7 +388,8 @@ class DSLExecutor:
             # 当 PYTEST_DSL_KEEP_VARIABLES=1 时，保留变量（用于单元测试）
             # 否则清空变量（用于正常DSL执行）
             import os
-            keep_variables = os.environ.get('PYTEST_DSL_KEEP_VARIABLES', '0') == '1'
+            keep_variables = os.environ.get(
+                'PYTEST_DSL_KEEP_VARIABLES', '0') == '1'
 
             if not keep_variables:
                 self.variables.clear()
@@ -387,7 +399,11 @@ class DSLExecutor:
     def _handle_statements(self, node):
         """处理语句列表"""
         for stmt in node.children:
-            self.execute(stmt)
+            try:
+                self.execute(stmt)
+            except ReturnException as e:
+                # 将return异常向上传递，不在这里处理
+                raise e
 
     @allure.step("变量赋值")
     def _handle_assignment(self, node):
@@ -491,6 +507,14 @@ class DSLExecutor:
                         attachment_type=allure.attachment_type.TEXT
                     )
                     continue
+                except ReturnException as e:
+                    # 遇到return语句，将异常向上传递
+                    allure.attach(
+                        f"在 {var_name} = {i} 时遇到return语句，退出函数",
+                        name="循环Return",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    raise e
 
     def _execute_keyword_call(self, node):
         """执行关键字调用"""
@@ -537,11 +561,12 @@ class DSLExecutor:
         Args:
             node: Return节点
 
-        Returns:
-            表达式求值结果
+        Raises:
+            ReturnException: 抛出异常来实现return控制流
         """
         expr_node = node.children[0]
-        return self.eval_expression(expr_node)
+        return_value = self.eval_expression(expr_node)
+        raise ReturnException(return_value)
 
     @allure.step("执行break语句")
     def _handle_break(self, node):
@@ -580,7 +605,8 @@ class DSLExecutor:
         if condition:
             # 执行if分支
             with allure.step("执行if分支"):
-                return self.execute(node.children[1])
+                self.execute(node.children[1])
+                return
 
         # 如果if条件为假，检查elif分支
         for i in range(2, len(node.children)):
@@ -591,13 +617,15 @@ class DSLExecutor:
                 elif_condition = self.eval_expression(child.children[0])
                 if elif_condition:
                     with allure.step(f"执行elif分支 {i-1}"):
-                        return self.execute(child.children[1])
+                        self.execute(child.children[1])
+                        return
 
             # 如果是普通的statements节点（else分支）
             elif not hasattr(child, 'type') or child.type == 'Statements':
                 # 这是else分支，只有在所有前面的条件都为假时才执行
                 with allure.step("执行else分支"):
-                    return self.execute(child)
+                    self.execute(child)
+                    return
 
         # 如果所有条件都为假且没有else分支，则不执行任何操作
         return None
@@ -634,7 +662,8 @@ class DSLExecutor:
         with allure.step(f"执行远程关键字: {alias}|{keyword_name}"):
             try:
                 # 执行远程关键字
-                result = remote_keyword_manager.execute_remote_keyword(alias, keyword_name, **kwargs)
+                result = remote_keyword_manager.execute_remote_keyword(
+                    alias, keyword_name, **kwargs)
                 allure.attach(
                     f"远程关键字参数: {kwargs}\n"
                     f"远程关键字结果: {result}",
@@ -729,6 +758,7 @@ class DSLExecutor:
         if handler:
             return handler(node)
         raise Exception(f"未知的节点类型: {node.type}")
+
 
 def read_file(filename):
     """读取 DSL 文件内容"""
