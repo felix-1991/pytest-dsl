@@ -1,0 +1,404 @@
+{
+  "summary": {
+    "total_count": 19,
+    "category_counts": {
+      "builtin": 19
+    }
+  },
+  "keywords": [
+    {
+      "name": "HTTP请求",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "客户端",
+          "mapping": "client",
+          "description": "客户端名称，对应YAML变量文件中的客户端配置",
+          "default": "default"
+        },
+        {
+          "name": "配置",
+          "mapping": "config",
+          "description": "包含请求、捕获和断言的YAML配置"
+        },
+        {
+          "name": "会话",
+          "mapping": "session",
+          "description": "会话名称，用于在多个请求间保持会话状态"
+        },
+        {
+          "name": "保存响应",
+          "mapping": "save_response",
+          "description": "将完整响应保存到指定变量名中"
+        },
+        {
+          "name": "禁用授权",
+          "mapping": "disable_auth",
+          "description": "禁用客户端配置中的授权机制",
+          "default": false
+        },
+        {
+          "name": "模板",
+          "mapping": "template",
+          "description": "使用YAML变量文件中定义的请求模板"
+        },
+        {
+          "name": "断言重试次数",
+          "mapping": "assert_retry_count",
+          "description": "断言失败时的重试次数",
+          "default": 0
+        },
+        {
+          "name": "断言重试间隔",
+          "mapping": "assert_retry_interval",
+          "description": "断言重试间隔时间（秒）",
+          "default": 1
+        }
+      ],
+      "documentation": "执行HTTP请求\n\n    根据YAML配置发送HTTP请求，支持客户端配置、会话管理、响应捕获和断言。\n\n    Args:\n        context: 测试上下文\n        client: 客户端名称\n        config: YAML配置\n        session: 会话名称\n        save_response: 保存响应的变量名\n        disable_auth: 禁用客户端配置中的授权机制\n        template: 模板名称\n        assert_retry_count: 断言失败时的重试次数\n        assert_retry_interval: 断言重试间隔时间（秒）\n\n    Returns:\n        捕获的变量字典或响应对象"
+    },
+    {
+      "name": "JSON提取",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "JSON数据",
+          "mapping": "json_data",
+          "description": "JSON数据（字符串或对象）"
+        },
+        {
+          "name": "JSONPath",
+          "mapping": "jsonpath",
+          "description": "JSONPath表达式"
+        },
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "存储提取值的变量名"
+        }
+      ],
+      "documentation": "从JSON数据中提取值并保存到变量\n\n    Args:\n        json_data: JSON数据（字符串或对象）\n        jsonpath: JSONPath表达式\n        variable: 存储提取值的变量名\n        context: 测试上下文\n\n    Returns:\n        提取的值或包含提取值的字典（远程模式）\n\n    Raises:\n        ValueError: 如果JSONPath无效或找不到匹配项"
+    },
+    {
+      "name": "JSON断言",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "JSON数据",
+          "mapping": "json_data",
+          "description": "JSON数据（字符串或对象）"
+        },
+        {
+          "name": "JSONPath",
+          "mapping": "jsonpath",
+          "description": "JSONPath表达式"
+        },
+        {
+          "name": "预期值",
+          "mapping": "expected_value",
+          "description": "预期的值"
+        },
+        {
+          "name": "操作符",
+          "mapping": "operator",
+          "description": "比较操作符",
+          "default": "=="
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息",
+          "default": "JSON断言失败"
+        }
+      ],
+      "documentation": "执行JSON断言\n\n    Args:\n        json_data: JSON数据（字符串或对象）\n        jsonpath: JSONPath表达式\n        expected_value: 预期的值\n        operator: 比较操作符，默认为\"==\"\n        message: 断言失败时的错误消息\n\n    Returns:\n        断言结果 (True/False)\n\n    Raises:\n        AssertionError: 如果断言失败\n        ValueError: 如果JSONPath无效或找不到匹配项"
+    },
+    {
+      "name": "删除全局变量",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "变量名",
+          "mapping": "name",
+          "description": "全局变量的名称"
+        }
+      ],
+      "documentation": "删除全局变量"
+    },
+    {
+      "name": "字符串操作",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "操作",
+          "mapping": "operation",
+          "description": "操作类型：拼接(concat)、替换(replace)、分割(split)、大写(upper)、小写(lower)、去空格(strip)",
+          "default": "strip"
+        },
+        {
+          "name": "字符串",
+          "mapping": "string",
+          "description": "要操作的字符串"
+        },
+        {
+          "name": "参数1",
+          "mapping": "param1",
+          "description": "操作参数1，根据操作类型不同而不同",
+          "default": ""
+        },
+        {
+          "name": "参数2",
+          "mapping": "param2",
+          "description": "操作参数2，根据操作类型不同而不同",
+          "default": ""
+        }
+      ],
+      "documentation": "字符串操作\n\n    Args:\n        operation: 操作类型，默认为strip（去空格）\n        string: 要操作的字符串\n        param1: 操作参数1，默认为空字符串\n        param2: 操作参数2，默认为空字符串\n\n    Returns:\n        str: 操作结果"
+    },
+    {
+      "name": "打印",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "内容",
+          "mapping": "content",
+          "description": "要打印的文本内容"
+        }
+      ]
+    },
+    {
+      "name": "执行命令",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "命令",
+          "mapping": "command",
+          "description": "要执行的系统命令"
+        },
+        {
+          "name": "超时",
+          "mapping": "timeout",
+          "description": "命令执行超时时间（秒）",
+          "default": 60
+        },
+        {
+          "name": "捕获输出",
+          "mapping": "capture_output",
+          "description": "是否捕获命令输出",
+          "default": true
+        }
+      ],
+      "documentation": "执行系统命令\n\n    Args:\n        command: 要执行的系统命令\n        timeout: 命令执行超时时间（秒）\n        capture_output: 是否捕获命令输出\n\n    Returns:\n        dict: 包含返回码、标准输出和标准错误的字典"
+    },
+    {
+      "name": "数据比较",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "实际值",
+          "mapping": "actual",
+          "description": "实际值"
+        },
+        {
+          "name": "预期值",
+          "mapping": "expected",
+          "description": "预期值"
+        },
+        {
+          "name": "操作符",
+          "mapping": "operator",
+          "description": "比较操作符",
+          "default": "=="
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息",
+          "default": "数据比较失败"
+        }
+      ],
+      "documentation": "比较两个值\n\n    Args:\n        actual: 实际值\n        expected: 预期值\n        operator: 比较操作符，默认为\"==\"\n        message: 断言失败时的错误消息\n\n    Returns:\n        比较结果 (True/False)\n\n    Raises:\n        AssertionError: 如果比较失败"
+    },
+    {
+      "name": "断言",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "条件",
+          "mapping": "condition",
+          "description": "断言条件表达式，例如: \"${value} == 100\" 或 \"1 + 1 == 2\""
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息",
+          "default": "断言失败"
+        }
+      ],
+      "documentation": "执行表达式断言\n\n    Args:\n        condition: 断言条件表达式\n        message: 断言失败时的错误消息\n\n    Returns:\n        断言结果 (True/False)\n\n    Raises:\n        AssertionError: 如果断言失败"
+    },
+    {
+      "name": "日志",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "级别",
+          "mapping": "level",
+          "description": "日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL",
+          "default": "INFO"
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "日志消息内容"
+        }
+      ],
+      "documentation": "记录日志\n\n    Args:\n        level: 日志级别\n        message: 日志消息内容"
+    },
+    {
+      "name": "清除所有全局变量",
+      "category": "builtin",
+      "parameters": [],
+      "documentation": "清除所有全局变量"
+    },
+    {
+      "name": "生成随机字符串",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "长度",
+          "mapping": "length",
+          "description": "随机字符串的长度",
+          "default": 8
+        },
+        {
+          "name": "类型",
+          "mapping": "type",
+          "description": "字符类型：字母(letters)、数字(digits)、字母数字(alphanumeric)、全部(all)",
+          "default": "alphanumeric"
+        }
+      ],
+      "documentation": "生成指定长度和类型的随机字符串\n\n    Args:\n        length: 字符串长度\n        type: 字符类型\n\n    Returns:\n        str: 生成的随机字符串"
+    },
+    {
+      "name": "生成随机数",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "最小值",
+          "mapping": "min",
+          "description": "随机数的最小值",
+          "default": 0
+        },
+        {
+          "name": "最大值",
+          "mapping": "max",
+          "description": "随机数的最大值",
+          "default": 100
+        },
+        {
+          "name": "小数位数",
+          "mapping": "decimals",
+          "description": "小数位数，0表示整数",
+          "default": 0
+        }
+      ],
+      "documentation": "生成指定范围内的随机数\n\n    Args:\n        min: 随机数的最小值\n        max: 随机数的最大值\n        decimals: 小数位数，0表示整数\n\n    Returns:\n        int/float: 生成的随机数"
+    },
+    {
+      "name": "等待",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "秒数",
+          "mapping": "seconds",
+          "description": "等待的秒数，可以是小数",
+          "default": 1
+        }
+      ],
+      "documentation": "等待指定的时间\n\n    Args:\n        seconds: 等待的秒数，默认为1秒"
+    },
+    {
+      "name": "类型断言",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "值",
+          "mapping": "value",
+          "description": "要检查的值"
+        },
+        {
+          "name": "类型",
+          "mapping": "type",
+          "description": "预期的类型 (string, number, boolean, list, object, null)"
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息",
+          "default": "类型断言失败"
+        }
+      ],
+      "documentation": "断言值的类型\n\n    Args:\n        value: 要检查的值\n        type: 预期的类型 (string, number, boolean, list, object, null)\n        message: 断言失败时的错误消息\n\n    Returns:\n        断言结果 (True/False)\n\n    Raises:\n        AssertionError: 如果断言失败"
+    },
+    {
+      "name": "获取全局变量",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "变量名",
+          "mapping": "name",
+          "description": "全局变量的名称"
+        }
+      ],
+      "documentation": "获取全局变量"
+    },
+    {
+      "name": "获取当前时间",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "格式",
+          "mapping": "format",
+          "description": "时间格式，例如 \"%Y-%m-%d %H:%M:%S\"",
+          "default": "timestamp"
+        },
+        {
+          "name": "时区",
+          "mapping": "timezone",
+          "description": "时区，例如 \"Asia/Shanghai\"",
+          "default": "Asia/Shanghai"
+        }
+      ],
+      "documentation": "获取当前时间\n\n    Args:\n        format: 时间格式，如果设置为'timestamp'则返回时间戳\n        timezone: 时区，默认为Asia/Shanghai\n\n    Returns:\n        str/float: 格式化的时间字符串或时间戳"
+    },
+    {
+      "name": "设置全局变量",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "变量名",
+          "mapping": "name",
+          "description": "全局变量的名称"
+        },
+        {
+          "name": "值",
+          "mapping": "value",
+          "description": "全局变量的值"
+        }
+      ],
+      "documentation": "设置全局变量"
+    },
+    {
+      "name": "返回结果",
+      "category": "builtin",
+      "parameters": [
+        {
+          "name": "结果",
+          "mapping": "result",
+          "description": "要返回的结果值"
+        }
+      ]
+    }
+  ]
+}

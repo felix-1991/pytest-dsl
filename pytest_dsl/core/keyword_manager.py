@@ -1,13 +1,14 @@
-from typing import Dict, Any, Callable, List
+from typing import Dict, Any, Callable, List, Optional
 import functools
 import allure
 
 
 class Parameter:
-    def __init__(self, name: str, mapping: str, description: str):
+    def __init__(self, name: str, mapping: str, description: str, default: Any = None):
         self.name = name
         self.mapping = mapping
         self.description = description
+        self.default = default
 
 
 class KeywordManager:
@@ -34,6 +35,7 @@ class KeywordManager:
 
             param_list = [Parameter(**p) for p in parameters]
             mapping = {p.name: p.mapping for p in param_list}
+            defaults = {p.mapping: p.default for p in param_list if p.default is not None}
             
             # 自动添加 step_name 到 mapping 中
             mapping["步骤名称"] = "step_name"
@@ -41,7 +43,8 @@ class KeywordManager:
             self._keywords[name] = {
                 'func': wrapper,
                 'mapping': mapping,
-                'parameters': param_list
+                'parameters': param_list,
+                'defaults': defaults  # 存储默认值
             }
             return wrapper
         return decorator
@@ -51,7 +54,19 @@ class KeywordManager:
         keyword_info = self._keywords.get(keyword_name)
         if not keyword_info:
             raise KeyError(f"未注册的关键字: {keyword_name}")
-        return keyword_info['func'](**params)
+        
+        # 应用默认值
+        final_params = {}
+        defaults = keyword_info.get('defaults', {})
+        
+        # 首先设置所有默认值
+        for param_key, default_value in defaults.items():
+            final_params[param_key] = default_value
+        
+        # 然后用传入的参数覆盖默认值
+        final_params.update(params)
+        
+        return keyword_info['func'](**final_params)
 
     def get_keyword_info(self, keyword_name: str) -> Dict:
         """获取关键字信息"""
@@ -99,8 +114,9 @@ class KeywordManager:
                     description="自定义的步骤名称，用于在报告中显示"
                 ))
             for param in info['parameters']:
+                default_info = f" (默认值: {param.default})" if param.default is not None else ""
                 docs.append(
-                    f"  {param.name} ({param.mapping}): {param.description}")
+                    f"  {param.name} ({param.mapping}): {param.description}{default_info}")
             docs.append("")
         return "\n".join(docs)
 

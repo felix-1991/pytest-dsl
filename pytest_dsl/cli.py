@@ -64,8 +64,12 @@ def parse_args():
         )
         list_parser.add_argument(
             '--format', choices=['text', 'json'],
-            default='text',
-            help='输出格式：text(默认) 或 json'
+            default='json',
+            help='输出格式：json(默认) 或 text'
+        )
+        list_parser.add_argument(
+            '--output', '-o', type=str, default=None,
+            help='输出文件路径（仅对 json 格式有效，默认为 keywords.json）'
         )
         list_parser.add_argument(
             '--filter', type=str, default=None,
@@ -88,7 +92,10 @@ def parse_args():
         if '--list-keywords' in argv:
             parser.add_argument('--list-keywords', action='store_true')
             parser.add_argument(
-                '--format', choices=['text', 'json'], default='text'
+                '--format', choices=['text', 'json'], default='json'
+            )
+            parser.add_argument(
+                '--output', '-o', type=str, default=None
             )
             parser.add_argument('--filter', type=str, default=None)
             parser.add_argument(
@@ -178,13 +185,22 @@ def format_keyword_info_text(keyword_name, keyword_info, show_category=True):
             param_name = getattr(param, 'name', str(param))
             param_mapping = getattr(param, 'mapping', '')
             param_desc = getattr(param, 'description', '')
+            param_default = getattr(param, 'default', None)
 
+            # 构建参数描述
+            param_info = []
             if param_mapping and param_mapping != param_name:
-                lines.append(
-                    f"    {param_name} ({param_mapping}): {param_desc}"
-                )
+                param_info.append(f"{param_name} ({param_mapping})")
             else:
-                lines.append(f"    {param_name}: {param_desc}")
+                param_info.append(param_name)
+            
+            param_info.append(f": {param_desc}")
+            
+            # 添加默认值信息
+            if param_default is not None:
+                param_info.append(f" (默认值: {param_default})")
+            
+            lines.append(f"    {''.join(param_info)}")
     else:
         lines.append("  参数: 无")
 
@@ -221,6 +237,12 @@ def format_keyword_info_json(keyword_name, keyword_info):
             'mapping': getattr(param, 'mapping', ''),
             'description': getattr(param, 'description', '')
         }
+        
+        # 添加默认值信息
+        param_default = getattr(param, 'default', None)
+        if param_default is not None:
+            param_data['default'] = param_default
+        
         keyword_data['parameters'].append(param_data)
 
     # 函数文档
@@ -231,8 +253,8 @@ def format_keyword_info_json(keyword_name, keyword_info):
     return keyword_data
 
 
-def list_keywords(output_format='text', name_filter=None,
-                  category_filter='all'):
+def list_keywords(output_format='json', name_filter=None,
+                  category_filter='all', output_file=None):
     """罗列所有关键字信息"""
     import json
 
@@ -319,7 +341,25 @@ def list_keywords(output_format='text', name_filter=None,
             keyword_data = format_keyword_info_json(name, info)
             keywords_data['keywords'].append(keyword_data)
 
-        print(json.dumps(keywords_data, ensure_ascii=False, indent=2))
+        json_output = json.dumps(keywords_data, ensure_ascii=False, indent=2)
+        
+        # 确定输出文件名
+        if output_file is None:
+            output_file = 'keywords.json'
+        
+        # 写入到文件
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(json_output)
+            print(f"关键字信息已保存到文件: {output_file}")
+            print(f"共 {total_count} 个关键字")
+            for cat, count in category_counts.items():
+                cat_names = {'builtin': '内置', 'custom': '自定义', 'remote': '远程'}
+                print(f"  {cat_names.get(cat, cat)}: {count} 个")
+        except Exception as e:
+            print(f"保存文件失败: {e}")
+            # 如果写入文件失败，则回退到打印
+            print(json_output)
 
 
 def load_yaml_variables(args):
@@ -433,16 +473,19 @@ def main():
         list_keywords(
             output_format=args.format,
             name_filter=args.filter,
-            category_filter=args.category
+            category_filter=args.category,
+            output_file=args.output
         )
     elif args.command == 'run':
         run_dsl_tests(args)
     elif args.command == 'list-keywords-compat':
         # 向后兼容：旧的--list-keywords格式
+        output_file = getattr(args, 'output', None)
         list_keywords(
             output_format=args.format,
             name_filter=args.filter,
-            category_filter=args.category
+            category_filter=args.category,
+            output_file=output_file
         )
     elif args.command == 'run-compat':
         # 向后兼容：默认执行DSL测试
@@ -458,8 +501,12 @@ def main_list_keywords():
     parser = argparse.ArgumentParser(description='查看pytest-dsl可用关键字列表')
     parser.add_argument(
         '--format', choices=['text', 'json'],
-        default='text',
-        help='输出格式：text(默认) 或 json'
+        default='json',
+        help='输出格式：json(默认) 或 text'
+    )
+    parser.add_argument(
+        '--output', '-o', type=str, default=None,
+        help='输出文件路径（仅对 json 格式有效，默认为 keywords.json）'
     )
     parser.add_argument(
         '--filter', type=str, default=None,
@@ -477,7 +524,8 @@ def main_list_keywords():
     list_keywords(
         output_format=args.format,
         name_filter=args.filter,
-        category_filter=args.category
+        category_filter=args.category,
+        output_file=args.output
     )
 
 

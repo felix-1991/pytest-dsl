@@ -56,30 +56,51 @@ class RemoteKeywordClient:
         try:
             param_names = self.server.get_keyword_arguments(name)
             doc = self.server.get_keyword_documentation(name)
+            
+            # 尝试获取参数详细信息（包括默认值）
+            param_details = []
+            try:
+                param_details = self.server.get_keyword_parameter_details(name)
+            except Exception as e:
+                print(f"获取关键字 {name} 的参数详细信息失败，使用基本信息: {e}")
+                # 如果新方法不可用，使用旧的方式
+                for param_name in param_names:
+                    param_details.append({
+                        'name': param_name,
+                        'mapping': param_name,
+                        'description': f'远程关键字参数: {param_name}',
+                        'default': None
+                    })
 
-            print(f"注册远程关键字: {name}, 参数: {param_names}")
+            print(f"注册远程关键字: {name}, 参数详情: {param_details}")
 
             # 创建参数列表
             parameters = []
             param_mapping = {}  # 为每个关键字创建参数映射
 
-            for param_name in param_names:
+            for param_detail in param_details:
+                param_name = param_detail['name']
+                param_mapping_name = param_detail.get('mapping', param_name)
+                param_desc = param_detail.get('description', f'远程关键字参数: {param_name}')
+                param_default = param_detail.get('default')
+                
                 # 确保参数名称正确映射
-                # 这里我们保持原始参数名称，但在执行时会进行正确映射
                 parameters.append({
                     'name': param_name,
-                    'mapping': param_name,  # 保持原始参数名称
-                    'description': f'远程关键字参数: {param_name}'
+                    'mapping': param_mapping_name,
+                    'description': param_desc,
+                    'default': param_default  # 添加默认值支持
                 })
                 # 添加到参数映射
-                param_mapping[param_name] = param_name
+                param_mapping[param_name] = param_mapping_name
 
             # 添加步骤名称参数，这是所有关键字都应该有的
             if not any(p['name'] == '步骤名称' for p in parameters):
                 parameters.append({
                     'name': '步骤名称',
                     'mapping': 'step_name',
-                    'description': '自定义的步骤名称，用于在报告中显示'
+                    'description': '自定义的步骤名称，用于在报告中显示',
+                    'default': None
                 })
                 param_mapping['步骤名称'] = 'step_name'
 
@@ -93,6 +114,7 @@ class RemoteKeywordClient:
                 'func': remote_func,
                 'mapping': {p['name']: p['mapping'] for p in parameters},
                 'parameters': [Parameter(**p) for p in parameters],
+                'defaults': {p['mapping']: p['default'] for p in parameters if p['default'] is not None},  # 添加默认值支持
                 'remote': True,  # 标记为远程关键字
                 'alias': self.alias,
                 'original_name': name
@@ -101,7 +123,8 @@ class RemoteKeywordClient:
             # 缓存关键字信息
             self.keyword_cache[name] = {
                 'parameters': param_names,  # 注意这里只缓存原始参数，不包括步骤名称
-                'doc': doc
+                'doc': doc,
+                'param_details': param_details  # 缓存详细参数信息
             }
 
             # 保存参数映射

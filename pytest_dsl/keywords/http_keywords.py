@@ -223,14 +223,14 @@ def _normalize_retry_config(config, assert_retry_count=None, assert_retry_interv
 
 
 @keyword_manager.register('HTTP请求', [
-    {'name': '客户端', 'mapping': 'client', 'description': '客户端名称，对应YAML变量文件中的客户端配置'},
+    {'name': '客户端', 'mapping': 'client', 'description': '客户端名称，对应YAML变量文件中的客户端配置', 'default': 'default'},
     {'name': '配置', 'mapping': 'config', 'description': '包含请求、捕获和断言的YAML配置'},
     {'name': '会话', 'mapping': 'session', 'description': '会话名称，用于在多个请求间保持会话状态'},
     {'name': '保存响应', 'mapping': 'save_response', 'description': '将完整响应保存到指定变量名中'},
-    {'name': '禁用授权', 'mapping': 'disable_auth', 'description': '禁用客户端配置中的授权机制，默认为false'},
+    {'name': '禁用授权', 'mapping': 'disable_auth', 'description': '禁用客户端配置中的授权机制', 'default': False},
     {'name': '模板', 'mapping': 'template', 'description': '使用YAML变量文件中定义的请求模板'},
-    {'name': '断言重试次数', 'mapping': 'assert_retry_count', 'description': '断言失败时的重试次数'},
-    {'name': '断言重试间隔', 'mapping': 'assert_retry_interval', 'description': '断言重试间隔时间（秒）'}
+    {'name': '断言重试次数', 'mapping': 'assert_retry_count', 'description': '断言失败时的重试次数', 'default': 0},
+    {'name': '断言重试间隔', 'mapping': 'assert_retry_interval', 'description': '断言重试间隔时间（秒）', 'default': 1}
 ])
 def http_request(context, **kwargs):
     """执行HTTP请求

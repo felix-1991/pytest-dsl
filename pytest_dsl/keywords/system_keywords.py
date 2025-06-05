@@ -24,46 +24,54 @@ def return_result(**kwargs):
 
 
 @keyword_manager.register('等待', [
-    {'name': '秒数', 'mapping': 'seconds', 'description': '等待的秒数，可以是小数'}
+    {'name': '秒数', 'mapping': 'seconds', 
+     'description': '等待的秒数，可以是小数', 'default': 1}
 ])
 def wait_seconds(**kwargs):
-    """等待指定的秒数
+    """等待指定的时间
 
     Args:
-        seconds: 等待的秒数，可以是小数表示毫秒级等待
+        seconds: 等待的秒数，默认为1秒
     """
-    seconds = float(kwargs.get('seconds', 0))
+    seconds = float(kwargs.get('seconds', 1))
+    
     with allure.step(f"等待 {seconds} 秒"):
         time.sleep(seconds)
-    return True
+        allure.attach(
+            f"等待时间: {seconds} 秒",
+            name="等待完成",
+            attachment_type=allure.attachment_type.TEXT
+        )
 
 
 @keyword_manager.register('获取当前时间', [
-    {'name': '格式', 'mapping': 'format', 'description': '时间格式，例如 "%Y-%m-%d %H:%M:%S"，默认返回时间戳'},
-    {'name': '时区', 'mapping': 'timezone', 'description': '时区，例如 "Asia/Shanghai"，默认为本地时区'}
+    {'name': '格式', 'mapping': 'format', 
+     'description': '时间格式，例如 "%Y-%m-%d %H:%M:%S"', 'default': 'timestamp'},
+    {'name': '时区', 'mapping': 'timezone', 
+     'description': '时区，例如 "Asia/Shanghai"', 'default': 'Asia/Shanghai'}
 ])
 def get_current_time(**kwargs):
     """获取当前时间
 
     Args:
-        format: 时间格式，如果不提供则返回时间戳
-        timezone: 时区，默认为本地时区
+        format: 时间格式，如果设置为'timestamp'则返回时间戳
+        timezone: 时区，默认为Asia/Shanghai
 
     Returns:
-        str: 格式化的时间字符串或时间戳
+        str/float: 格式化的时间字符串或时间戳
     """
-    time_format = kwargs.get('format')
-    timezone = kwargs.get('timezone')
+    format_str = kwargs.get('format', 'timestamp')
+    timezone_str = kwargs.get('timezone', 'Asia/Shanghai')
 
     # 获取当前时间
-    if timezone:
+    if timezone_str and timezone_str != 'local':
         import pytz
         try:
-            tz = pytz.timezone(timezone)
+            tz = pytz.timezone(timezone_str)
             current_time = datetime.datetime.now(tz)
         except Exception as e:
             allure.attach(
-                f"时区设置异常: {str(e)}",
+                f"时区设置异常: {str(e)}，使用本地时区",
                 name="时区设置异常",
                 attachment_type=allure.attachment_type.TEXT
             )
@@ -72,34 +80,36 @@ def get_current_time(**kwargs):
         current_time = datetime.datetime.now()
 
     # 格式化时间
-    if time_format:
+    if format_str and format_str != 'timestamp':
         try:
-            result = current_time.strftime(time_format)
+            result = current_time.strftime(format_str)
         except Exception as e:
             allure.attach(
-                f"时间格式化异常: {str(e)}",
+                f"时间格式化异常: {str(e)}，返回默认格式",
                 name="时间格式化异常",
                 attachment_type=allure.attachment_type.TEXT
             )
-            result = str(current_time)
+            result = current_time.strftime('%Y-%m-%d %H:%M:%S')
     else:
         # 返回时间戳
-        result = str(int(current_time.timestamp()))
+        result = int(current_time.timestamp())
 
     return result
 
 
 @keyword_manager.register('生成随机字符串', [
-    {'name': '长度', 'mapping': 'length', 'description': '随机字符串的长度，默认为8'},
+    {'name': '长度', 'mapping': 'length', 
+     'description': '随机字符串的长度', 'default': 8},
     {'name': '类型', 'mapping': 'type',
-        'description': '字符类型：字母(letters)、数字(digits)、字母数字(alphanumeric)、全部(all)，默认为字母数字'}
+     'description': '字符类型：字母(letters)、数字(digits)、字母数字(alphanumeric)、全部(all)', 
+     'default': 'alphanumeric'}
 ])
 def generate_random_string(**kwargs):
-    """生成随机字符串
+    """生成指定长度和类型的随机字符串
 
     Args:
-        length: 随机字符串的长度
-        type: 字符类型：字母、数字、字母数字、全部
+        length: 字符串长度
+        type: 字符类型
 
     Returns:
         str: 生成的随机字符串
@@ -134,12 +144,15 @@ def generate_random_string(**kwargs):
 
 
 @keyword_manager.register('生成随机数', [
-    {'name': '最小值', 'mapping': 'min', 'description': '随机数的最小值，默认为0'},
-    {'name': '最大值', 'mapping': 'max', 'description': '随机数的最大值，默认为100'},
-    {'name': '小数位数', 'mapping': 'decimals', 'description': '小数位数，默认为0（整数）'}
+    {'name': '最小值', 'mapping': 'min', 
+     'description': '随机数的最小值', 'default': 0},
+    {'name': '最大值', 'mapping': 'max', 
+     'description': '随机数的最大值', 'default': 100},
+    {'name': '小数位数', 'mapping': 'decimals', 
+     'description': '小数位数，0表示整数', 'default': 0}
 ])
 def generate_random_number(**kwargs):
-    """生成随机数
+    """生成指定范围内的随机数
 
     Args:
         min: 随机数的最小值
@@ -172,24 +185,27 @@ def generate_random_number(**kwargs):
 
 @keyword_manager.register('字符串操作', [
     {'name': '操作', 'mapping': 'operation',
-        'description': '操作类型：拼接(concat)、替换(replace)、分割(split)、大写(upper)、小写(lower)、去空格(strip)'},
+     'description': '操作类型：拼接(concat)、替换(replace)、分割(split)、大写(upper)、小写(lower)、去空格(strip)', 
+     'default': 'strip'},
     {'name': '字符串', 'mapping': 'string', 'description': '要操作的字符串'},
-    {'name': '参数1', 'mapping': 'param1', 'description': '操作参数1，根据操作类型不同而不同'},
-    {'name': '参数2', 'mapping': 'param2', 'description': '操作参数2，根据操作类型不同而不同'}
+    {'name': '参数1', 'mapping': 'param1', 
+     'description': '操作参数1，根据操作类型不同而不同', 'default': ''},
+    {'name': '参数2', 'mapping': 'param2', 
+     'description': '操作参数2，根据操作类型不同而不同', 'default': ''}
 ])
 def string_operation(**kwargs):
     """字符串操作
 
     Args:
-        operation: 操作类型
+        operation: 操作类型，默认为strip（去空格）
         string: 要操作的字符串
-        param1: 操作参数1
-        param2: 操作参数2
+        param1: 操作参数1，默认为空字符串
+        param2: 操作参数2，默认为空字符串
 
     Returns:
         str: 操作结果
     """
-    operation = kwargs.get('operation', '').lower()
+    operation = kwargs.get('operation', 'strip').lower()
     string = str(kwargs.get('string', ''))
     param1 = kwargs.get('param1', '')
     param2 = kwargs.get('param2', '')
@@ -204,12 +220,16 @@ def string_operation(**kwargs):
         result = string.replace(str(param1), str(param2))
     elif operation == 'split':
         # 分割字符串
-        result = string.split(str(param1))
-        if param2 and param2.isdigit():
-            # 如果提供了索引，返回指定位置的元素
-            index = int(param2)
-            if 0 <= index < len(result):
-                result = result[index]
+        if param1:  # 如果提供了分隔符
+            result = string.split(str(param1))
+            if param2 and param2.isdigit():
+                # 如果提供了索引，返回指定位置的元素
+                index = int(param2)
+                if 0 <= index < len(result):
+                    result = result[index]
+        else:
+            # 默认按空格分割
+            result = string.split()
     elif operation == 'upper':
         # 转大写
         result = string.upper()
@@ -217,19 +237,21 @@ def string_operation(**kwargs):
         # 转小写
         result = string.lower()
     elif operation == 'strip':
-        # 去空格
+        # 去空格（默认操作）
         result = string.strip()
     else:
         # 未知操作，返回原字符串
         allure.attach(
-            f"未知的字符串操作: {operation}",
+            f"未知的字符串操作: {operation}，使用默认操作strip",
             name="字符串操作错误",
             attachment_type=allure.attachment_type.TEXT
         )
+        result = string.strip()
 
     with allure.step(f"字符串操作: {operation}"):
         allure.attach(
-            f"原字符串: {string}\n操作: {operation}\n参数1: {param1}\n参数2: {param2}\n结果: {result}",
+            f"原字符串: {string}\n操作: {operation}\n参数1: {param1}\n"
+            f"参数2: {param2}\n结果: {result}",
             name="字符串操作结果",
             attachment_type=allure.attachment_type.TEXT
         )
@@ -239,7 +261,8 @@ def string_operation(**kwargs):
 
 @keyword_manager.register('日志', [
     {'name': '级别', 'mapping': 'level',
-        'description': '日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL，默认为INFO'},
+     'description': '日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL', 
+     'default': 'INFO'},
     {'name': '消息', 'mapping': 'message', 'description': '日志消息内容'}
 ])
 def log_message(**kwargs):
@@ -270,8 +293,10 @@ def log_message(**kwargs):
 
 @keyword_manager.register('执行命令', [
     {'name': '命令', 'mapping': 'command', 'description': '要执行的系统命令'},
-    {'name': '超时', 'mapping': 'timeout', 'description': '命令执行超时时间（秒），默认为60秒'},
-    {'name': '捕获输出', 'mapping': 'capture_output', 'description': '是否捕获命令输出，默认为True'}
+    {'name': '超时', 'mapping': 'timeout', 
+     'description': '命令执行超时时间（秒）', 'default': 60},
+    {'name': '捕获输出', 'mapping': 'capture_output', 
+     'description': '是否捕获命令输出', 'default': True}
 ])
 def execute_command(**kwargs):
     """执行系统命令

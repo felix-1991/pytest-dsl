@@ -48,7 +48,8 @@ def _compare_values(actual: Any, expected: Any, operator: str = "==") -> bool:
     Args:
         actual: 实际值
         expected: 预期值
-        operator: 比较运算符 (==, !=, >, <, >=, <=, contains, not_contains, matches, and, or, not)
+        operator: 比较运算符 (==, !=, >, <, >=, <=, contains, not_contains, 
+                 matches, and, or, not)
 
     Returns:
         比较结果 (True/False)
@@ -96,8 +97,9 @@ def _compare_values(actual: Any, expected: Any, operator: str = "==") -> bool:
 
 
 @keyword_manager.register('断言', [
-    {'name': '条件', 'mapping': 'condition', 'description': '断言条件表达式，例如: "${value} == 100" 或 "1 + 1 == 2"'},
-    {'name': '消息', 'mapping': 'message', 'description': '断言失败时的错误消息'},
+    {'name': '条件', 'mapping': 'condition', 
+     'description': '断言条件表达式，例如: "${value} == 100" 或 "1 + 1 == 2"'},
+    {'name': '消息', 'mapping': 'message', 'description': '断言失败时的错误消息', 'default': '断言失败'},
 ])
 def assert_condition(**kwargs):
     """执行表达式断言
@@ -116,9 +118,11 @@ def assert_condition(**kwargs):
     message = kwargs.get('message', '断言失败')
     context = kwargs.get('context')
 
-    # 简单解析表达式，支持 ==, !=, >, <, >=, <=, contains, not_contains, matches, in, and, or, not
+    # 简单解析表达式，支持 ==, !=, >, <, >=, <=, contains, not_contains, 
+    # matches, in, and, or, not
     # 格式: "left_value operator right_value" 或 "boolean_expression"
-    operators = ["==", "!=", ">", "<", ">=", "<=", "contains", "not_contains", "matches", "in", "and", "or", "not"]
+    operators = ["==", "!=", ">", "<", ">=", "<=", "contains", "not_contains", 
+                 "matches", "in", "and", "or", "not"]
 
     # 先检查是否包含这些操作符
     operator_used = None
@@ -132,7 +136,8 @@ def assert_condition(**kwargs):
         try:
             # 对条件进行变量替换
             if '${' in condition:
-                condition = context.executor.variable_replacer.replace_in_string(condition)
+                condition = context.executor.variable_replacer.replace_in_string(
+                    condition)
             # 尝试直接求值
             result = eval(condition)
             if not isinstance(result, bool):
@@ -141,7 +146,8 @@ def assert_condition(**kwargs):
                 raise AssertionError(f"{message}. 布尔表达式求值为假: {condition}")
             return True
         except Exception as e:
-            raise AssertionError(f"{message}. 无法解析条件表达式: {condition}. 错误: {str(e)}")
+            raise AssertionError(
+                f"{message}. 无法解析条件表达式: {condition}. 错误: {str(e)}")
 
     # 解析左值和右值
     left_value, right_value = condition.split(f" {operator_used} ", 1)
@@ -351,8 +357,8 @@ def assert_condition(**kwargs):
     {'name': 'JSON数据', 'mapping': 'json_data', 'description': 'JSON数据（字符串或对象）'},
     {'name': 'JSONPath', 'mapping': 'jsonpath', 'description': 'JSONPath表达式'},
     {'name': '预期值', 'mapping': 'expected_value', 'description': '预期的值'},
-    {'name': '操作符', 'mapping': 'operator', 'description': '比较操作符，默认为"=="'},
-    {'name': '消息', 'mapping': 'message', 'description': '断言失败时的错误消息'},
+    {'name': '操作符', 'mapping': 'operator', 'description': '比较操作符', 'default': '=='},
+    {'name': '消息', 'mapping': 'message', 'description': '断言失败时的错误消息', 'default': 'JSON断言失败'},
 ])
 def assert_json(**kwargs):
     """执行JSON断言
@@ -476,7 +482,7 @@ def extract_json(**kwargs):
 @keyword_manager.register('类型断言', [
     {'name': '值', 'mapping': 'value', 'description': '要检查的值'},
     {'name': '类型', 'mapping': 'type', 'description': '预期的类型 (string, number, boolean, list, object, null)'},
-    {'name': '消息', 'mapping': 'message', 'description': '断言失败时的错误消息'},
+    {'name': '消息', 'mapping': 'message', 'description': '断言失败时的错误消息', 'default': '类型断言失败'},
 ])
 def assert_type(**kwargs):
     """断言值的类型
@@ -545,8 +551,8 @@ def assert_type(**kwargs):
 @keyword_manager.register('数据比较', [
     {'name': '实际值', 'mapping': 'actual', 'description': '实际值'},
     {'name': '预期值', 'mapping': 'expected', 'description': '预期值'},
-    {'name': '操作符', 'mapping': 'operator', 'description': '比较操作符，默认为"=="'},
-    {'name': '消息', 'mapping': 'message', 'description': '断言失败时的错误消息'},
+    {'name': '操作符', 'mapping': 'operator', 'description': '比较操作符', 'default': '=='},
+    {'name': '消息', 'mapping': 'message', 'description': '断言失败时的错误消息', 'default': '数据比较失败'},
 ])
 def compare_values(**kwargs):
     """比较两个值

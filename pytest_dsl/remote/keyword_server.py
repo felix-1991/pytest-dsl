@@ -141,6 +141,7 @@ class RemoteKeywordServer:
         self.server.register_function(self.get_keyword_names)
         self.server.register_function(self.run_keyword)
         self.server.register_function(self.get_keyword_arguments)
+        self.server.register_function(self.get_keyword_parameter_details)
         self.server.register_function(self.get_keyword_documentation)
         self.server.register_function(self.authenticate)
 
@@ -288,6 +289,30 @@ class RemoteKeywordServer:
             return []
 
         return [param.name for param in keyword_info['parameters']]
+
+    def get_keyword_parameter_details(self, name):
+        """获取关键字的参数详细信息，包括默认值
+        
+        Args:
+            name: 关键字名称
+            
+        Returns:
+            list: 参数详细信息列表，每个元素包含name, mapping, description, default
+        """
+        keyword_info = keyword_manager.get_keyword_info(name)
+        if not keyword_info:
+            return []
+
+        param_details = []
+        for param in keyword_info['parameters']:
+            param_details.append({
+                'name': param.name,
+                'mapping': param.mapping,
+                'description': param.description,
+                'default': param.default
+            })
+        
+        return param_details
 
     def get_keyword_documentation(self, name):
         """获取关键字的文档信息"""
