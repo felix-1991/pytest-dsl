@@ -27,6 +27,8 @@ wheels/
 *.swo
 *~
 .DS_Store
+*.sublime-project
+*.sublime-workspace
 
 # 测试和覆盖率相关
 htmlcov/
@@ -55,4 +57,62 @@ pytest-dsl.code-workspace
 
 # 迁移脚本生成的备份
 *.bak
+
+# VitePress 相关
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+docs/.vitepress/.temp/
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.pnpm-store/
+
+# 文档构建输出
+docs/dist/
+docs/.temp/
+docs/.cache/
+
+# 日志文件
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 运行时生成的文件
+*.pid
+*.seed
+*.pid.lock
+
+# 临时文件
+.tmp/
+.temp/
+temp/
+tmp/
+
+# macOS 相关
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows 相关
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux 相关
+*~
+.nfs*
+
+# 环境变量文件
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 性能监控报告
+performance_report.json

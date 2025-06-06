@@ -1,0 +1,28 @@
+{
+  "name": "pytest-dsl-docs",
+  "version": "1.0.0",
+  "description": "pytest-dsl官方文档",
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.0.0"
+  },
+  "keywords": [
+    "pytest-dsl",
+    "documentation",
+    "vitepress",
+    "testing",
+    "automation"
+  ],
+  "author": "pytest-dsl team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/felix-1991/pytest-dsl.git",
+    "directory": "docs"
+  }
+} 

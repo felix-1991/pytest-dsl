@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景圆形 -->
+  <circle cx="32" cy="32" r="30" fill="#4A90E2" stroke="#2E5C8A" stroke-width="2"/>
+  
+  <!-- 主要图标元素 -->
+  <!-- 代码符号 {} -->
+  <g fill="#FFFFFF" stroke="#FFFFFF" stroke-width="1.5">
+    <!-- 左大括号 -->
+    <path d="M18 20 Q15 20 15 23 L15 27 Q15 29 13 29 Q15 29 15 31 L15 35 Q15 38 18 38" 
+          fill="none" stroke-linecap="round"/>
+    <!-- 右大括号 -->
+    <path d="M46 20 Q49 20 49 23 L49 27 Q49 29 51 29 Q49 29 49 31 L49 35 Q49 38 46 38" 
+          fill="none" stroke-linecap="round"/>
+  </g>
+  
+  <!-- 中央测试图标 -->
+  <g fill="#7ED321">
+    <!-- 检查标记 -->
+    <path d="M26 32 L30 36 L38 24" fill="none" stroke="#7ED321" stroke-width="3" 
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- 小圆点装饰 -->
+    <circle cx="22" cy="28" r="1.5"/>
+    <circle cx="42" cy="28" r="1.5"/>
+    <circle cx="22" cy="36" r="1.5"/>
+    <circle cx="42" cy="36" r="1.5"/>
+  </g>
+  
+  <!-- 底部装饰线 -->
+  <g stroke="#F5A623" stroke-width="2" fill="none">
+    <line x1="20" y1="46" x2="44" y2="46" stroke-linecap="round"/>
+    <circle cx="32" cy="46" r="2" fill="#F5A623"/>
+  </g>
+</svg> 
