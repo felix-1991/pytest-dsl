@@ -106,7 +106,7 @@ UI扩展提供了丰富的浏览器自动化关键字，支持：
 #### 安装方式二：命令行
 
 ```bash
-code --install-extension felix-1991.pytest-dsl-vscode-extension
+code --install-extension felix-1991.pytest-dsl-support
 ```
 
 #### 扩展功能
