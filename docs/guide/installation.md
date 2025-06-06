@@ -658,4 +658,4 @@ performance:
 2. **[DSL语法基础](./dsl-syntax)** - 深入学习DSL语法
 3. **[HTTP API测试](./http-testing)** - 开始API测试之旅
 
-如果在安装过程中遇到问题，请查看[故障排除指南](./troubleshooting)或在[GitHub Issues](https://github.com/felix-1991/pytest-dsl/issues)中寻求帮助。 
+如果在安装过程中遇到问题，请在[GitHub Issues](https://github.com/felix-1991/pytest-dsl/issues)中寻求帮助。 

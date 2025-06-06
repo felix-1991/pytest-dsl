@@ -567,6 +567,5 @@ def debug_hook(context):
 
 ## 相关资源
 
-- [Hook机制示例](../examples/remote-hooks) - 完整的Hook扩展示例
-- [自定义授权示例](../examples/custom-auth) - 自定义授权实现示例
-- [性能监控示例](../examples/performance-monitoring) - 性能监控扩展示例 
+- [远程Hook机制示例](../examples/remote-hooks) - 完整的Hook扩展示例
+- [示例库](../examples/) - 更多实际应用示例 

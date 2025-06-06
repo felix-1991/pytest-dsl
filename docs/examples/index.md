@@ -10,19 +10,13 @@
 
 - **[Hello World](./hello-world)** - 最简单的入门示例
 - **[基本语法](./basic-syntax)** - DSL语法基础演示
-- **[变量使用](./variables)** - 变量定义和引用示例
-- **[流程控制](./control-flow)** - 条件判断和循环示例
 
 ### 🔧 高级示例
 
 展示pytest-dsl的高级功能：
 
-- **[自定义关键字](./custom-keywords)** - 创建可复用的测试组件
-- **[数据驱动测试](./data-driven)** - 使用外部数据驱动测试
 - **[命令行工具](./cli-tools)** - 关键字管理和文档生成
-- **[远程测试](./remote-testing)** - 分布式测试执行
 - **[远程Hook机制](./remote-hooks)** - 远程服务器扩展和自定义授权
-- **[完整项目](./complete-project)** - 企业级测试项目结构
 
 ## 按场景浏览
 
@@ -31,15 +25,12 @@
 推荐学习路径：
 1. [Hello World](./hello-world) - 了解基本结构
 2. [基本语法](./basic-syntax) - 掌握语法规则
-3. [变量使用](./variables) - 学习变量系统
-4. [流程控制](./control-flow) - 掌握控制结构
 
-### 🚀 我想分布式测试
+### 🚀 我想了解高级功能
 
 推荐学习路径：
-1. [远程测试](./remote-testing) - 基础远程执行
-2. [远程Hook机制](./remote-hooks) - 服务器扩展和自定义授权
-3. [完整项目](./complete-project) - 分布式项目架构
+1. [远程Hook机制](./remote-hooks) - 服务器扩展和自定义授权
+2. [命令行工具](./cli-tools) - 工具使用和管理
 
 ## 示例特点
 

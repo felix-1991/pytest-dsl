@@ -14,7 +14,7 @@ pytest-dsl 提供了专门的 VS Code 扩展插件，为 DSL 文件提供完整�
 ### 方式二：命令行安装
 
 ```bash
-code --install-extension felix-1991.pytest-dsl-vscode-extension
+code --install-extension felix-1991.pytest-dsl-support
 ```
 
 ### 方式三：从VSIX文件安装
