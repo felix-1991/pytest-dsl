@@ -63,9 +63,9 @@ def parse_args():
             help='罗列所有可用关键字和参数信息'
         )
         list_parser.add_argument(
-            '--format', choices=['text', 'json'],
+            '--format', choices=['text', 'json', 'html'],
             default='json',
-            help='输出格式：json(默认) 或 text'
+            help='输出格式：json(默认)、text 或 html'
         )
         list_parser.add_argument(
             '--output', '-o', type=str, default=None,
@@ -77,10 +77,14 @@ def parse_args():
         )
         list_parser.add_argument(
             '--category',
-            choices=['builtin', 'custom', 'remote', 'all'],
+            choices=['builtin', 'plugin', 'custom', 'project_custom', 'remote', 'all'],
             default='all',
-            help='关键字类别：builtin(内置)、custom(自定义)、'
-                 'remote(远程)、all(全部，默认)'
+            help='关键字类别：builtin(内置)、plugin(插件)、custom(自定义)、'
+                 'project_custom(项目自定义)、remote(远程)、all(全部，默认)'
+        )
+        list_parser.add_argument(
+            '--include-remote', action='store_true',
+            help='是否包含远程关键字（默认不包含）'
         )
 
         return parser.parse_args(argv)
@@ -92,7 +96,7 @@ def parse_args():
         if '--list-keywords' in argv:
             parser.add_argument('--list-keywords', action='store_true')
             parser.add_argument(
-                '--format', choices=['text', 'json'], default='json'
+                '--format', choices=['text', 'json', 'html'], default='json'
             )
             parser.add_argument(
                 '--output', '-o', type=str, default=None
@@ -100,8 +104,13 @@ def parse_args():
             parser.add_argument('--filter', type=str, default=None)
             parser.add_argument(
                 '--category',
-                choices=['builtin', 'custom', 'remote', 'all'],
+                choices=[
+                    'builtin', 'plugin', 'custom', 'project_custom', 'remote', 'all'
+                ],
                 default='all'
+            )
+            parser.add_argument(
+                '--include-remote', action='store_true'
             )
             parser.add_argument('path', nargs='?')  # 可选的路径参数
             parser.add_argument(
@@ -125,8 +134,12 @@ def parse_args():
         return args
 
 
-def load_all_keywords():
-    """加载所有可用的关键字"""
+def load_all_keywords(include_remote=False):
+    """加载所有可用的关键字
+    
+    Args:
+        include_remote: 是否包含远程关键字，默认为False
+    """
     # 首先导入内置关键字模块，确保内置关键字被注册
     try:
         import pytest_dsl.keywords  # noqa: F401
@@ -139,12 +152,61 @@ def load_all_keywords():
 
     # 扫描本地关键字
     scan_local_keywords()
+    
+    # 扫描项目中的自定义关键字（.resource文件中定义的）
+    project_custom_keywords = scan_project_custom_keywords()
+    if project_custom_keywords:
+        print(f"发现 {len(project_custom_keywords)} 个项目自定义关键字")
+        
+        # 加载.resource文件中的关键字到关键字管理器
+        from pytest_dsl.core.custom_keyword_manager import (
+            custom_keyword_manager
+        )
+        from pathlib import Path
+        
+        project_root = Path(os.getcwd())
+        resource_files = list(project_root.glob('**/*.resource'))
+        
+        for resource_file in resource_files:
+            try:
+                custom_keyword_manager.load_resource_file(str(resource_file))
+                print(f"已加载资源文件: {resource_file}")
+            except Exception as e:
+                print(f"加载资源文件失败 {resource_file}: {e}")
+    
+    # 根据参数决定是否加载远程关键字
+    if include_remote:
+        print("正在扫描远程关键字...")
+        # 这里可以添加远程关键字的扫描逻辑
+        # 目前远程关键字是通过DSL文件中的@remote导入指令动态加载的
+    else:
+        print("跳过远程关键字扫描")
+    
+    return project_custom_keywords
 
 
-def categorize_keyword(keyword_name, keyword_info):
+def categorize_keyword(keyword_name, keyword_info, 
+                       project_custom_keywords=None):
     """判断关键字的类别"""
+    # 优先使用存储的来源信息
+    source_type = keyword_info.get('source_type')
+    if source_type:
+        if source_type == 'builtin':
+            return 'builtin'
+        elif source_type == 'plugin':
+            return 'plugin'
+        elif source_type in ['external', 'local']:
+            return 'custom'
+        elif source_type == 'project_custom':
+            return 'project_custom'
+    
+    # 向后兼容：使用原有的判断逻辑
     if keyword_info.get('remote', False):
         return 'remote'
+    
+    # 检查是否是项目自定义关键字（DSL文件中定义的）
+    if project_custom_keywords and keyword_name in project_custom_keywords:
+        return 'project_custom'
 
     # 检查是否是内置关键字（通过检查函数所在模块）
     func = keyword_info.get('func')
@@ -156,13 +218,74 @@ def categorize_keyword(keyword_name, keyword_info):
     return 'custom'
 
 
-def format_keyword_info_text(keyword_name, keyword_info, show_category=True):
+def get_keyword_source_info(keyword_info):
+    """获取关键字的详细来源信息"""
+    source_type = keyword_info.get('source_type', 'unknown')
+    source_name = keyword_info.get('source_name', '未知')
+    
+    return {
+        'type': source_type,
+        'name': source_name,
+        'display_name': source_name,
+        'module': keyword_info.get('module_name', ''),
+        'plugin_module': keyword_info.get('plugin_module', '')
+    }
+
+
+def group_keywords_by_source(keywords_dict, project_custom_keywords=None):
+    """按来源分组关键字
+    
+    Returns:
+        dict: 格式为 {source_group: {source_name: [keywords]}}
+    """
+    groups = {
+        'builtin': {},
+        'plugin': {},
+        'custom': {},
+        'project_custom': {},
+        'remote': {}
+    }
+    
+    for keyword_name, keyword_info in keywords_dict.items():
+        category = categorize_keyword(
+            keyword_name, keyword_info, project_custom_keywords
+        )
+        source_info = get_keyword_source_info(keyword_info)
+        
+        # 特殊处理项目自定义关键字
+        if category == 'project_custom' and project_custom_keywords:
+            custom_info = project_custom_keywords[keyword_name]
+            source_name = custom_info['file']
+        else:
+            source_name = source_info['name']
+        
+        if source_name not in groups[category]:
+            groups[category][source_name] = []
+        
+        groups[category][source_name].append({
+            'name': keyword_name,
+            'info': keyword_info,
+            'source_info': source_info
+        })
+    
+    return groups
+
+
+def format_keyword_info_text(keyword_name, keyword_info, show_category=True, 
+                             project_custom_keywords=None):
     """格式化关键字信息为文本格式"""
     lines = []
 
     # 关键字名称和类别
-    category = categorize_keyword(keyword_name, keyword_info)
-    category_names = {'builtin': '内置', 'custom': '自定义', 'remote': '远程'}
+    category = categorize_keyword(
+        keyword_name, keyword_info, project_custom_keywords
+    )
+    category_names = {
+        'builtin': '内置', 
+        'custom': '自定义', 
+        'project_custom': '项目自定义', 
+        'remote': '远程'
+    }
 
     if show_category:
         category_display = category_names.get(category, '未知')
@@ -177,32 +300,64 @@ def format_keyword_info_text(keyword_name, keyword_info, show_category=True):
         lines.append(f"  远程服务器: {alias}")
         lines.append(f"  原始名称: {original_name}")
 
-    # 参数信息
-    parameters = keyword_info.get('parameters', [])
-    if parameters:
-        lines.append("  参数:")
-        for param in parameters:
-            param_name = getattr(param, 'name', str(param))
-            param_mapping = getattr(param, 'mapping', '')
-            param_desc = getattr(param, 'description', '')
-            param_default = getattr(param, 'default', None)
+    # 项目自定义关键字特殊标识
+    if category == 'project_custom' and project_custom_keywords:
+        custom_info = project_custom_keywords[keyword_name]
+        lines.append(f"  文件位置: {custom_info['file']}")
+        
+        # 对于项目自定义关键字，使用从AST中提取的参数信息
+        custom_parameters = custom_info.get('parameters', [])
+        if custom_parameters:
+            lines.append("  参数:")
+            for param_info in custom_parameters:
+                param_name = param_info['name']
+                param_mapping = param_info.get('mapping', '')
+                param_desc = param_info.get('description', '')
+                param_default = param_info.get('default', None)
 
-            # 构建参数描述
-            param_info = []
-            if param_mapping and param_mapping != param_name:
-                param_info.append(f"{param_name} ({param_mapping})")
-            else:
-                param_info.append(param_name)
-            
-            param_info.append(f": {param_desc}")
-            
-            # 添加默认值信息
-            if param_default is not None:
-                param_info.append(f" (默认值: {param_default})")
-            
-            lines.append(f"    {''.join(param_info)}")
+                # 构建参数描述
+                param_parts = []
+                if param_mapping and param_mapping != param_name:
+                    param_parts.append(f"{param_name} ({param_mapping})")
+                else:
+                    param_parts.append(param_name)
+                
+                param_parts.append(f": {param_desc}")
+                
+                # 添加默认值信息
+                if param_default is not None:
+                    param_parts.append(f" (默认值: {param_default})")
+                
+                lines.append(f"    {''.join(param_parts)}")
+        else:
+            lines.append("  参数: 无")
     else:
-        lines.append("  参数: 无")
+        # 参数信息（对于其他类型的关键字）
+        parameters = keyword_info.get('parameters', [])
+        if parameters:
+            lines.append("  参数:")
+            for param in parameters:
+                param_name = getattr(param, 'name', str(param))
+                param_mapping = getattr(param, 'mapping', '')
+                param_desc = getattr(param, 'description', '')
+                param_default = getattr(param, 'default', None)
+
+                # 构建参数描述
+                param_info = []
+                if param_mapping and param_mapping != param_name:
+                    param_info.append(f"{param_name} ({param_mapping})")
+                else:
+                    param_info.append(param_name)
+                
+                param_info.append(f": {param_desc}")
+                
+                # 添加默认值信息
+                if param_default is not None:
+                    param_info.append(f" (默认值: {param_default})")
+                
+                lines.append(f"    {''.join(param_info)}")
+        else:
+            lines.append("  参数: 无")
 
     # 函数文档
     func = keyword_info.get('func')
@@ -212,13 +367,18 @@ def format_keyword_info_text(keyword_name, keyword_info, show_category=True):
     return '\n'.join(lines)
 
 
-def format_keyword_info_json(keyword_name, keyword_info):
+def format_keyword_info_json(keyword_name, keyword_info,
+                             project_custom_keywords=None):
     """格式化关键字信息为JSON格式"""
-    category = categorize_keyword(keyword_name, keyword_info)
+    category = categorize_keyword(
+        keyword_name, keyword_info, project_custom_keywords
+    )
+    source_info = get_keyword_source_info(keyword_info)
 
     keyword_data = {
         'name': keyword_name,
         'category': category,
+        'source_info': source_info,
         'parameters': []
     }
 
@@ -229,21 +389,30 @@ def format_keyword_info_json(keyword_name, keyword_info):
             'original_name': keyword_info.get('original_name', keyword_name)
         }
 
-    # 参数信息
-    parameters = keyword_info.get('parameters', [])
-    for param in parameters:
-        param_data = {
-            'name': getattr(param, 'name', str(param)),
-            'mapping': getattr(param, 'mapping', ''),
-            'description': getattr(param, 'description', '')
-        }
+    # 项目自定义关键字特殊信息
+    if category == 'project_custom' and project_custom_keywords:
+        custom_info = project_custom_keywords[keyword_name]
+        keyword_data['file_location'] = custom_info['file']
         
-        # 添加默认值信息
-        param_default = getattr(param, 'default', None)
-        if param_default is not None:
-            param_data['default'] = param_default
-        
-        keyword_data['parameters'].append(param_data)
+        # 对于项目自定义关键字，使用从AST中提取的参数信息
+        for param_info in custom_info.get('parameters', []):
+            keyword_data['parameters'].append(param_info)
+    else:
+        # 参数信息（对于其他类型的关键字）
+        parameters = keyword_info.get('parameters', [])
+        for param in parameters:
+            param_data = {
+                'name': getattr(param, 'name', str(param)),
+                'mapping': getattr(param, 'mapping', ''),
+                'description': getattr(param, 'description', '')
+            }
+            
+            # 添加默认值信息
+            param_default = getattr(param, 'default', None)
+            if param_default is not None:
+                param_data['default'] = param_default
+            
+            keyword_data['parameters'].append(param_data)
 
     # 函数文档
     func = keyword_info.get('func')
@@ -253,13 +422,104 @@ def format_keyword_info_json(keyword_name, keyword_info):
     return keyword_data
 
 
+def generate_html_report(keywords_data, output_file):
+    """生成HTML格式的关键字报告"""
+    from jinja2 import Environment, FileSystemLoader, select_autoescape
+    import os
+    
+    # 准备数据
+    summary = keywords_data['summary']
+    keywords = keywords_data['keywords']
+    
+    # 按类别分组
+    categories = {}
+    for keyword in keywords:
+        category = keyword['category']
+        if category not in categories:
+            categories[category] = []
+        categories[category].append(keyword)
+    
+    # 按来源分组（用于更详细的分组视图）
+    source_groups = {}
+    for keyword in keywords:
+        source_info = keyword.get('source_info', {})
+        category = keyword['category']
+        source_name = source_info.get('name', '未知来源')
+        
+        # 构建分组键
+        if category == 'plugin':
+            group_key = f"插件 - {source_name}"
+        elif category == 'builtin':
+            group_key = "内置关键字"
+        elif category == 'project_custom':
+            group_key = f"项目自定义 - {keyword.get('file_location', source_name)}"
+        elif category == 'remote':
+            group_key = f"远程 - {source_name}"
+        else:
+            group_key = f"自定义 - {source_name}"
+        
+        if group_key not in source_groups:
+            source_groups[group_key] = []
+        source_groups[group_key].append(keyword)
+    
+    # 按位置分组（用于全部关键字视图，保持向后兼容）
+    location_groups = {}
+    for keyword in keywords:
+        # 优先使用file_location，然后使用source_info中的name
+        location = keyword.get('file_location')
+        if not location:
+            source_info = keyword.get('source_info', {})
+            location = source_info.get('name', '内置/插件')
+        
+        if location not in location_groups:
+            location_groups[location] = []
+        location_groups[location].append(keyword)
+    
+    # 类别名称映射
+    category_names = {
+        'builtin': '内置',
+        'plugin': '插件',
+        'custom': '自定义',
+        'project_custom': '项目自定义',
+        'remote': '远程'
+    }
+    
+    # 设置Jinja2环境
+    template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+    
+    env = Environment(
+        loader=FileSystemLoader(template_dir),
+        autoescape=select_autoescape(['html', 'xml'])
+    )
+    
+    # 加载模板
+    template = env.get_template('keywords_report.html')
+    
+    # 渲染模板
+    html_content = template.render(
+        summary=summary,
+        keywords=keywords,
+        categories=categories,
+        source_groups=source_groups,
+        location_groups=location_groups,
+        category_names=category_names
+    )
+    
+    # 写入文件
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    
+    print(f"HTML报告已生成: {output_file}")
+
+
 def list_keywords(output_format='json', name_filter=None,
-                  category_filter='all', output_file=None):
+                  category_filter='all', output_file=None, 
+                  include_remote=False):
     """罗列所有关键字信息"""
     import json
 
     print("正在加载关键字...")
-    load_all_keywords()
+    project_custom_keywords = load_all_keywords(include_remote=include_remote)
 
     # 获取所有注册的关键字
     all_keywords = keyword_manager._keywords
@@ -276,9 +536,15 @@ def list_keywords(output_format='json', name_filter=None,
         if name_filter and name_filter.lower() not in name.lower():
             continue
 
+        # 远程关键字过滤
+        if not include_remote and info.get('remote', False):
+            continue
+
         # 类别过滤
         if category_filter != 'all':
-            keyword_category = categorize_keyword(name, info)
+            keyword_category = categorize_keyword(
+                name, info, project_custom_keywords
+            )
             if keyword_category != category_filter:
                 continue
 
@@ -294,51 +560,80 @@ def list_keywords(output_format='json', name_filter=None,
     # 输出统计信息
     total_count = len(filtered_keywords)
     category_counts = {}
+    source_counts = {}
+    
     for name, info in filtered_keywords.items():
-        cat = categorize_keyword(name, info)
+        cat = categorize_keyword(name, info, project_custom_keywords)
         category_counts[cat] = category_counts.get(cat, 0) + 1
+        
+        # 统计各来源的关键字数量
+        source_info = get_keyword_source_info(info)
+        source_name = source_info['name']
+        if cat == 'project_custom' and project_custom_keywords:
+            custom_info = project_custom_keywords[name]
+            source_name = custom_info['file']
+        
+        source_key = f"{cat}:{source_name}"
+        source_counts[source_key] = source_counts.get(source_key, 0) + 1
 
     if output_format == 'text':
         print(f"\n找到 {total_count} 个关键字:")
         for cat, count in category_counts.items():
-            cat_names = {'builtin': '内置', 'custom': '自定义', 'remote': '远程'}
+            cat_names = {
+                'builtin': '内置', 'plugin': '插件', 'custom': '自定义',
+                'project_custom': '项目自定义', 'remote': '远程'
+            }
             print(f"  {cat_names.get(cat, cat)}: {count} 个")
         print("-" * 60)
 
-        # 按类别分组显示
-        for category in ['builtin', 'custom', 'remote']:
-            cat_keywords = {
-                name: info for name, info in filtered_keywords.items()
-                if categorize_keyword(name, info) == category
+        # 按类别和来源分组显示
+        grouped = group_keywords_by_source(
+            filtered_keywords, project_custom_keywords
+        )
+        
+        for category in [
+            'builtin', 'plugin', 'custom', 'project_custom', 'remote'
+        ]:
+            if category not in grouped or not grouped[category]:
+                continue
+                
+            cat_names = {
+                'builtin': '内置关键字',
+                'plugin': '插件关键字',
+                'custom': '自定义关键字',
+                'project_custom': '项目自定义关键字',
+                'remote': '远程关键字'
             }
-
-            if cat_keywords:
-                cat_names = {
-                    'builtin': '内置关键字',
-                    'custom': '自定义关键字',
-                    'remote': '远程关键字'
-                }
-                print(f"\n=== {cat_names[category]} ===")
-
-                for name in sorted(cat_keywords.keys()):
-                    info = cat_keywords[name]
+            print(f"\n=== {cat_names[category]} ===")
+            
+            for source_name, keyword_list in grouped[category].items():
+                if len(grouped[category]) > 1:  # 如果有多个来源，显示来源名
+                    print(f"\n--- {source_name} ---")
+                
+                for keyword_data in keyword_list:
+                    name = keyword_data['name']
+                    info = keyword_data['info']
                     print()
                     print(format_keyword_info_text(
-                        name, info, show_category=False
+                        name, info, show_category=False,
+                        project_custom_keywords=project_custom_keywords
                     ))
 
     elif output_format == 'json':
         keywords_data = {
             'summary': {
                 'total_count': total_count,
-                'category_counts': category_counts
+                'category_counts': category_counts,
+                'source_counts': source_counts
             },
             'keywords': []
         }
 
         for name in sorted(filtered_keywords.keys()):
             info = filtered_keywords[name]
-            keyword_data = format_keyword_info_json(name, info)
+            keyword_data = format_keyword_info_json(
+                name, info, project_custom_keywords
+            )
             keywords_data['keywords'].append(keyword_data)
 
         json_output = json.dumps(keywords_data, ensure_ascii=False, indent=2)
@@ -354,12 +649,50 @@ def list_keywords(output_format='json', name_filter=None,
             print(f"关键字信息已保存到文件: {output_file}")
             print(f"共 {total_count} 个关键字")
             for cat, count in category_counts.items():
-                cat_names = {'builtin': '内置', 'custom': '自定义', 'remote': '远程'}
+                cat_names = {
+                    'builtin': '内置', 'plugin': '插件', 'custom': '自定义',
+                    'project_custom': '项目自定义', 'remote': '远程'
+                }
                 print(f"  {cat_names.get(cat, cat)}: {count} 个")
         except Exception as e:
             print(f"保存文件失败: {e}")
             # 如果写入文件失败，则回退到打印
             print(json_output)
+
+    elif output_format == 'html':
+        keywords_data = {
+            'summary': {
+                'total_count': total_count,
+                'category_counts': category_counts,
+                'source_counts': source_counts
+            },
+            'keywords': []
+        }
+
+        for name in sorted(filtered_keywords.keys()):
+            info = filtered_keywords[name]
+            keyword_data = format_keyword_info_json(
+                name, info, project_custom_keywords
+            )
+            keywords_data['keywords'].append(keyword_data)
+
+        # 确定输出文件名
+        if output_file is None:
+            output_file = 'keywords.html'
+        
+        # 生成HTML报告
+        try:
+            generate_html_report(keywords_data, output_file)
+            print(f"共 {total_count} 个关键字")
+            for cat, count in category_counts.items():
+                cat_names = {
+                    'builtin': '内置', 'plugin': '插件', 'custom': '自定义',
+                    'project_custom': '项目自定义', 'remote': '远程'
+                }
+                print(f"  {cat_names.get(cat, cat)}: {count} 个")
+        except Exception as e:
+            print(f"生成HTML报告失败: {e}")
+            raise
 
 
 def load_yaml_variables(args):
@@ -408,8 +741,8 @@ def run_dsl_tests(args):
         print("错误: 必须指定要执行的DSL文件路径或目录")
         sys.exit(1)
 
-    # 加载内置关键字插件
-    load_all_keywords()
+    # 加载内置关键字插件（运行时总是包含远程关键字）
+    load_all_keywords(include_remote=True)
 
     # 加载YAML变量（包括远程服务器自动连接）
     load_yaml_variables(args)
@@ -474,18 +807,21 @@ def main():
             output_format=args.format,
             name_filter=args.filter,
             category_filter=args.category,
-            output_file=args.output
+            output_file=args.output,
+            include_remote=args.include_remote
         )
     elif args.command == 'run':
         run_dsl_tests(args)
     elif args.command == 'list-keywords-compat':
         # 向后兼容：旧的--list-keywords格式
         output_file = getattr(args, 'output', None)
+        include_remote = getattr(args, 'include_remote', False)
         list_keywords(
             output_format=args.format,
             name_filter=args.filter,
             category_filter=args.category,
-            output_file=output_file
+            output_file=output_file,
+            include_remote=include_remote
         )
     elif args.command == 'run-compat':
         # 向后兼容：默认执行DSL测试
@@ -500,13 +836,13 @@ def main_list_keywords():
     """关键字列表命令的专用入口点"""
     parser = argparse.ArgumentParser(description='查看pytest-dsl可用关键字列表')
     parser.add_argument(
-        '--format', choices=['text', 'json'],
+        '--format', choices=['text', 'json', 'html'],
         default='json',
-        help='输出格式：json(默认) 或 text'
+        help='输出格式：json(默认)、text 或 html'
     )
     parser.add_argument(
         '--output', '-o', type=str, default=None,
-        help='输出文件路径（仅对 json 格式有效，默认为 keywords.json）'
+        help='输出文件路径（json格式默认为keywords.json，html格式默认为keywords.html）'
     )
     parser.add_argument(
         '--filter', type=str, default=None,
@@ -514,9 +850,14 @@ def main_list_keywords():
     )
     parser.add_argument(
         '--category',
-        choices=['builtin', 'custom', 'remote', 'all'],
+        choices=['builtin', 'plugin', 'custom', 'project_custom', 'remote', 'all'],
         default='all',
-        help='关键字类别：builtin(内置)、custom(自定义)、remote(远程)、all(全部，默认)'
+        help='关键字类别：builtin(内置)、plugin(插件)、custom(自定义)、'
+             'project_custom(项目自定义)、remote(远程)、all(全部，默认)'
+    )
+    parser.add_argument(
+        '--include-remote', action='store_true',
+        help='是否包含远程关键字（默认不包含）'
     )
 
     args = parser.parse_args()
@@ -525,8 +866,111 @@ def main_list_keywords():
         output_format=args.format,
         name_filter=args.filter,
         category_filter=args.category,
-        output_file=args.output
+        output_file=args.output,
+        include_remote=args.include_remote
     )
+
+
+def scan_project_custom_keywords(project_root=None):
+    """扫描项目中.resource文件中的自定义关键字
+    
+    Args:
+        project_root: 项目根目录，默认为当前工作目录
+        
+    Returns:
+        dict: 自定义关键字信息，格式为 
+              {keyword_name: {'file': file_path, 'node': ast_node}}
+    """
+    if project_root is None:
+        project_root = os.getcwd()
+    
+    project_root = Path(project_root)
+    custom_keywords = {}
+    
+    # 查找所有.resource文件
+    resource_files = list(project_root.glob('**/*.resource'))
+    
+    if not resource_files:
+        return custom_keywords
+    
+    lexer = get_lexer()
+    parser = get_parser()
+    
+    for file_path in resource_files:
+        try:
+            # 读取并解析文件
+            content = read_file(str(file_path))
+            ast = parser.parse(content, lexer=lexer)
+            
+            # 查找自定义关键字定义
+            keywords_in_file = extract_custom_keywords_from_ast(
+                ast, str(file_path)
+            )
+            custom_keywords.update(keywords_in_file)
+            
+        except Exception as e:
+            print(f"解析资源文件 {file_path} 时出错: {e}")
+    
+    return custom_keywords
+
+
+def extract_custom_keywords_from_ast(ast, file_path):
+    """从AST中提取自定义关键字定义
+    
+    Args:
+        ast: 抽象语法树
+        file_path: 文件路径
+        
+    Returns:
+        dict: 自定义关键字信息
+    """
+    custom_keywords = {}
+    
+    if ast.type != 'Start' or len(ast.children) < 2:
+        return custom_keywords
+    
+    # 遍历语句节点
+    statements_node = ast.children[1]
+    if statements_node.type != 'Statements':
+        return custom_keywords
+    
+    for node in statements_node.children:
+        # 支持两种格式：CustomKeyword（旧格式）和Function（新格式）
+        if node.type in ['CustomKeyword', 'Function']:
+            keyword_name = node.value
+            
+            # 提取参数信息
+            params_node = node.children[0] if node.children else None
+            parameters = []
+            
+            if params_node:
+                for param in params_node:
+                    param_name = param.value
+                    param_default = None
+                    
+                    # 检查是否有默认值
+                    if param.children and param.children[0]:
+                        param_default = param.children[0].value
+                    
+                    param_info = {
+                        'name': param_name,
+                        'mapping': param_name,
+                        'description': f'自定义关键字参数 {param_name}'
+                    }
+                    
+                    if param_default is not None:
+                        param_info['default'] = param_default
+                    
+                    parameters.append(param_info)
+            
+            custom_keywords[keyword_name] = {
+                'file': file_path,
+                'node': node,
+                'type': 'project_custom',
+                'parameters': parameters
+            }
+    
+    return custom_keywords
 
 
 if __name__ == '__main__':

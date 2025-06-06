@@ -16,8 +16,14 @@ class KeywordManager:
         self._keywords: Dict[str, Dict] = {}
         self.current_context = None
 
-    def register(self, name: str, parameters: List[Dict]):
-        """关键字注册装饰器"""
+    def register(self, name: str, parameters: List[Dict], source_info: Optional[Dict] = None):
+        """关键字注册装饰器
+        
+        Args:
+            name: 关键字名称
+            parameters: 参数列表
+            source_info: 来源信息，包含 source_type, source_name, module_name 等
+        """
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
             def wrapper(**kwargs):
@@ -40,14 +46,70 @@ class KeywordManager:
             # 自动添加 step_name 到 mapping 中
             mapping["步骤名称"] = "step_name"
             
-            self._keywords[name] = {
+            # 构建关键字信息，包含来源信息
+            keyword_info = {
                 'func': wrapper,
                 'mapping': mapping,
                 'parameters': param_list,
                 'defaults': defaults  # 存储默认值
             }
+            
+            # 添加来源信息
+            if source_info:
+                keyword_info.update(source_info)
+            else:
+                # 尝试从函数模块推断来源信息
+                keyword_info.update(self._infer_source_info(func))
+            
+            self._keywords[name] = keyword_info
             return wrapper
         return decorator
+
+    def _infer_source_info(self, func: Callable) -> Dict:
+        """从函数推断来源信息"""
+        source_info = {}
+        
+        if hasattr(func, '__module__'):
+            module_name = func.__module__
+            source_info['module_name'] = module_name
+            
+            if module_name.startswith('pytest_dsl.keywords'):
+                # 内置关键字
+                source_info['source_type'] = 'builtin'
+                source_info['source_name'] = 'pytest-dsl内置'
+            elif 'pytest_dsl' in module_name:
+                # pytest-dsl相关但不是内置的
+                source_info['source_type'] = 'internal'
+                source_info['source_name'] = 'pytest-dsl'
+            else:
+                # 第三方插件或用户自定义
+                source_info['source_type'] = 'external'
+                # 提取可能的包名
+                parts = module_name.split('.')
+                if len(parts) > 1:
+                    source_info['source_name'] = parts[0]
+                else:
+                    source_info['source_name'] = module_name
+        
+        return source_info
+
+    def register_with_source(self, name: str, parameters: List[Dict], 
+                           source_type: str, source_name: str, **kwargs):
+        """带来源信息的关键字注册装饰器
+        
+        Args:
+            name: 关键字名称
+            parameters: 参数列表
+            source_type: 来源类型 (builtin, plugin, local, remote, project_custom)
+            source_name: 来源名称 (插件名、文件路径等)
+            **kwargs: 其他来源相关信息
+        """
+        source_info = {
+            'source_type': source_type,
+            'source_name': source_name,
+            **kwargs
+        }
+        return self.register(name, parameters, source_info)
 
     def execute(self, keyword_name: str, **params: Any) -> Any:
         """执行关键字"""
@@ -83,6 +145,18 @@ class KeywordManager:
             ))
             
         return keyword_info
+
+    def get_keywords_by_source(self) -> Dict[str, List[str]]:
+        """按来源分组获取关键字"""
+        by_source = {}
+        
+        for name, info in self._keywords.items():
+            source_name = info.get('source_name', '未知来源')
+            if source_name not in by_source:
+                by_source[source_name] = []
+            by_source[source_name].append(name)
+        
+        return by_source
 
     def _log_execution(self, keyword_name: str, params: Dict, result: Any) -> None:
         """记录关键字执行结果"""

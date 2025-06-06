@@ -62,7 +62,28 @@ def load_plugin_keywords(plugin_name: str) -> None:
         
         # 如果插件有register_keywords函数，调用它
         if hasattr(plugin, 'register_keywords') and callable(plugin.register_keywords):
-            plugin.register_keywords(keyword_manager)
+            # 创建一个包装的关键字管理器，自动添加来源信息
+            class PluginKeywordManager:
+                def __init__(self, original_manager, plugin_name):
+                    self.original_manager = original_manager
+                    self.plugin_name = plugin_name
+                
+                def register(self, name: str, parameters):
+                    """带插件来源信息的注册方法"""
+                    return self.original_manager.register_with_source(
+                        name, parameters, 
+                        source_type='plugin',
+                        source_name=plugin_name,
+                        module_name=plugin_name
+                    )
+                
+                def __getattr__(self, name):
+                    # 代理其他方法到原始管理器
+                    return getattr(self.original_manager, name)
+            
+            plugin_manager = PluginKeywordManager(keyword_manager, plugin_name)
+            plugin.register_keywords(plugin_manager)
+            print(f"通过register_keywords加载插件: {plugin_name}")
             return
         
         # 否则，遍历包中的所有模块
@@ -71,11 +92,27 @@ def load_plugin_keywords(plugin_name: str) -> None:
                 if not is_pkg:
                     try:
                         module = importlib.import_module(name)
+                        print(f"加载插件模块: {name}")
                         # 模块已导入，关键字装饰器会自动注册
+                        # 但我们需要在导入后更新来源信息
+                        _update_keywords_source_info(plugin_name, name)
                     except ImportError as e:
                         print(f"无法导入模块 {name}: {e}")
     except ImportError as e:
         print(f"无法导入插件 {plugin_name}: {e}")
+
+
+def _update_keywords_source_info(plugin_name: str, module_name: str):
+    """更新模块中关键字的来源信息"""
+    # 找到可能是新注册的关键字
+    for keyword_name, keyword_info in keyword_manager._keywords.items():
+        if keyword_info.get('module_name') == module_name:
+            # 更新来源信息
+            keyword_info.update({
+                'source_type': 'plugin',
+                'source_name': plugin_name,
+                'plugin_module': module_name
+            })
 
 
 def load_all_plugins() -> None:

@@ -1,0 +1,862 @@
+{# 关键字卡片宏定义 #}
+{% macro render_keyword_card(keyword) %}
+    <div class="keyword-card">
+        <div class="keyword-header" onclick="toggleKeyword(this)">
+            <div class="keyword-name">{{ keyword.name }}</div>
+            <div>
+                <span class="keyword-category category-{{ keyword.category }}">
+                    {{ category_names[keyword.category] }}
+                </span>
+                {% if keyword.source_info and keyword.source_info.name != category_names[keyword.category] %}
+                    <span class="source-badge">{{ keyword.source_info.name }}</span>
+                {% endif %}
+                <span class="expand-icon">▼</span>
+            </div>
+        </div>
+        <div class="keyword-details">
+            {% if keyword.file_location %}
+                <div class="file-location">📁 {{ keyword.file_location }}</div>
+            {% elif keyword.source_info and keyword.source_info.module %}
+                <div class="file-location">📦 {{ keyword.source_info.module }}</div>
+            {% endif %}
+            
+            <div class="parameters">
+                <h4>参数:</h4>
+                {% if keyword.parameters %}
+                    {% for param in keyword.parameters %}
+                        <div class="parameter">
+                            <div class="parameter-name">
+                                {{ param.name }}
+                                {% if param.mapping and param.mapping != param.name %}
+                                    <span class="parameter-mapping">({{ param.mapping }})</span>
+                                {% endif %}
+                                {% if param.default is defined %}
+                                    <span class="parameter-default">默认: {{ param.default }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="parameter-description">{{ param.description }}</div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p>无参数</p>
+                {% endif %}
+            </div>
+            
+            {% if keyword.documentation %}
+                <div class="documentation">
+                    <strong>说明:</strong> {{ keyword.documentation }}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+{% endmacro %}
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pytest-dsl 关键字列表</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+            background: white;
+        }
+        
+        /* 左侧侧边栏 */
+        .sidebar {
+            width: 400px;
+            background: #f8f9fa;
+            border-right: 1px solid #dee2e6;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .sidebar-header h1 {
+            font-size: 1.5em;
+            font-weight: 300;
+            margin-bottom: 10px;
+        }
+        
+        .sidebar-header .summary {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+        
+        .search-section {
+            padding: 15px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .search-box {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid #dee2e6;
+            border-radius: 20px;
+            font-size: 0.9em;
+            outline: none;
+        }
+        
+        .search-box:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .filter-tabs {
+            display: flex;
+            background: #e9ecef;
+            margin: 15px;
+            border-radius: 8px;
+            overflow: hidden;
+            flex-wrap: wrap;
+        }
+        
+        .filter-tab {
+            flex: 1;
+            min-width: 60px;
+            padding: 8px 12px;
+            text-align: center;
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            font-size: 0.75em;
+            transition: all 0.3s ease;
+        }
+        
+        .filter-tab:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .filter-tab.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        /* 树结构列表 */
+        .tree-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 15px 15px;
+        }
+        
+        .tree-node {
+            margin-bottom: 5px;
+        }
+        
+        .tree-category {
+            position: sticky;
+            top: 0;
+            background: #f8f9fa;
+            z-index: 10;
+        }
+        
+        .category-header {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 6px;
+            margin: 5px 0;
+            font-weight: 600;
+            color: #495057;
+            background: #e9ecef;
+        }
+        
+        .category-header:hover {
+            background: #dee2e6;
+        }
+        
+        .category-icon {
+            margin-right: 8px;
+            font-size: 0.8em;
+            transition: transform 0.3s ease;
+        }
+        
+        .category-icon.expanded {
+            transform: rotate(90deg);
+        }
+        
+        .category-badge {
+            margin-left: auto;
+            background: #6c757d;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.7em;
+            font-weight: normal;
+        }
+        
+        .category-keywords {
+            margin-left: 20px;
+            display: none;
+        }
+        
+        .category-keywords.expanded {
+            display: block;
+        }
+        
+        .keyword-item {
+            padding: 8px 12px;
+            margin: 2px 0;
+            cursor: pointer;
+            border-radius: 4px;
+            border-left: 3px solid transparent;
+            transition: all 0.3s ease;
+            font-size: 0.9em;
+        }
+        
+        .keyword-item:hover {
+            background: #e9ecef;
+            border-left-color: #dee2e6;
+        }
+        
+        .keyword-item.selected {
+            background: #667eea;
+            color: white;
+            border-left-color: #495057;
+        }
+        
+        .keyword-name {
+            font-weight: 500;
+        }
+        
+        .keyword-preview {
+            font-size: 0.8em;
+            opacity: 0.7;
+            margin-top: 2px;
+        }
+        
+        .source-badge {
+            background: #17a2b8;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 0.65em;
+            margin-left: 4px;
+        }
+        
+        /* 右侧详情区域 */
+        .detail-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+        
+        .detail-header {
+            padding: 20px 30px;
+            border-bottom: 1px solid #dee2e6;
+            background: #f8f9fa;
+        }
+        
+        .detail-title {
+            font-size: 1.8em;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 10px;
+        }
+        
+        .detail-meta {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        
+        .category-badge-large {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        
+        .category-builtin { 
+            background: #d4edda; 
+            color: #155724; 
+        }
+        .category-plugin { 
+            background: #cff4fc; 
+            color: #055160; 
+        }
+        .category-custom { 
+            background: #fff3cd; 
+            color: #856404; 
+        }
+        .category-project_custom { 
+            background: #cce5ff; 
+            color: #004085; 
+        }
+        .category-remote { 
+            background: #f8d7da; 
+            color: #721c24; 
+        }
+        
+        .detail-content {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+        }
+        
+        .detail-section {
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 5px;
+        }
+        
+        .parameters-list {
+            display: grid;
+            gap: 15px;
+        }
+        
+        .parameter-card {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+        }
+        
+        .parameter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        
+        .parameter-name {
+            font-weight: 600;
+            color: #495057;
+            font-size: 1em;
+        }
+        
+        .parameter-mapping {
+            color: #6c757d;
+            font-style: italic;
+            font-size: 0.9em;
+        }
+        
+        .parameter-default {
+            background: #fff3cd;
+            color: #856404;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+        
+        .parameter-description {
+            color: #6c757d;
+            line-height: 1.5;
+        }
+        
+        .documentation {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            border-radius: 0 8px 8px 0;
+            color: #495057;
+            line-height: 1.6;
+        }
+        
+        .file-location {
+            background: #e9ecef;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #6c757d;
+            text-align: center;
+        }
+        
+        .empty-state-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+        
+        .empty-state-title {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        
+        .empty-state-text {
+            opacity: 0.7;
+        }
+        
+        .no-results {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6c757d;
+        }
+        
+        /* 滚动条样式 */
+        .tree-container::-webkit-scrollbar,
+        .detail-content::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .tree-container::-webkit-scrollbar-track,
+        .detail-content::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        .tree-container::-webkit-scrollbar-thumb,
+        .detail-content::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+        
+        .tree-container::-webkit-scrollbar-thumb:hover,
+        .detail-content::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                position: absolute;
+                z-index: 1000;
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+            
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+            
+            .detail-panel {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 左侧侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1>pytest-dsl 关键字</h1>
+                <div class="summary">
+                    总计 {{ summary.total_count }} 个关键字
+                    {% for category, count in summary.category_counts.items() %}
+                        | {{ category_names[category] }}: {{ count }}
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <div class="search-section">
+                <input type="text" class="search-box" placeholder="搜索关键字..." 
+                       onkeyup="filterKeywords(this.value)">
+            </div>
+            
+            <div class="filter-tabs">
+                <button class="filter-tab active" onclick="showCategory('all')">全部</button>
+                {% for category in ['builtin', 'plugin', 'custom', 'project_custom', 'remote'] %}
+                    {% if categories.get(category) %}
+                        <button class="filter-tab" onclick="showCategory('{{ category }}')">
+                            {{ category_names[category] }}
+                        </button>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            
+            <div class="tree-container">
+                <!-- 全部关键字（按来源分组） -->
+                <div id="category-all" class="category-section active">
+                    {% for source_name, keyword_list in source_groups.items() %}
+                    <div class="tree-node">
+                        <div class="category-header" onclick="toggleCategory(this)">
+                            <span class="category-icon">▶</span>
+                            {{ source_name }}
+                            <span class="category-badge">{{ keyword_list|length }}</span>
+                        </div>
+                        <div class="category-keywords">
+                            {% for keyword in keyword_list %}
+                            <div class="keyword-item" onclick="showKeywordDetail('{{ keyword.name }}')">
+                                <div class="keyword-name">{{ keyword.name }}</div>
+                                <div class="keyword-preview">
+                                    {% if keyword.parameters %}
+                                        {{ keyword.parameters|length }} 个参数
+                                    {% else %}
+                                        无参数
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <!-- 各分类的关键字 -->
+                {% for category, keyword_list in categories.items() %}
+                <div id="category-{{ category }}" class="category-section" style="display: none;">
+                    {% if category == 'plugin' %}
+                        <!-- 插件关键字按插件名分组 -->
+                        {% set plugin_groups = {} %}
+                        {% for keyword in keyword_list %}
+                            {% set plugin_name = keyword.source_info.name %}
+                            {% if plugin_name not in plugin_groups %}
+                                {% set _ = plugin_groups.update({plugin_name: []}) %}
+                            {% endif %}
+                            {% set _ = plugin_groups[plugin_name].append(keyword) %}
+                        {% endfor %}
+                        
+                        {% for plugin_name, keywords in plugin_groups.items() %}
+                        <div class="tree-node">
+                            <div class="category-header" onclick="toggleCategory(this)">
+                                <span class="category-icon">▶</span>
+                                插件: {{ plugin_name }}
+                                <span class="category-badge">{{ keywords|length }}</span>
+                            </div>
+                            <div class="category-keywords">
+                                {% for keyword in keywords %}
+                                <div class="keyword-item" onclick="showKeywordDetail('{{ keyword.name }}')">
+                                    <div class="keyword-name">{{ keyword.name }}</div>
+                                    <div class="keyword-preview">
+                                        {% if keyword.parameters %}
+                                            {{ keyword.parameters|length }} 个参数
+                                        {% else %}
+                                            无参数
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% elif category == 'project_custom' %}
+                        <!-- 项目自定义关键字按位置分组 -->
+                        {% set project_location_groups = {} %}
+                        {% for keyword in keyword_list %}
+                            {% set location = keyword.file_location or '未知位置' %}
+                            {% if location not in project_location_groups %}
+                                {% set _ = project_location_groups.update({location: []}) %}
+                            {% endif %}
+                            {% set _ = project_location_groups[location].append(keyword) %}
+                        {% endfor %}
+                        
+                        {% for location, keywords in project_location_groups.items() %}
+                        <div class="tree-node">
+                            <div class="category-header" onclick="toggleCategory(this)">
+                                <span class="category-icon">▶</span>
+                                {{ location }}
+                                <span class="category-badge">{{ keywords|length }}</span>
+                            </div>
+                            <div class="category-keywords">
+                                {% for keyword in keywords %}
+                                <div class="keyword-item" onclick="showKeywordDetail('{{ keyword.name }}')">
+                                    <div class="keyword-name">{{ keyword.name }}</div>
+                                    <div class="keyword-preview">
+                                        {% if keyword.parameters %}
+                                            {{ keyword.parameters|length }} 个参数
+                                        {% else %}
+                                            无参数
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <!-- 其他分类直接显示 -->
+                        <div class="tree-node">
+                            <div class="category-keywords expanded">
+                                {% for keyword in keyword_list %}
+                                <div class="keyword-item" onclick="showKeywordDetail('{{ keyword.name }}')">
+                                    <div class="keyword-name">{{ keyword.name }}</div>
+                                    <div class="keyword-preview">
+                                        {% if keyword.parameters %}
+                                            {{ keyword.parameters|length }} 个参数
+                                        {% else %}
+                                            无参数
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- 右侧详情面板 -->
+        <div class="detail-panel">
+            <div id="keyword-detail-content">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📋</div>
+                    <div class="empty-state-title">选择一个关键字</div>
+                    <div class="empty-state-text">点击左侧列表中的关键字查看详细信息</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 关键字数据
+        const keywordsData = {
+            {% for keyword in keywords %}
+            '{{ keyword.name }}': {{ keyword|tojson }},
+            {% endfor %}
+        };
+        
+        let currentCategory = 'all';
+        let searchTerm = '';
+        
+        function showCategory(category) {
+            currentCategory = category;
+            
+            // 隐藏所有分类
+            const sections = document.querySelectorAll('.category-section');
+            sections.forEach(section => section.style.display = 'none');
+            
+            // 显示选中的分类
+            const targetSection = document.getElementById('category-' + category);
+            if (targetSection) {
+                targetSection.style.display = 'block';
+            }
+            
+            // 更新标签状态
+            const tabs = document.querySelectorAll('.filter-tab');
+            tabs.forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // 清空搜索
+            document.querySelector('.search-box').value = '';
+            searchTerm = '';
+            
+            // 清空详情
+            showEmptyState();
+        }
+        
+        function toggleCategory(element) {
+            const icon = element.querySelector('.category-icon');
+            const keywords = element.nextElementSibling;
+            
+            if (keywords.classList.contains('expanded')) {
+                keywords.classList.remove('expanded');
+                icon.textContent = '▶';
+            } else {
+                keywords.classList.add('expanded');
+                icon.textContent = '▼';
+            }
+        }
+        
+        function showKeywordDetail(keywordName) {
+            const keyword = keywordsData[keywordName];
+            if (!keyword) return;
+            
+            // 更新选中状态
+            document.querySelectorAll('.keyword-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+            
+            // 构建详情HTML
+            const categoryNames = {
+                'builtin': '内置',
+                'plugin': '插件',
+                'custom': '自定义',
+                'project_custom': '项目自定义',
+                'remote': '远程'
+            };
+            
+            let parametersHtml = '';
+            if (keyword.parameters && keyword.parameters.length > 0) {
+                parametersHtml = `
+                    <div class="detail-section">
+                        <div class="section-title">参数</div>
+                        <div class="parameters-list">
+                            ${keyword.parameters.map(param => `
+                                <div class="parameter-card">
+                                    <div class="parameter-header">
+                                        <div>
+                                            <div class="parameter-name">${param.name}</div>
+                                            ${param.mapping && param.mapping !== param.name ? 
+                                                `<div class="parameter-mapping">(${param.mapping})</div>` : ''}
+                                        </div>
+                                        ${param.default !== undefined ? 
+                                            `<div class="parameter-default">默认: ${param.default}</div>` : ''}
+                                    </div>
+                                    <div class="parameter-description">${param.description || ''}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            } else {
+                parametersHtml = `
+                    <div class="detail-section">
+                        <div class="section-title">参数</div>
+                        <p style="color: #6c757d; font-style: italic;">此关键字无需参数</p>
+                    </div>
+                `;
+            }
+            
+            let documentationHtml = '';
+            if (keyword.documentation) {
+                documentationHtml = `
+                    <div class="detail-section">
+                        <div class="section-title">说明</div>
+                        <div class="documentation">${keyword.documentation}</div>
+                    </div>
+                `;
+            }
+            
+            let sourceInfoHtml = '';
+            if (keyword.source_info) {
+                let locationText = '';
+                if (keyword.file_location) {
+                    locationText = keyword.file_location;
+                } else if (keyword.source_info.module) {
+                    locationText = keyword.source_info.module;
+                } else {
+                    locationText = keyword.source_info.name;
+                }
+                
+                sourceInfoHtml = `
+                    <div class="detail-section">
+                        <div class="section-title">来源信息</div>
+                        <div class="file-location">📍 ${locationText}</div>
+                    </div>
+                `;
+            }
+            
+            const detailHtml = `
+                <div class="detail-header">
+                    <div class="detail-title">${keyword.name}</div>
+                    <div class="detail-meta">
+                        <div class="meta-item">
+                            <span class="category-badge-large category-${keyword.category}">
+                                ${categoryNames[keyword.category]}
+                            </span>
+                        </div>
+                        ${keyword.source_info && keyword.source_info.name !== categoryNames[keyword.category] ? 
+                            `<div class="meta-item">🔌 ${keyword.source_info.name}</div>` : ''}
+                        ${keyword.parameters ? 
+                            `<div class="meta-item">📝 ${keyword.parameters.length} 个参数</div>` : 
+                            '<div class="meta-item">📝 无参数</div>'}
+                    </div>
+                </div>
+                <div class="detail-content">
+                    ${parametersHtml}
+                    ${documentationHtml}
+                    ${sourceInfoHtml}
+                </div>
+            `;
+            
+            document.getElementById('keyword-detail-content').innerHTML = detailHtml;
+        }
+        
+        function showEmptyState() {
+            const emptyStateHtml = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📋</div>
+                    <div class="empty-state-title">选择一个关键字</div>
+                    <div class="empty-state-text">点击左侧列表中的关键字查看详细信息</div>
+                </div>
+            `;
+            document.getElementById('keyword-detail-content').innerHTML = emptyStateHtml;
+        }
+        
+        function filterKeywords(term) {
+            searchTerm = term.toLowerCase();
+            const activeSection = document.querySelector('.category-section[style="display: block;"], .category-section.active');
+            const keywordItems = activeSection.querySelectorAll('.keyword-item');
+            let visibleCount = 0;
+            
+            keywordItems.forEach(item => {
+                const name = item.querySelector('.keyword-name').textContent.toLowerCase();
+                const isVisible = name.includes(searchTerm);
+                item.style.display = isVisible ? 'block' : 'none';
+                if (isVisible) visibleCount++;
+            });
+            
+            // 处理分类的显示/隐藏
+            const categoryNodes = activeSection.querySelectorAll('.tree-node');
+            categoryNodes.forEach(node => {
+                const visibleKeywords = node.querySelectorAll('.keyword-item[style="display: block;"], .keyword-item:not([style])');
+                const hasVisibleKeywords = Array.from(visibleKeywords).some(item => 
+                    item.style.display !== 'none'
+                );
+                node.style.display = hasVisibleKeywords ? 'block' : 'none';
+            });
+            
+            // 显示无结果提示
+            let noResults = activeSection.querySelector('.no-results');
+            if (visibleCount === 0 && searchTerm.trim() !== '') {
+                if (!noResults) {
+                    noResults = document.createElement('div');
+                    noResults.className = 'no-results';
+                    noResults.innerHTML = '<div>🔍</div><div>未找到匹配的关键字</div>';
+                    activeSection.appendChild(noResults);
+                }
+                noResults.style.display = 'block';
+            } else if (noResults) {
+                noResults.style.display = 'none';
+            }
+            
+            // 如果有搜索结果，清空详情面板
+            if (searchTerm.trim() !== '') {
+                showEmptyState();
+            }
+        }
+        
+        // 初始化：展开第一个分类
+        document.addEventListener('DOMContentLoaded', function() {
+            const firstCategoryHeader = document.querySelector('.category-header');
+            if (firstCategoryHeader) {
+                toggleCategory(firstCategoryHeader);
+            }
+        });
+    </script>
+</body>
+</html> 

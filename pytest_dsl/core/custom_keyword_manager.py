@@ -1,11 +1,8 @@
-from typing import Dict, Any, List, Optional
 import os
-import pathlib
 from pytest_dsl.core.lexer import get_lexer
 from pytest_dsl.core.parser import get_parser, Node
 from pytest_dsl.core.dsl_executor import DSLExecutor
 from pytest_dsl.core.keyword_manager import keyword_manager
-from pytest_dsl.core.context import TestContext
 
 
 class CustomKeywordManager:
@@ -127,7 +124,7 @@ class CustomKeywordManager:
             return
 
         for node in statements_node.children:
-            if node.type == 'CustomKeyword':
+            if node.type in ['CustomKeyword', 'Function']:
                 self._register_custom_keyword(node, file_path)
 
     def _register_custom_keyword(self, node: Node, file_path: str) -> None:
