@@ -185,7 +185,8 @@ def generate_random_number(**kwargs):
 
 @keyword_manager.register('字符串操作', [
     {'name': '操作', 'mapping': 'operation',
-     'description': '操作类型：拼接(concat)、替换(replace)、分割(split)、大写(upper)、小写(lower)、去空格(strip)', 
+     'description': '操作类型：拼接(concat)、替换(replace)、分割(split)、'
+                   '大写(upper)、小写(lower)、去空格(strip)', 
      'default': 'strip'},
     {'name': '字符串', 'mapping': 'string', 'description': '要操作的字符串'},
     {'name': '参数1', 'mapping': 'param1', 
@@ -366,3 +367,421 @@ def execute_command(**kwargs):
                 'stdout': '',
                 'stderr': str(e)
             }
+
+
+@keyword_manager.register('求和', [
+    {'name': '数据', 'mapping': 'data', 'description': '要求和的数字列表或可迭代对象'},
+    {'name': '起始值', 'mapping': 'start', 'description': '求和的起始值', 'default': 0}
+])
+def sum_values(**kwargs):
+    """计算数字列表的总和
+
+    Args:
+        data: 要求和的数字列表
+        start: 求和的起始值，默认为0
+
+    Returns:
+        数字总和
+    """
+    data = kwargs.get('data', [])
+    start = kwargs.get('start', 0)
+
+    # 确保data是可迭代的
+    if not hasattr(data, '__iter__') or isinstance(data, str):
+        raise ValueError("数据必须是可迭代的数字列表")
+
+    try:
+        result = sum(data, start)
+        
+        with allure.step(f"求和计算: 数据长度={len(data)}, 起始值={start}"):
+            allure.attach(
+                f"输入数据: {data}\n起始值: {start}\n结果: {result}",
+                name="求和结果",
+                attachment_type=allure.attachment_type.TEXT
+            )
+        
+        return result
+    except Exception as e:
+        allure.attach(
+            f"求和计算失败: {str(e)}",
+            name="求和错误",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        raise
+
+
+@keyword_manager.register('获取长度', [
+    {'name': '对象', 'mapping': 'obj', 'description': '要获取长度的对象（字符串、列表、字典等）'}
+])
+def get_length(**kwargs):
+    """获取对象的长度
+
+    Args:
+        obj: 要获取长度的对象
+
+    Returns:
+        int: 对象的长度
+    """
+    obj = kwargs.get('obj')
+    
+    if obj is None:
+        return 0
+
+    try:
+        result = len(obj)
+        
+        with allure.step(f"获取长度: 对象类型={type(obj).__name__}"):
+            allure.attach(
+                f"对象: {obj}\n类型: {type(obj).__name__}\n长度: {result}",
+                name="长度计算结果",
+                attachment_type=allure.attachment_type.TEXT
+            )
+        
+        return result
+    except Exception as e:
+        allure.attach(
+            f"获取长度失败: {str(e)}",
+            name="长度计算错误",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        raise
+
+
+@keyword_manager.register('获取最大值', [
+    {'name': '数据', 'mapping': 'data', 'description': '要比较的数据列表或多个参数'},
+    {'name': '默认值', 'mapping': 'default', 
+     'description': '当数据为空时的默认值', 'default': None}
+])
+def get_max_value(**kwargs):
+    """获取最大值
+
+    Args:
+        data: 要比较的数据
+        default: 当数据为空时的默认值
+
+    Returns:
+        最大值
+    """
+    data = kwargs.get('data')
+    default = kwargs.get('default')
+    
+    if data is None:
+        if default is not None:
+            return default
+        raise ValueError("数据不能为空")
+
+    try:
+        # 如果data不是可迭代的，将其转换为列表
+        if not hasattr(data, '__iter__') or isinstance(data, str):
+            data = [data]
+        
+        if len(data) == 0:
+            if default is not None:
+                return default
+            raise ValueError("数据列表为空")
+        
+        result = max(data)
+        
+        with allure.step(f"获取最大值: 数据长度={len(data)}"):
+            allure.attach(
+                f"输入数据: {data}\n最大值: {result}",
+                name="最大值计算结果",
+                attachment_type=allure.attachment_type.TEXT
+            )
+        
+        return result
+    except Exception as e:
+        allure.attach(
+            f"获取最大值失败: {str(e)}",
+            name="最大值计算错误",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        raise
+
+
+@keyword_manager.register('获取最小值', [
+    {'name': '数据', 'mapping': 'data', 'description': '要比较的数据列表或多个参数'},
+    {'name': '默认值', 'mapping': 'default', 
+     'description': '当数据为空时的默认值', 'default': None}
+])
+def get_min_value(**kwargs):
+    """获取最小值
+
+    Args:
+        data: 要比较的数据
+        default: 当数据为空时的默认值
+
+    Returns:
+        最小值
+    """
+    data = kwargs.get('data')
+    default = kwargs.get('default')
+    
+    if data is None:
+        if default is not None:
+            return default
+        raise ValueError("数据不能为空")
+
+    try:
+        # 如果data不是可迭代的，将其转换为列表
+        if not hasattr(data, '__iter__') or isinstance(data, str):
+            data = [data]
+        
+        if len(data) == 0:
+            if default is not None:
+                return default
+            raise ValueError("数据列表为空")
+        
+        result = min(data)
+        
+        with allure.step(f"获取最小值: 数据长度={len(data)}"):
+            allure.attach(
+                f"输入数据: {data}\n最小值: {result}",
+                name="最小值计算结果",
+                attachment_type=allure.attachment_type.TEXT
+            )
+        
+        return result
+    except Exception as e:
+        allure.attach(
+            f"获取最小值失败: {str(e)}",
+            name="最小值计算错误",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        raise
+
+
+@keyword_manager.register('绝对值', [
+    {'name': '数值', 'mapping': 'number', 'description': '要计算绝对值的数字'}
+])
+def get_absolute_value(**kwargs):
+    """计算数字的绝对值
+
+    Args:
+        number: 要计算绝对值的数字
+
+    Returns:
+        数字的绝对值
+    """
+    number = kwargs.get('number')
+    
+    if number is None:
+        raise ValueError("数值不能为空")
+
+    try:
+        result = abs(number)
+        
+        with allure.step(f"计算绝对值: {number}"):
+            allure.attach(
+                f"输入数值: {number}\n绝对值: {result}",
+                name="绝对值计算结果",
+                attachment_type=allure.attachment_type.TEXT
+            )
+        
+        return result
+    except Exception as e:
+        allure.attach(
+            f"计算绝对值失败: {str(e)}",
+            name="绝对值计算错误",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        raise
+
+
+@keyword_manager.register('四舍五入', [
+    {'name': '数值', 'mapping': 'number', 'description': '要四舍五入的数字'},
+    {'name': '小数位数', 'mapping': 'ndigits', 
+     'description': '保留的小数位数', 'default': 0}
+])
+def round_number(**kwargs):
+    """对数字进行四舍五入
+
+    Args:
+        number: 要四舍五入的数字
+        ndigits: 保留的小数位数，默认为0（整数）
+
+    Returns:
+        四舍五入后的数字
+    """
+    number = kwargs.get('number')
+    ndigits = kwargs.get('ndigits', 0)
+    
+    if number is None:
+        raise ValueError("数值不能为空")
+
+    try:
+        if ndigits == 0:
+            result = round(number)
+        else:
+            result = round(number, int(ndigits))
+        
+        with allure.step(f"四舍五入: {number} -> {ndigits}位小数"):
+            allure.attach(
+                f"输入数值: {number}\n小数位数: {ndigits}\n结果: {result}",
+                name="四舍五入结果",
+                attachment_type=allure.attachment_type.TEXT
+            )
+        
+        return result
+    except Exception as e:
+        allure.attach(
+            f"四舍五入失败: {str(e)}",
+            name="四舍五入错误",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        raise
+
+
+@keyword_manager.register('转换为字符串', [
+    {'name': '值', 'mapping': 'value', 'description': '要转换为字符串的值'}
+])
+def convert_to_string(**kwargs):
+    """将值转换为字符串
+
+    Args:
+        value: 要转换的值
+
+    Returns:
+        str: 转换后的字符串
+    """
+    value = kwargs.get('value')
+    
+    try:
+        result = str(value)
+        
+        with allure.step(f"转换为字符串: {type(value).__name__} -> str"):
+            allure.attach(
+                f"原始值: {value}\n原始类型: {type(value).__name__}\n"
+                f"转换结果: {result}\n结果类型: {type(result).__name__}",
+                name="字符串转换结果",
+                attachment_type=allure.attachment_type.TEXT
+            )
+        
+        return result
+    except Exception as e:
+        allure.attach(
+            f"转换为字符串失败: {str(e)}",
+            name="字符串转换错误",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        raise
+
+
+@keyword_manager.register('转换为整数', [
+    {'name': '值', 'mapping': 'value', 'description': '要转换为整数的值'},
+    {'name': '进制', 'mapping': 'base', 
+     'description': '数字进制（当值为字符串时）', 'default': 10}
+])
+def convert_to_integer(**kwargs):
+    """将值转换为整数
+
+    Args:
+        value: 要转换的值
+        base: 数字进制（当值为字符串时），默认为10
+
+    Returns:
+        int: 转换后的整数
+    """
+    value = kwargs.get('value')
+    base = kwargs.get('base', 10)
+    
+    if value is None:
+        raise ValueError("值不能为空")
+
+    try:
+        # 如果指定了非10进制，将值转换为字符串再进行进制转换
+        if int(base) != 10:
+            value_str = str(value)
+            result = int(value_str, int(base))
+        else:
+            result = int(value)
+        
+        with allure.step(f"转换为整数: {type(value).__name__} -> int"):
+            allure.attach(
+                f"原始值: {value}\n原始类型: {type(value).__name__}\n"
+                f"进制: {base}\n转换结果: {result}\n结果类型: {type(result).__name__}",
+                name="整数转换结果",
+                attachment_type=allure.attachment_type.TEXT
+            )
+        
+        return result
+    except Exception as e:
+        allure.attach(
+            f"转换为整数失败: {str(e)}",
+            name="整数转换错误",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        raise
+
+
+@keyword_manager.register('转换为浮点数', [
+    {'name': '值', 'mapping': 'value', 'description': '要转换为浮点数的值'}
+])
+def convert_to_float(**kwargs):
+    """将值转换为浮点数
+
+    Args:
+        value: 要转换的值
+
+    Returns:
+        float: 转换后的浮点数
+    """
+    value = kwargs.get('value')
+    
+    if value is None:
+        raise ValueError("值不能为空")
+
+    try:
+        result = float(value)
+        
+        with allure.step(f"转换为浮点数: {type(value).__name__} -> float"):
+            allure.attach(
+                f"原始值: {value}\n原始类型: {type(value).__name__}\n"
+                f"转换结果: {result}\n结果类型: {type(result).__name__}",
+                name="浮点数转换结果",
+                attachment_type=allure.attachment_type.TEXT
+            )
+        
+        return result
+    except Exception as e:
+        allure.attach(
+            f"转换为浮点数失败: {str(e)}",
+            name="浮点数转换错误",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        raise
+
+
+@keyword_manager.register('转换为布尔值', [
+    {'name': '值', 'mapping': 'value', 'description': '要转换为布尔值的值'}
+])
+def convert_to_boolean(**kwargs):
+    """将值转换为布尔值
+
+    Args:
+        value: 要转换的值
+
+    Returns:
+        bool: 转换后的布尔值
+    """
+    value = kwargs.get('value')
+    
+    try:
+        result = bool(value)
+        
+        with allure.step(f"转换为布尔值: {type(value).__name__} -> bool"):
+            allure.attach(
+                f"原始值: {value}\n原始类型: {type(value).__name__}\n"
+                f"转换结果: {result}\n结果类型: {type(result).__name__}",
+                name="布尔值转换结果",
+                attachment_type=allure.attachment_type.TEXT
+            )
+        
+        return result
+    except Exception as e:
+        allure.attach(
+            f"转换为布尔值失败: {str(e)}",
+            name="布尔值转换错误",
+            attachment_type=allure.attachment_type.TEXT
+        )
+        raise
