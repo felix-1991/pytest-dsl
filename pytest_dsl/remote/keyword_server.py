@@ -403,9 +403,26 @@ class RemoteKeywordServer:
                 self.shared_variables[name] = value
                 print(f"接收到客户端变量: {name}")
 
+            # 将所有同步的变量直接注入到yaml_vars中，实现无缝访问
+            from pytest_dsl.core.yaml_vars import yaml_vars
+            
+            for name, value in variables.items():
+                # 直接设置到yaml_vars中，确保所有关键字都能无缝访问
+                yaml_vars._variables[name] = value
+                print(f"✓ 变量 {name} 已注入到yaml_vars，实现无缝访问")
+
+            # 同时处理全局变量到global_context
+            from pytest_dsl.core.global_context import global_context
+            for name, value in variables.items():
+                if name.startswith('g_'):
+                    global_context.set_variable(name, value)
+                    print(f"✓ 全局变量 {name} 已注入到global_context")
+
+            print(f"✅ 总共同步了 {len(variables)} 个变量，全部实现无缝访问")
+            
             return {
                 'status': 'success',
-                'message': f'成功同步 {len(variables)} 个变量'
+                'message': f'成功同步 {len(variables)} 个变量，全部实现无缝访问'
             }
         except Exception as e:
             return {

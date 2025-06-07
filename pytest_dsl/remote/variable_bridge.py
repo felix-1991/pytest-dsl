@@ -6,7 +6,8 @@
 
 import logging
 from typing import Any, Optional
-from pytest_dsl.remote.hook_manager import register_startup_hook, register_before_keyword_hook
+from pytest_dsl.remote.hook_manager import (register_startup_hook, 
+                                            register_before_keyword_hook)
 from pytest_dsl.core.yaml_vars import yaml_vars
 from pytest_dsl.core.global_context import global_context
 
@@ -43,24 +44,28 @@ class VariableBridge:
         
         self._bridge_installed = True
         logger.info("变量桥接机制已安装")
+        print(f"🔗 变量桥接机制已安装，可桥接 {len(shared_variables)} 个同步变量")
     
     def _bridged_yaml_get_variable(self, name: str) -> Optional[Any]:
         """桥接的YAML变量获取方法
         
         优先级：
-        1. 原始YAML变量
+        1. 原始YAML变量（服务器本地的）
         2. 客户端同步的变量
         """
         # 首先尝试从原始YAML变量获取
         original_value = self.original_yaml_get_variable(name)
         if original_value is not None:
+            logger.debug(f"从原始YAML获取变量: {name}")
             return original_value
         
         # 如果原始YAML中没有，尝试从同步变量获取
         if name in self.shared_variables:
             logger.debug(f"从同步变量获取YAML变量: {name}")
+            print(f"🔗 变量桥接: 从同步变量获取 {name}")
             return self.shared_variables[name]
         
+        logger.debug(f"变量 {name} 在原始YAML和同步变量中都不存在")
         return None
     
     def _bridged_global_get_variable(self, name: str) -> Any:
@@ -74,17 +79,20 @@ class VariableBridge:
             # 首先尝试从原始全局上下文获取
             original_value = self.original_global_get_variable(name)
             if original_value is not None:
+                logger.debug(f"从原始全局上下文获取变量: {name}")
                 return original_value
-        except:
+        except Exception as e:
             # 如果原始方法抛出异常，继续尝试同步变量
-            pass
+            logger.debug(f"原始全局上下文获取变量 {name} 失败，尝试同步变量: {e}")
         
         # 如果原始全局变量中没有，尝试从同步变量获取
         if name in self.shared_variables:
             logger.debug(f"从同步变量获取全局变量: {name}")
+            print(f"🔗 变量桥接: 从同步变量获取全局变量 {name}")
             return self.shared_variables[name]
         
         # 如果都没有找到，返回None（保持原有行为）
+        logger.debug(f"变量 {name} 在所有来源中都不存在")
         return None
     
     def uninstall_bridge(self):
@@ -113,6 +121,7 @@ def setup_variable_bridge(context):
     if shared_variables is not None:
         variable_bridge.install_bridge(shared_variables)
         logger.info("变量桥接机制已在服务器启动时安装")
+        print(f"🔗 服务器启动时安装变量桥接机制，可桥接 {len(shared_variables)} 个变量")
     else:
         logger.warning("无法获取shared_variables，变量桥接机制安装失败")
 
@@ -124,11 +133,14 @@ def ensure_variable_bridge(context):
     shared_variables = context.get('shared_variables')
     keyword_name = context.get('keyword_name')
     
-    # 只对特定关键字进行调试日志
-    if keyword_name in ['HTTP请求', '数据库查询'] and shared_variables:
+    # 对所有关键字进行调试日志（如果有同步变量）
+    if shared_variables and len(shared_variables) > 0:
         synced_count = len(shared_variables)
-        if synced_count > 0:
-            logger.debug(f"关键字 {keyword_name} 执行前，可用同步变量数量: {synced_count}")
+        logger.debug(f"关键字 {keyword_name} 执行前，可用同步变量数量: {synced_count}")
+        
+        # 对重要关键字显示详细信息
+        if keyword_name in ['HTTP请求', '数据库查询', 'API调用']:
+            print(f"🔗 关键字 {keyword_name} 可访问 {synced_count} 个同步变量")
 
 
 def get_synced_variable(name: str) -> Optional[Any]:
@@ -162,3 +174,24 @@ def has_synced_variable(name: str) -> bool:
         是否存在该同步变量
     """
     return name in variable_bridge.shared_variables
+
+
+def get_all_accessible_variables() -> dict:
+    """获取所有可访问的变量（包括原始变量和同步变量）
+    
+    Returns:
+        所有可访问变量的字典
+    """
+    all_vars = {}
+    
+    # 添加原始YAML变量
+    try:
+        if hasattr(yaml_vars, '_variables'):
+            all_vars.update(yaml_vars._variables)
+    except Exception as e:
+        logger.warning(f"获取原始YAML变量失败: {e}")
+    
+    # 添加同步变量（会覆盖同名的原始变量）
+    all_vars.update(variable_bridge.shared_variables)
+    
+    return all_vars

@@ -7,16 +7,19 @@ from pytest_dsl.core.keyword_manager import keyword_manager, Parameter
 # 配置日志
 logger = logging.getLogger(__name__)
 
+
 class RemoteKeywordClient:
     """远程关键字客户端，用于连接远程关键字服务器并执行关键字"""
 
-    def __init__(self, url='http://localhost:8270/', api_key=None, alias=None, sync_config=None):
+    def __init__(self, url='http://localhost:8270/', api_key=None, alias=None,
+                 sync_config=None):
         self.url = url
         self.server = xmlrpc.client.ServerProxy(url, allow_none=True)
         self.keyword_cache = {}
         self.param_mappings = {}  # 存储每个关键字的参数映射
         self.api_key = api_key
-        self.alias = alias or url.replace('http://', '').replace('https://', '').split(':')[0]
+        self.alias = alias or url.replace('http://', '').replace(
+            'https://', '').split(':')[0]
 
         # 变量传递配置（简化版）
         self.sync_config = sync_config or {
@@ -24,7 +27,6 @@ class RemoteKeywordClient:
             'sync_yaml_vars': True,     # 连接时传递YAML配置变量
             'yaml_sync_keys': None,     # 指定要同步的YAML键列表，None表示同步所有（除了排除的）
             'yaml_exclude_patterns': [  # 排除包含这些模式的YAML变量
-                'password', 'secret', 'key', 'token', 'credential', 'auth',
                 'private', 'remote_servers'  # 排除远程服务器配置避免循环
             ]
         }
@@ -42,7 +44,8 @@ class RemoteKeywordClient:
             self._send_initial_variables()
 
             logger.info(f"已连接到远程关键字服务器: {self.url}, 别名: {self.alias}")
-            print(f"RemoteKeywordClient: 成功连接到远程服务器 {self.url}, 别名: {self.alias}")
+            print(f"RemoteKeywordClient: 成功连接到远程服务器 {self.url}, "
+                  f"别名: {self.alias}")
             return True
         except Exception as e:
             error_msg = f"连接远程关键字服务器失败: {str(e)}"
@@ -81,7 +84,8 @@ class RemoteKeywordClient:
             for param_detail in param_details:
                 param_name = param_detail['name']
                 param_mapping_name = param_detail.get('mapping', param_name)
-                param_desc = param_detail.get('description', f'远程关键字参数: {param_name}')
+                param_desc = param_detail.get('description',
+                                              f'远程关键字参数: {param_name}')
                 param_default = param_detail.get('default')
                 
                 # 确保参数名称正确映射
@@ -114,7 +118,8 @@ class RemoteKeywordClient:
                 'func': remote_func,
                 'mapping': {p['name']: p['mapping'] for p in parameters},
                 'parameters': [Parameter(**p) for p in parameters],
-                'defaults': {p['mapping']: p['default'] for p in parameters if p['default'] is not None},  # 添加默认值支持
+                'defaults': {p['mapping']: p['default'] for p in parameters
+                           if p['default'] is not None},  # 添加默认值支持
                 'remote': True,  # 标记为远程关键字
                 'alias': self.alias,
                 'original_name': name
@@ -161,7 +166,7 @@ class RemoteKeywordClient:
         else:
             # 如果没有任何映射，使用原始参数名
             param_mapping = None
-            print(f"没有找到参数映射，使用原始参数名")
+            print("没有找到参数映射，使用原始参数名")
 
         # 映射参数名称
         mapped_kwargs = {}
@@ -209,10 +214,11 @@ class RemoteKeywordClient:
 
                 # 处理响应数据
                 if 'response' in return_data and return_data['response']:
-                    print(f"远程关键字响应数据: 已接收")
+                    print("远程关键字响应数据: 已接收")
 
                 # 检查是否为新的统一返回格式（包含captures等字段）
-                if 'captures' in return_data or 'session_state' in return_data or 'metadata' in return_data:
+                if ('captures' in return_data or 'session_state' in return_data or
+                        'metadata' in return_data):
                     # 返回完整的新格式，让DSL执行器处理变量捕获
                     return return_data
                 elif 'result' in return_data:
@@ -243,11 +249,13 @@ class RemoteKeywordClient:
             if variables_to_send:
                 try:
                     # 调用远程服务器的变量接收接口
-                    result = self.server.sync_variables_from_client(variables_to_send, self.api_key)
+                    result = self.server.sync_variables_from_client(
+                        variables_to_send, self.api_key)
                     if result.get('status') == 'success':
                         print(f"成功传递 {len(variables_to_send)} 个变量到远程服务器")
                     else:
-                        print(f"传递变量到远程服务器失败: {result.get('error', '未知错误')}")
+                        print(f"传递变量到远程服务器失败: "
+                              f"{result.get('error', '未知错误')}")
                 except Exception as e:
                     print(f"调用远程变量接口失败: {str(e)}")
             else:
@@ -295,10 +303,12 @@ class RemoteKeywordClient:
             # 获取所有YAML变量
             yaml_data = yaml_vars._variables
             if yaml_data:
+                print(f"客户端YAML变量总数: {len(yaml_data)}")
+                
                 # 检查同步配置中是否指定了特定的键
                 sync_keys = self.sync_config.get('yaml_sync_keys', None)
                 exclude_patterns = self.sync_config.get('yaml_exclude_patterns', [
-                    'password', 'secret', 'key', 'token', 'credential', 'auth',
+                    'password', 'secret', 'token', 'credential', 'auth',
                     'private', 'remote_servers'  # 排除远程服务器配置避免循环
                 ])
 
@@ -307,6 +317,7 @@ class RemoteKeywordClient:
                     for key in sync_keys:
                         if key in yaml_data:
                             variables[key] = yaml_data[key]
+                            print(f"传递指定YAML变量: {key}")
                 else:
                     # 传递所有YAML变量，但排除敏感信息
                     for key, value in yaml_data.items():
@@ -323,7 +334,8 @@ class RemoteKeywordClient:
                         if not should_exclude and isinstance(value, str):
                             value_lower = value.lower()
                             for pattern in exclude_patterns:
-                                if pattern.lower() in value_lower and len(value) < 100:  # 只检查短字符串
+                                if (pattern.lower() in value_lower and
+                                        len(value) < 100):  # 只检查短字符串
                                     should_exclude = True
                                     break
 
@@ -336,9 +348,9 @@ class RemoteKeywordClient:
 
         except Exception as e:
             logger.warning(f"收集YAML变量失败: {str(e)}")
+            print(f"收集YAML变量失败: {str(e)}")
 
         return variables
-
 
 
 # 远程关键字客户端管理器
@@ -348,7 +360,8 @@ class RemoteKeywordManager:
     def __init__(self):
         self.clients = {}  # 别名 -> 客户端实例
 
-    def register_remote_server(self, url, alias, api_key=None, sync_config=None):
+    def register_remote_server(self, url, alias, api_key=None,
+                               sync_config=None):
         """注册远程关键字服务器
 
         Args:
@@ -361,7 +374,8 @@ class RemoteKeywordManager:
             bool: 是否成功连接
         """
         print(f"RemoteKeywordManager: 正在注册远程服务器 {url} 别名 {alias}")
-        client = RemoteKeywordClient(url=url, api_key=api_key, alias=alias, sync_config=sync_config)
+        client = RemoteKeywordClient(url=url, api_key=api_key, alias=alias,
+                                     sync_config=sync_config)
         success = client.connect()
 
         if success:
@@ -392,7 +406,6 @@ class RemoteKeywordManager:
             raise Exception(f"未找到别名为 {alias} 的远程服务器")
 
         return client._execute_remote_keyword(name=keyword_name, **kwargs)
-
 
 
 # 创建全局远程关键字管理器实例

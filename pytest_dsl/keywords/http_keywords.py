@@ -260,6 +260,24 @@ def http_request(context, **kwargs):
     assert_retry_count = kwargs.get('assert_retry_count')
     assert_retry_interval = kwargs.get('assert_retry_interval')
 
+    # 添加调试信息，检查客户端配置是否可用
+    print(f"🌐 HTTP请求 - 客户端: {client_name}")
+    
+    # 检查YAML变量中的http_clients配置（现在包含同步的变量）
+    http_clients_config = yaml_vars.get_variable("http_clients")
+    if http_clients_config:
+        print(f"✓ 找到http_clients配置，包含 {len(http_clients_config)} 个客户端")
+        if client_name in http_clients_config:
+            print(f"✓ 找到客户端 '{client_name}' 的配置")
+            client_config = http_clients_config[client_name]
+            print(f"  - base_url: {client_config.get('base_url', 'N/A')}")
+            print(f"  - timeout: {client_config.get('timeout', 'N/A')}")
+        else:
+            print(f"⚠️ 未找到客户端 '{client_name}' 的配置")
+            print(f"  可用客户端: {list(http_clients_config.keys())}")
+    else:
+        print("⚠️ 未找到http_clients配置")
+
     with allure.step(f"发送HTTP请求 (客户端: {client_name}{', 会话: ' + session_name if session_name else ''})"):
         # 处理模板
         if template_name:
