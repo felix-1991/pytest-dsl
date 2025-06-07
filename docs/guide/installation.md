@@ -92,13 +92,13 @@ UI扩展提供了丰富的浏览器自动化关键字，支持：
 - 断言验证
 - 截图和调试
 
-### VS Code扩展插件
+### VSCode扩展插件
 
-为了获得最佳的开发体验，强烈推荐安装VS Code扩展：
+为了获得最佳的开发体验，强烈推荐安装VSCode扩展：
 
 #### 安装方式一：扩展商店
 
-1. 打开VS Code
+1. 打开VSCode
 2. 按 `Ctrl+Shift+X`（Windows/Linux）或 `Cmd+Shift+X`（Mac）
 3. 搜索 `pytest-dsl`
 4. 点击**安装**
@@ -106,18 +106,38 @@ UI扩展提供了丰富的浏览器自动化关键字，支持：
 #### 安装方式二：命令行
 
 ```bash
-code --install-extension felix-1991.pytest-dsl-support
+code --install-extension felix-1991.pytest-dsl-vscode-extension
 ```
 
-#### 扩展功能
+#### 扩展功能特性
 
-VS Code扩展提供以下功能：
-- **🎨 语法高亮**: 完整的DSL语法高亮
-- **💡 智能补全**: 关键字和参数自动补全
-- **🔍 错误检查**: 实时语法和语义错误检测
-- **📖 悬停提示**: 关键字文档和参数说明
-- **🔗 定义跳转**: 快速跳转到定义
-- **📁 文件图标**: DSL文件专用图标
+VSCode扩展提供以下强大功能：
+
+##### 📊 智能关键字管理
+- **关键字浏览器** - 侧边栏显示所有可用关键字
+- **分类管理** - 按类型自动分组（内置、自定义、库、用户、收藏夹）
+- **智能搜索** - 支持名称、参数、说明的实时模糊搜索
+- **收藏夹功能** - 标记常用关键字，快速访问
+- **树状结构** - 清晰的层级展示，支持展开/折叠
+
+##### 🔍 智能编辑功能
+- **语法高亮** - 完整的pytest-DSL语法高亮支持
+- **智能补全** - 基于关键字库的自动补全和参数提示
+- **参数模板** - 自动生成带参数的关键字模板
+- **快捷键支持** - 高效的键盘操作和快捷插入
+- **错误检查** - 实时语法和语义错误检测
+- **悬停提示** - 关键字文档和参数说明
+
+##### ⚙️ 便捷配置管理
+- **关键字文件生成** - 自动生成和管理关键字JSON文件
+- **实时缓存** - 智能缓存减少重复加载
+- **可视化编辑** - 图形化界面编辑关键字定义
+- **配置同步** - 支持工作区和用户级别配置
+
+##### 🎮 交互操作支持
+- **拖拽操作** - 支持从关键字浏览器拖拽到编辑器
+- **右键菜单** - 丰富的上下文菜单操作
+- **快速操作** - 一键插入、复制、收藏等功能
 
 ## 验证安装
 
@@ -127,13 +147,13 @@ VS Code扩展提供以下功能：
 
 ```bash
 # 检查版本
-pytest-dsl --version
+pip show pytest-dsl
 
 # 查看帮助信息
 pytest-dsl --help
 
 # 查看可用关键字
-pytest-dsl-list --format text
+pytest-dsl-list
 ```
 
 如果看到版本信息和帮助内容，说明核心框架安装成功！
@@ -155,24 +175,25 @@ echo '[打开浏览器], 浏览器类型: "chrome", 无头模式: true
 pytest-dsl ui_test.dsl
 ```
 
-### VS Code扩展验证
+### VSCode扩展验证
 
-验证VS Code扩展是否正确安装：
+验证VSCode扩展是否正确安装：
 
-1. 在VS Code中创建一个`.dsl`文件
-2. 输入 `[` 应该看到关键字补全提示
-3. 检查是否有语法高亮
-4. 文件图标是否显示为pytest-dsl专用图标
+1. **关键字浏览器** - 在VSCode侧边栏应该看到pytest-dsl关键字浏览器面板
+2. **语法高亮** - 创建一个`.dsl`文件，应该有完整的语法高亮
+3. **智能补全** - 输入 `[` 应该看到关键字补全提示
+4. **文件图标** - DSL文件应该显示专用图标
+5. **搜索功能** - 在关键字浏览器中测试搜索功能
 
-如果以上功能正常，说明VS Code扩展安装成功！
+如果以上功能正常，说明VSCode扩展安装成功！
 
 ## 开发环境配置
 
 ### IDE配置
 
-#### VS Code配置
+#### VSCode配置
 
-除了前面提到的pytest-dsl专用扩展外，还推荐安装以下VS Code扩展：
+除了前面提到的pytest-dsl专用扩展外，还推荐安装以下VSCode扩展：
 
 1. **pytest-dsl** - pytest-dsl语法支持（必装）
 2. **Python** - Python语言支持
@@ -194,15 +215,25 @@ pytest-dsl ui_test.dsl
     "python.linting.flake8Enabled": true,
     
     // pytest-dsl扩展配置
-    "pytest-dsl.validation.enabled": true,
+    "pytest-dsl.keywordBrowser.enabled": true,
+    "pytest-dsl.keywordBrowser.autoRefresh": true,
+    "pytest-dsl.keywordBrowser.showCategories": true,
+    "pytest-dsl.search.enabled": true,
+    "pytest-dsl.search.fuzzyMatch": true,
+    "pytest-dsl.search.searchInDescription": true,
+    "pytest-dsl.search.searchInParameters": true,
     "pytest-dsl.completion.enabled": true,
+    "pytest-dsl.completion.showParameterHints": true,
     "pytest-dsl.hover.enabled": true,
+    "pytest-dsl.hover.showDocumentation": true,
     "pytest-dsl.format.indentSize": 4,
-    "pytest-dsl.format.useSpaces": true
+    "pytest-dsl.format.useSpaces": true,
+    "pytest-dsl.cache.enabled": true,
+    "pytest-dsl.cache.autoRefreshOnFileChange": true
 }
 ```
 
-#### VS Code工作区配置
+#### VSCode工作区配置
 
 创建`.vscode/launch.json`用于调试：
 
@@ -261,7 +292,7 @@ source pytest-dsl-env/bin/activate
 pip install pytest-dsl
 
 # 验证安装
-pytest-dsl --version
+pip show pytest-dsl
 ```
 
 ## 项目初始化
@@ -472,6 +503,30 @@ pyenv install 3.9.0
 pyenv global 3.9.0
 ```
 
+### VSCode扩展问题
+
+#### 问题1：扩展无法加载关键字
+
+**解决方案**：
+1. 检查是否正确安装了pytest-dsl核心包
+2. 重启VSCode
+3. 检查扩展设置中的关键字文件路径
+4. 手动刷新关键字浏览器
+
+#### 问题2：智能补全不工作
+
+**解决方案**：
+1. 确保文件扩展名为`.dsl`
+2. 检查VSCode设置中的文件关联配置
+3. 重新加载窗口（Ctrl+Shift+P → "Developer: Reload Window"）
+
+#### 问题3：关键字浏览器不显示
+
+**解决方案**：
+1. 检查侧边栏是否启用了pytest-dsl面板
+2. 在命令面板中搜索"pytest-dsl"相关命令
+3. 检查扩展是否正确启用
+
 ### 配置问题
 
 #### 问题1：命令找不到
@@ -491,171 +546,3 @@ pip show pytest-dsl
 # 添加到PATH（如果需要）
 export PATH=$PATH:~/.local/bin
 ```
-
-#### 问题2：关键字加载失败
-
-```bash
-# 错误信息：No keywords found
-```
-
-**解决方案**：
-```bash
-# 检查安装完整性
-pip install --force-reinstall pytest-dsl
-
-# 验证关键字加载
-pytest-dsl-list --format text
-```
-
-#### 问题3：UI扩展问题
-
-```bash
-# 错误信息：No module named 'selenium' 或浏览器驱动错误
-```
-
-**解决方案**：
-```bash
-# 重新安装UI扩展
-pip install --force-reinstall pytest-dsl-ui
-
-# 安装浏览器驱动（如果需要）
-# Chrome
-pip install chromedriver-autoinstaller
-
-# Firefox
-pip install geckodriver-autoinstaller
-```
-
-#### 问题4：VS Code扩展不工作
-
-```bash
-# 症状：没有语法高亮或智能补全
-```
-
-**解决方案**：
-1. 确认扩展已正确安装：
-   - 打开扩展面板（Ctrl+Shift+X）
-   - 搜索"pytest-dsl"确认已安装
-
-2. 检查文件关联：
-   ```json
-   {
-     "files.associations": {
-       "*.dsl": "pytest-dsl",
-       "*.pytest-dsl": "pytest-dsl"
-     }
-   }
-   ```
-
-3. 重启VS Code语言服务器：
-   - 按 `Ctrl+Shift+P`
-   - 运行 "Developer: Reload Window"
-
-### 运行问题
-
-#### 问题1：YAML配置文件错误
-
-```bash
-# 错误信息：YAML parsing error
-```
-
-**解决方案**：
-```bash
-# 检查YAML语法
-python -c "import yaml; yaml.safe_load(open('config/dev.yaml'))"
-
-# 使用在线YAML验证器检查语法
-```
-
-#### 问题2：网络连接问题
-
-```bash
-# 错误信息：Connection timeout
-```
-
-**解决方案**：
-```yaml
-# 在配置文件中增加超时时间
-http_clients:
-  default:
-    timeout: 60  # 增加超时时间
-    retries: 3   # 增加重试次数
-```
-
-## 高级配置
-
-### 环境变量配置
-
-设置常用的环境变量：
-
-```bash
-# Linux/macOS
-export PYTEST_DSL_CONFIG_DIR="./config"
-export PYTEST_DSL_LOG_LEVEL="INFO"
-
-# Windows
-set PYTEST_DSL_CONFIG_DIR=./config
-set PYTEST_DSL_LOG_LEVEL=INFO
-```
-
-### 日志配置
-
-创建`logging.yaml`：
-
-```yaml
-version: 1
-formatters:
-  default:
-    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-handlers:
-  console:
-    class: logging.StreamHandler
-    level: INFO
-    formatter: default
-  file:
-    class: logging.FileHandler
-    filename: logs/pytest-dsl.log
-    level: DEBUG
-    formatter: default
-loggers:
-  pytest_dsl:
-    level: DEBUG
-    handlers: [console, file]
-    propagate: false
-root:
-  level: INFO
-  handlers: [console]
-```
-
-### 性能优化配置
-
-对于大型项目，可以进行以下优化：
-
-```yaml
-# config/performance.yaml
-performance:
-  # 并发配置
-  max_workers: 4
-  
-  # 缓存配置
-  cache_enabled: true
-  cache_size: 1000
-  
-  # 超时配置
-  default_timeout: 30
-  max_timeout: 300
-  
-  # 重试配置
-  default_retries: 3
-  max_retries: 10
-```
-
-## 下一步
-
-现在您已经成功安装和配置了pytest-dsl，可以继续学习：
-
-1. **[第一个测试](./first-test)** - 创建更复杂的测试用例
-2. **[DSL语法基础](./dsl-syntax)** - 深入学习DSL语法
-3. **[HTTP API测试](./http-testing)** - 开始API测试之旅
-
-如果在安装过程中遇到问题，请在[GitHub Issues](https://github.com/felix-1991/pytest-dsl/issues)中寻求帮助。 

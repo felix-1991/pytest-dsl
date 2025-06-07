@@ -1,14 +1,29 @@
 {
   "summary": {
-    "total_count": 19,
+    "total_count": 25,
     "category_counts": {
-      "builtin": 19
+      "builtin": 19,
+      "project_custom": 6
+    },
+    "source_counts": {
+      "builtin:pytest-dsl内置": 19,
+      "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/pytest_dsl/examples/custom/resources/common_utils.resource": 2,
+      "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/examples/readme_validation/auth.resource": 2,
+      "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/pytest_dsl/examples/custom/resources/base_utils.resource": 1,
+      "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/pytest_dsl/examples/custom/resources/advanced_utils.resource": 1
     }
   },
   "keywords": [
     {
       "name": "HTTP请求",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.http_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "客户端",
@@ -60,6 +75,13 @@
     {
       "name": "JSON提取",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "JSON数据",
@@ -82,6 +104,13 @@
     {
       "name": "JSON断言",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "JSON数据",
@@ -116,6 +145,13 @@
     {
       "name": "删除全局变量",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.global_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "变量名",
@@ -128,6 +164,13 @@
     {
       "name": "字符串操作",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "操作",
@@ -158,6 +201,13 @@
     {
       "name": "打印",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "内容",
@@ -169,6 +219,13 @@
     {
       "name": "执行命令",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "命令",
@@ -191,8 +248,41 @@
       "documentation": "执行系统命令\n\n    Args:\n        command: 要执行的系统命令\n        timeout: 命令执行超时时间（秒）\n        capture_output: 是否捕获命令输出\n\n    Returns:\n        dict: 包含返回码、标准输出和标准错误的字典"
     },
     {
+      "name": "拼接字符串",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "前缀",
+          "mapping": "前缀",
+          "description": "自定义关键字参数 前缀"
+        },
+        {
+          "name": "后缀",
+          "mapping": "后缀",
+          "description": "自定义关键字参数 后缀",
+          "default": "我是默认值哦"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/pytest_dsl/examples/custom/resources/common_utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
       "name": "数据比较",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "实际值",
@@ -222,6 +312,13 @@
     {
       "name": "断言",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "条件",
@@ -240,6 +337,13 @@
     {
       "name": "日志",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "级别",
@@ -256,14 +360,80 @@
       "documentation": "记录日志\n\n    Args:\n        level: 日志级别\n        message: 日志消息内容"
     },
     {
+      "name": "格式化消息",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "消息模板",
+          "mapping": "消息模板",
+          "description": "自定义关键字参数 消息模板"
+        },
+        {
+          "name": "变量",
+          "mapping": "变量",
+          "description": "自定义关键字参数 变量",
+          "default": "aaaaaaaaa"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/pytest_dsl/examples/custom/resources/base_utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
       "name": "清除所有全局变量",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.global_keywords",
+        "plugin_module": ""
+      },
       "parameters": [],
       "documentation": "清除所有全局变量"
     },
     {
+      "name": "生成报告消息",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "标题",
+          "mapping": "标题",
+          "description": "自定义关键字参数 标题"
+        },
+        {
+          "name": "内容",
+          "mapping": "内容",
+          "description": "自定义关键字参数 内容",
+          "default": "预置菜"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/pytest_dsl/examples/custom/resources/advanced_utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
       "name": "生成随机字符串",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "长度",
@@ -283,6 +453,13 @@
     {
       "name": "生成随机数",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "最小值",
@@ -306,8 +483,67 @@
       "documentation": "生成指定范围内的随机数\n\n    Args:\n        min: 随机数的最小值\n        max: 随机数的最大值\n        decimals: 小数位数，0表示整数\n\n    Returns:\n        int/float: 生成的随机数"
     },
     {
+      "name": "用户登出",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "客户端",
+          "mapping": "客户端",
+          "description": "自定义关键字参数 客户端",
+          "default": "default"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/readme_validation/auth.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "用户登录",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "用户名",
+          "mapping": "用户名",
+          "description": "自定义关键字参数 用户名"
+        },
+        {
+          "name": "密码",
+          "mapping": "密码",
+          "description": "自定义关键字参数 密码"
+        },
+        {
+          "name": "客户端",
+          "mapping": "客户端",
+          "description": "自定义关键字参数 客户端",
+          "default": "default"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/readme_validation/auth.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
       "name": "等待",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "秒数",
@@ -321,6 +557,13 @@
     {
       "name": "类型断言",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "值",
@@ -344,6 +587,13 @@
     {
       "name": "获取全局变量",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.global_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "变量名",
@@ -356,6 +606,13 @@
     {
       "name": "获取当前时间",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "格式",
@@ -373,8 +630,35 @@
       "documentation": "获取当前时间\n\n    Args:\n        format: 时间格式，如果设置为'timestamp'则返回时间戳\n        timezone: 时区，默认为Asia/Shanghai\n\n    Returns:\n        str/float: 格式化的时间字符串或时间戳"
     },
     {
+      "name": "计算长度",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "文本",
+          "mapping": "文本",
+          "description": "自定义关键字参数 文本"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/pytest_dsl/examples/custom/resources/common_utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
       "name": "设置全局变量",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.global_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "变量名",
@@ -392,6 +676,13 @@
     {
       "name": "返回结果",
       "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
       "parameters": [
         {
           "name": "结果",

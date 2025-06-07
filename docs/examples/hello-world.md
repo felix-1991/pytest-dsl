@@ -188,8 +188,11 @@ hobbies = ["编程", "阅读", "运动"]
 [打印], 内容: "姓名: ${name}, 年龄: ${age}"
 [打印], 内容: "是学生: ${is_student}"
 
-for hobby in ${hobbies} do
-    [打印], 内容: "爱好: ${hobby}"
+# 注意：当前不支持 ${len(hobbies)} 语法，需要预定义长度
+hobbies_length = 3
+
+for i in range(0, ${hobbies_length}) do
+    [打印], 内容: "爱好: ${hobbies[i]}"
 end
 ```
 

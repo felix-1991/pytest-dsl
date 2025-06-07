@@ -1006,7 +1006,7 @@ jobs:
 
     - name: Run tests
       run: |
-        pytest-dsl tests/ --yaml-vars config/ci.yaml --alluredir=allure-results
+        pytest test_runner.py --alluredir=allure-results
 
     - name: Generate report
       uses: simple-elf/allure-report-action@master
@@ -1065,7 +1065,7 @@ CMD ["pytest-dsl", "tests/", "--yaml-vars", "config/prod.yaml"]
 ### 适用场景
 
 - **API接口测试** - 完整的HTTP测试支持
-- **微服务测试** - 分布式测试能力
+- **分布式测试** - 跨服务调用、服务间通信和分布式系统测试
 - **回归测试** - 数据驱动和批量执行
 - **集成测试** - 跨系统测试协调
 - **性能测试** - 结合其他工具进行性能测试

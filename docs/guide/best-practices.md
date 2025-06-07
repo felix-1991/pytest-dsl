@@ -596,7 +596,7 @@ pytest-dsl tests/api/ --parallel 4 --html-report reports/api_report.html
 @tags: ["parallel_safe"]
 
 # 使用独特的测试数据避免冲突
-测试时间戳 = [获取当前时间戳]
+测试时间戳 = [获取当前时间]
 独特用户名 = "test_user_${测试时间戳}_${random()}"
 
 用户数据 = {
@@ -649,12 +649,12 @@ end
 @name: "性能监控工具"
 
 function 监控API性能 (API名称, 请求配置) do
-    开始时间 = [获取当前时间戳]
+    开始时间 = [获取当前时间]
     
     # 执行API请求
     [HTTP请求], 客户端: "default", 配置: ${请求配置}
     
-    结束时间 = [获取当前时间戳] 
+    结束时间 = [获取当前时间] 
     响应时间 = ${结束时间} - ${开始时间}
     
     # 记录性能数据

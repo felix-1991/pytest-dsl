@@ -511,8 +511,8 @@ A: 检查以下几点：
 4. 查看服务器启动日志
 
 ```bash
-# 启用调试模式查看详细日志
-pytest-dsl-server --debug --extensions extensions/
+# 启动服务器并查看日志
+pytest-dsl-server --extensions extensions/
 ```
 
 #### Q: Hook不执行

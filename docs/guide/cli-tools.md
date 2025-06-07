@@ -325,7 +325,10 @@ pytest-dsl-server --host 0.0.0.0 --port 8270
 pytest-dsl-server --host 0.0.0.0 --port 8270 --api-key your_secret_key
 
 # 加载扩展
-pytest-dsl-server --extensions extensions/ --yaml-vars config.yaml
+pytest-dsl-server --extensions extensions/
+
+# 加载多个扩展
+pytest-dsl-server --extensions "ext1.py,ext2.py,extensions/"
 ```
 
 详细使用方法请参考 [远程关键字指南](./remote-keywords)。

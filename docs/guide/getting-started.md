@@ -246,7 +246,7 @@ pytest-dsl my-tests/ --yaml-vars config.yaml
 pytest-dsl my-tests/api/ --yaml-vars config.yaml
 
 # 运行测试并生成报告
-pytest-dsl my-tests/ --yaml-vars config.yaml --alluredir=reports
+pytest-dsl my-tests/ --yaml-vars config.yaml
 ```
 
 ## 常用命令速查
@@ -255,22 +255,27 @@ pytest-dsl my-tests/ --yaml-vars config.yaml --alluredir=reports
 # 基本运行
 pytest-dsl test.dsl                    # 运行单个文件
 pytest-dsl tests/                      # 运行目录
-pytest-dsl tests/ -v                   # 详细输出
 
 # 使用配置
 pytest-dsl tests/ --yaml-vars config.yaml
+pytest-dsl tests/ --yaml-vars-dir config/
 
-# 生成报告
-pytest-dsl tests/ --alluredir=reports  # Allure报告
-pytest-dsl tests/ --html=report.html   # HTML报告
+# 查看关键字
+pytest-dsl-list                       # 查看所有关键字
+pytest-dsl-list --format text         # 文本格式输出
+pytest-dsl-list --format html         # HTML格式输出
+pytest-dsl-list --filter "HTTP"       # 过滤关键字
+pytest-dsl-list --category builtin    # 查看内置关键字
 
-# 过滤测试
-pytest-dsl tests/ -k "api"             # 运行名称包含"api"的测试
-pytest-dsl tests/ --tags "smoke"       # 运行标记为"smoke"的测试
+# 远程服务器
+pytest-dsl-server                     # 启动远程服务器
+pytest-dsl-server --host 0.0.0.0 --port 8270  # 指定地址和端口
 
-# 调试模式
-pytest-dsl tests/ --debug              # 启用调试输出
-pytest-dsl tests/ -s                   # 显示打印输出
+# 使用pytest运行（支持更多功能）
+pytest test_runner.py -v              # 详细输出
+pytest test_runner.py --alluredir=reports  # Allure报告
+pytest test_runner.py --html=report.html   # HTML报告
+pytest test_runner.py -k "api"        # 过滤测试
 ```
 
 ## 下一步学习
@@ -299,15 +304,16 @@ pytest-dsl tests/ -s                   # 显示打印输出
 A: 使用帮助命令：
 
 ```bash
-pytest-dsl --list-keywords
+pytest-dsl-list
 ```
 
 ### Q: 如何调试DSL文件？
 
-A: 使用调试模式：
+A: 使用详细输出模式：
 
 ```bash
-pytest-dsl test.dsl --debug -s
+# 使用pytest运行获得详细输出
+pytest test_runner.py -v -s
 ```
 
 ### Q: 如何在团队中共享自定义关键字？

@@ -44,105 +44,118 @@ user = {
 
 # ===== 变量使用演示 =====
 
-[Print], 欢迎消息: ${message}
-[Print], 用户姓名: ${user_name}
-[Print], 年龄: ${age}
-[Print], 价格: ${price}
-[Print], 是否活跃: ${is_active}
+[打印], 内容: 欢迎消息: ${message}
+[打印], 内容: 用户姓名: ${user_name}
+[打印], 内容: 年龄: ${age}
+[打印], 内容: 价格: ${price}
+[打印], 内容: 是否活跃: ${is_active}
 
 # 访问对象属性
-[Print], 用户对象 - 姓名: ${user.name}
-[Print], 用户对象 - 年龄: ${user.age}
-[Print], 用户对象 - 邮箱: ${user.email}
+[打印], 内容: 用户对象 - 姓名: ${user.name}
+[打印], 内容: 用户对象 - 年龄: ${user.age}
+[打印], 内容: 用户对象 - 邮箱: ${user.email}
 
 # 访问数组元素
-[Print], 第一个颜色: ${colors[0]}
-[Print], 第二个颜色: ${colors[1]}
-[Print], 第一个数字: ${numbers[0]}
+[打印], 内容: 第一个颜色: ${colors[0]}
+[打印], 内容: 第二个颜色: ${colors[1]}
+[打印], 内容: 第一个数字: ${numbers[0]}
 
 # ===== 条件判断 =====
 
 # 简单if判断
-if ${age} >= 18:
-    [Print], ${user_name}已成年，年龄: ${age}
-else:
-    [Print], ${user_name}未成年，年龄: ${age}
+if ${age} >= 18 do
+    [打印], 内容: ${user_name}已成年，年龄: ${age}
+else
+    [打印], 内容: ${user_name}未成年，年龄: ${age}
+end
 
 # 多条件判断
-if ${age} < 18:
-    [Print], 年龄段: 未成年
-elif ${age} < 60:
-    [Print], 年龄段: 成年人
-else:
-    [Print], 年龄段: 老年人
+if ${age} < 18 do
+    [打印], 内容: 年龄段: 未成年
+elif ${age} < 60 do
+    [打印], 内容: 年龄段: 成年人
+else
+    [打印], 内容: 年龄段: 老年人
+end
 
 # 布尔变量判断
-if ${is_active}:
-    [Print], 用户状态: 活跃
-else:
-    [Print], 用户状态: 非活跃
+if ${is_active} do
+    [打印], 内容: 用户状态: 活跃
+else
+    [打印], 内容: 用户状态: 非活跃
+end
 
 # 复合条件判断
-if ${age} >= 18 and ${is_active}:
-    [Print], 符合条件: 成年且活跃的用户
-else:
-    [Print], 不符合条件: 未成年或非活跃用户
+if ${age} >= 18 and ${is_active} do
+    [打印], 内容: 符合条件: 成年且活跃的用户
+else
+    [打印], 内容: 不符合条件: 未成年或非活跃用户
+end
 
 # ===== 循环结构 =====
 
-# 遍历数组
-[Print], 遍历颜色列表:
-for color in ${colors}:
-    [Print], 颜色: ${color}
+# 范围循环 - 当前支持的语法
+[打印], 内容: 范围循环 (0-4):
+for i in range(0, 5) do
+    [打印], 内容: 当前索引: ${i}
+end
 
-# 遍历数字
-[Print], 遍历数字列表:
-for num in ${numbers}:
-    [Print], 数字: ${num}
+# 注意：由于当前不支持 ${len(array)} 语法，
+# 需要预先定义数组长度或使用固定范围
 
-# 带索引的循环
-[Print], 带索引的循环:
-for i, color in enumerate(${colors}):
-    [Print], 索引 ${i}: ${color}
+# 预定义数组长度
+colors_length = 3
+numbers_length = 5
 
-# 范围循环
-[Print], 范围循环 (0-4):
-for i in range(5):
-    [Print], 当前索引: ${i}
+# 模拟遍历数组 - 使用预定义长度
+[打印], 内容: 遍历颜色列表:
+for i in range(0, ${colors_length}) do
+    [打印], 内容: 颜色: ${colors[i]}
+end
 
-# 条件循环
-[Print], 条件循环演示:
-while ${count} < 3:
-    count = ${count} + 1
-    [Print], 计数器: ${count}
+# 模拟遍历数字数组
+[打印], 内容: 遍历数字列表:
+for i in range(0, ${numbers_length}) do
+    [打印], 内容: 数字: ${numbers[i]}
+end
+
+# 注意：当前版本暂不支持以下语法：
+# - for item in array (直接遍历数组)
+# - for i, item in enumerate(array) (带索引遍历)
+# - while 循环
+# 这些功能将在后续版本中添加
 
 # ===== 数据操作 =====
 
 # 字符串操作
 full_message = "${user_name}的年龄是${age}岁"
-[Print], 拼接字符串: ${full_message}
+[打印], 内容: 拼接字符串: ${full_message}
 
-# 数组操作
-[Print], 颜色总数: ${len(colors)}
-[Print], 数字总和: ${sum(numbers)}
+# 数组操作 - 注意：当前不支持内置函数调用
+# 需要手动计算或预定义值
+[打印], 内容: 颜色总数: ${colors_length}
+# [打印], 内容: 数字总和: ${sum(numbers)}  # 不支持
 
-# 数据类型转换
-age_str = str(${age})
-price_int = int(${price})
-[Print], 年龄字符串: ${age_str}
-[Print], 价格整数: ${price_int}
+# 数据类型转换 - 注意：当前不支持函数调用语法
+# age_str = str(${age})  # 不支持
+# price_int = int(${price})  # 不支持
+# 需要使用字符串操作关键字或其他方式进行转换
+[字符串操作], 操作: "concat", 字符串: "", 参数1: ${age}, 参数2: ""
 
 # ===== 嵌套结构演示 =====
 
 # 嵌套if-for循环
-[Print], 嵌套结构演示:
-if ${len(colors)} > 0:
-    [Print], 开始遍历颜色:
-    for color in ${colors}:
-        if ${color} == "红色":
-            [Print], 找到红色!
-        else:
-            [Print], 其他颜色: ${color}
+[打印], 内容: 嵌套结构演示:
+if ${colors_length} > 0 do
+    [打印], 内容: 开始遍历颜色:
+    for i in range(0, ${colors_length}) do
+        if ${colors[i]} == "红色" do
+            [打印], 内容: 找到红色!
+        else
+            [打印], 内容: 其他颜色: ${colors[i]}
+        end
+    end
+end
 
 # 复杂数据结构
 products = [
@@ -151,37 +164,42 @@ products = [
     {"name": "面包", "price": 2.0, "category": "主食"}
 ]
 
-[Print], 产品信息:
-for product in ${products}:
-    [Print], 产品: ${product.name}, 价格: ${product.price}, 类别: ${product.category}
+# 预定义产品数组长度
+products_length = 3
+
+[打印], 内容: 产品信息:
+for i in range(0, ${products_length}) do
+    [打印], 内容: 产品: ${products[i].name}, 价格: ${products[i].price}, 类别: ${products[i].category}
     
-    if ${product.price} > 4.0:
-        [Print], ${product.name} 价格较高
-    else:
-        [Print], ${product.name} 价格适中
+    if ${products[i].price} > 4.0 do
+        [打印], 内容: ${products[i].name} 价格较高
+    else
+        [打印], 内容: ${products[i].name} 价格适中
+    end
+end
 
 # ===== 断言演示 =====
 
 # 基本断言
-[Should Be Equal], ${age}, 25
-[Should Be Equal], ${user_name}, "张三"
-[Should Be True], ${is_active}
-[Should Be False], ${debug_mode}
+[数据比较], 实际值: ${age}, 预期值: 25
+[数据比较], 实际值: ${user_name}, 预期值: "张三"
+[断言], 条件: "${is_active} == True"
+[断言], 条件: "${debug_mode} == False"
 
-# 数组断言
-[Should Contain], ${colors}, "红色"
-[Should Not Contain], ${colors}, "黄色"
+# 数组断言 - 使用断言关键字检查数组内容
+[断言], 条件: "'红色' in ${colors}"
+[断言], 条件: "'黄色' not in ${colors}"
 
 # 数字比较断言
-[Should Be True], ${age} >= 18
-[Should Be True], ${price} > 0
-[Should Be Equal], ${len(numbers)}, 5
+[断言], 条件: "${age} >= 18"
+[断言], 条件: "${price} > 0"
+[数据比较], 实际值: ${numbers_length}, 预期值: 5
 
-[Print], 所有断言都通过了！
+[打印], 内容: 所有断言都通过了！
 
 # ===== 完成提示 =====
-[Print], 基本语法演示完成！
-[Print], 您已经掌握了pytest-dsl的核心语法特性。
+[打印], 内容: 基本语法演示完成！
+[打印], 内容: 您已经掌握了pytest-dsl的核心语法特性。
 ```
 
 ## 运行方式
@@ -267,40 +285,54 @@ name = "世界"
 message = "你好，${name}!"  # 结果：你好，世界!
 ```
 
+**当前支持的占位符语法：**
+- `${variable}` - 简单变量引用
+- `${obj.property}` - 对象属性访问
+- `${array[0]}` - 数组索引访问
+- `${obj[0].prop}` - 混合访问
+
+**当前不支持的语法：**
+- `${len(array)}` - 函数调用
+- `${count + 1}` - 算术运算
+- `${age >= 18}` - 比较运算（需要在条件表达式中使用）
+
 ### 3. 条件判断
 
 支持完整的条件判断语法：
 
 ```python
-if condition:
+if condition do
     # 执行代码
-elif another_condition:
+elif another_condition do
     # 执行代码
-else:
+else
     # 执行代码
+end
 ```
 
 ### 4. 循环结构
 
-支持多种循环方式：
+当前支持的循环方式：
 
 ```python
-# for循环
-for item in ${array}:
-    # 处理每个item
-
-# 带索引的循环
-for i, item in enumerate(${array}):
-    # 处理item和索引
-
-# 范围循环
-for i in range(10):
-    # 执行10次
-
-# while循环
-while ${condition}:
+# 范围循环（当前唯一支持的循环语法）
+for i in range(start, end) do
     # 执行代码
+end
+
+# 模拟数组遍历（使用预定义长度）
+array_length = 5  # 需要预先定义数组长度
+for i in range(0, ${array_length}) do
+    # 使用 ${array[i]} 访问元素
+end
 ```
+
+**注意：** 以下语法暂不支持，将在后续版本中添加：
+- `for item in array` - 直接遍历数组
+- `for i, item in enumerate(array)` - 带索引遍历  
+- `while condition` - while循环
+- `${len(array)}` - 占位符内的函数调用
+- `${expr + 1}` - 占位符内的算术运算
 
 ### 5. 数据访问
 

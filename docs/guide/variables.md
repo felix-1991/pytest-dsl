@@ -130,7 +130,9 @@ matrix = [[1, 2], [3, 4], [5, 6]]
 # 列表操作
 first_item = numbers[0]      # 1
 last_item = numbers[-1]      # 5
-list_length = len(numbers)   # 5
+# list_length = len(numbers)   # 不支持：函数调用
+# 需要预定义数组长度或使用其他方式获取长度
+list_length = 5              # 手动指定长度
 ```
 
 ### 字典 (Dictionary)
@@ -313,7 +315,8 @@ full_name = first_name + last_name
 # 列表操作
 numbers = [1, 2, 3]
 first_number = numbers[0]
-list_size = len(numbers)
+# list_size = len(numbers)  # 不支持：函数调用
+list_size = 3  # 手动指定长度
 ```
 
 ### 条件赋值
@@ -335,18 +338,23 @@ end
 
 ## 数据类型转换
 
-### 自动类型转换
+### 类型转换限制
 
 ```python
-# pytest-dsl会自动进行合理的类型转换
+# 注意：当前不支持直接的类型转换函数调用
+# number_val = int(number_str)    # 不支持
+# float_val = float(float_str)    # 不支持
+# bool_val = bool(bool_str)       # 不支持
+
+# 需要手动指定类型或使用其他方式
 number_str = "123"
-number_val = int(number_str)    # 转换为整数
+number_val = 123    # 直接赋值为数字类型
 
 float_str = "3.14"
-float_val = float(float_str)    # 转换为浮点数
+float_val = 3.14    # 直接赋值为浮点类型
 
 bool_str = "True"
-bool_val = bool(bool_str)       # 转换为布尔值
+bool_val = True     # 直接赋值为布尔类型
 ```
 
 ### 类型检查
@@ -539,8 +547,9 @@ end
 user_data = {"name": "张三", "age": 30}
 [打印], 内容: "用户数据: ${user_data}"
 
-# 打印变量类型
-[打印], 内容: "变量类型: ${type(user_data)}"
+# 打印变量类型 - 注意：当前不支持 type() 函数调用
+# [打印], 内容: "变量类型: ${type(user_data)}"  # 不支持
+[打印], 内容: "变量类型: 字典"  # 手动指定类型
 ```
 
 ### 2. 条件调试

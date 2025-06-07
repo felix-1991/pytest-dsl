@@ -874,7 +874,8 @@ user_id = 123
 A: 使用调试模式运行：
 
 ```bash
-pytest-dsl test.dsl --debug -s
+# 使用pytest运行获得详细输出
+pytest test_runner.py -v -s
 ```
 
 ## 下一步

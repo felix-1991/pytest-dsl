@@ -59,6 +59,7 @@ pytest-dsl-server [OPTIONS]
   --host TEXT        服务器监听地址 (默认: localhost)
   --port INTEGER     服务器监听端口 (默认: 8270)
   --api-key TEXT     API密钥，用于客户端认证
+  --extensions TEXT  扩展模块路径，多个路径用逗号分隔
   --help            显示帮助信息
 ```
 
@@ -79,8 +80,8 @@ export PYTEST_DSL_REMOTE_API_KEY=your_secret_key
 # 基本连接
 @remote: "http://localhost:8270/" as server1
 
-# 带认证的连接
-@remote: "http://localhost:8270/" as server1 with api_key="your_secret_key"
+# 注意：当前不支持在 @remote 中直接指定 API 密钥
+# 需要在 YAML 配置文件中配置认证信息
 
 # 多个远程服务器
 @remote: "http://server1:8270/" as server1
@@ -391,7 +392,7 @@ except Exception as e:
 @remote: "http://server:8270/" as server with api_key="${API_KEY}"
 ```
 
-## 故障排除
+## 调试和故障排除
 
 ### 常见问题
 
@@ -444,11 +445,11 @@ remote_servers:
 ### 调试技巧
 
 ```bash
-# 启用调试模式
-pytest-dsl test.dsl --debug -s
+# 使用pytest运行获得详细输出
+pytest test_runner.py -v -s
 
-# 查看远程服务器日志
-pytest-dsl-server --host 0.0.0.0 --port 8270 --debug
+# 启动远程服务器
+pytest-dsl-server --host 0.0.0.0 --port 8270
 ```
 
 ## 限制和注意事项

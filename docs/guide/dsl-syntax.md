@@ -209,19 +209,23 @@ for i in range(1, 5) do
     [打印], 内容: "循环次数: ${i}"
 end
 
-# 列表循环
+# 注意：当前不支持直接遍历数组，需要使用索引访问
 items = ["apple", "banana", "orange"]
-for item in ${items} do
-    [打印], 内容: "当前项: ${item}"
+items_length = 3  # 预定义长度
+
+for i in range(0, ${items_length}) do
+    [打印], 内容: "当前项: ${items[i]}"
 end
 
-# 字典列表循环
+# 字典列表循环 - 使用索引访问
 users = [
     {"name": "张三", "age": 25},
     {"name": "李四", "age": 30}
 ]
-for user in ${users} do
-    [打印], 内容: "用户: ${user.name}, 年龄: ${user.age}"
+users_length = 2  # 预定义长度
+
+for i in range(0, ${users_length}) do
+    [打印], 内容: "用户: ${users[i].name}, 年龄: ${users[i].age}"
 end
 ```
 

@@ -149,28 +149,37 @@ end
 #### 列表循环
 
 ```python
-# 遍历列表
+# 遍历列表 - 注意：当前不支持直接遍历，需要使用索引
 users = ["张三", "李四", "王五"]
-for user in ${users} do
-    [打印], 内容: "处理用户: ${user}"
+users_length = 3  # 预定义长度
+
+for i in range(0, ${users_length}) do
+    [打印], 内容: "处理用户: ${users[i]}"
 end
 
-# 遍历数字列表
+# 遍历数字列表 - 使用索引访问
 numbers = [1, 2, 3, 4, 5]
+numbers_length = 5  # 预定义长度
 total = 0
-for num in ${numbers} do
-    total = total + num
-    [打印], 内容: "当前数字: ${num}, 累计: ${total}"
+
+for i in range(0, ${numbers_length}) do
+    total = total + ${numbers[i]}
+    [打印], 内容: "当前数字: ${numbers[i]}, 累计: ${total}"
 end
 ```
 
 #### 字典循环
 
 ```python
-# 遍历字典的键
+# 遍历字典的键 - 注意：当前不支持直接遍历字典
 user_info = {"name": "张三", "age": 30, "city": "北京"}
-for key in ${user_info} do
-    value = user_info[key]
+# 需要预定义键列表
+keys = ["name", "age", "city"]
+keys_length = 3
+
+for i in range(0, ${keys_length}) do
+    key = ${keys[i]}
+    value = ${user_info[key]}
     [打印], 内容: "${key}: ${value}"
 end
 ```
@@ -189,11 +198,13 @@ for i in range(1, 11) do
     [打印], 内容: "当前数字: ${i}"
 end
 
-# 在条件满足时退出
+# 在条件满足时退出 - 使用索引访问
 users = ["admin", "user1", "user2", "guest"]
-for user in ${users} do
-    [打印], 内容: "检查用户: ${user}"
-    if user == "guest" do
+users_length = 4
+
+for i in range(0, ${users_length}) do
+    [打印], 内容: "检查用户: ${users[i]}"
+    if ${users[i]} == "guest" do
         [打印], 内容: "找到访客用户，停止搜索"
         break
     end
@@ -212,37 +223,41 @@ for i in range(1, 11) do
     [打印], 内容: "奇数: ${i}"
 end
 
-# 跳过特定条件
+# 跳过特定条件 - 使用索引访问
 test_cases = ["case1", "skip_case", "case2", "case3"]
-for case in ${test_cases} do
-    if case == "skip_case" do
-        [打印], 内容: "跳过测试用例: ${case}"
+test_cases_length = 4
+
+for i in range(0, ${test_cases_length}) do
+    if ${test_cases[i]} == "skip_case" do
+        [打印], 内容: "跳过测试用例: ${test_cases[i]}"
         continue
     end
-    [打印], 内容: "执行测试用例: ${case}"
+    [打印], 内容: "执行测试用例: ${test_cases[i]}"
 end
 ```
 
 ### 嵌套循环
 
 ```python
-# 嵌套循环示例
+# 嵌套循环示例 - 使用索引访问
 environments = ["dev", "test", "prod"]
 test_types = ["unit", "integration", "e2e"]
+environments_length = 3
+test_types_length = 3
 
-for env in ${environments} do
-    [打印], 内容: "环境: ${env}"
+for i in range(0, ${environments_length}) do
+    [打印], 内容: "环境: ${environments[i]}"
     
-    for test_type in ${test_types} do
-        [打印], 内容: "  执行 ${test_type} 测试"
+    for j in range(0, ${test_types_length}) do
+        [打印], 内容: "  执行 ${test_types[j]} 测试"
         
         # 模拟测试执行
-        if env == "prod" and test_type == "unit" do
+        if ${environments[i]} == "prod" and ${test_types[j]} == "unit" do
             [打印], 内容: "    生产环境跳过单元测试"
             continue
         end
         
-        [打印], 内容: "    ${env} 环境的 ${test_type} 测试完成"
+        [打印], 内容: "    ${environments[i]} 环境的 ${test_types[j]} 测试完成"
     end
 end
 ```
@@ -281,17 +296,18 @@ end
 ### 2. 批量用户测试
 
 ```python
-# 批量测试多个用户
+# 批量测试多个用户 - 使用索引访问
 test_users = [
     {"username": "admin", "password": "admin123", "role": "admin"},
     {"username": "user1", "password": "user123", "role": "user"},
     {"username": "guest", "password": "guest123", "role": "guest"}
 ]
+test_users_length = 3
 
-for user in ${test_users} do
-    username = user["username"]
-    password = user["password"]
-    role = user["role"]
+for i in range(0, ${test_users_length}) do
+    username = ${test_users[i]["username"]}
+    password = ${test_users[i]["password"]}
+    role = ${test_users[i]["role"]}
     
     [打印], 内容: "测试用户: ${username} (${role})"
     
@@ -350,8 +366,8 @@ for attempt in range(1, ${max_retries} + 1) do
     else
         [打印], 内容: "请求失败，状态码: ${response_status}"
         if ${attempt} < ${max_retries} do
-            [打印], 内容: "等待重试..."
-            [等待], 秒数: 2
+                    [打印], 内容: "等待重试..."
+        [等待], 秒数: 2
         end
     end
 end
