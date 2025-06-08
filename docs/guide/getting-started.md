@@ -221,7 +221,135 @@ end
 pytest-dsl config_test.dsl --yaml-vars config.yaml
 ```
 
-## 第七步：批量运行测试
+## 第七步：pytest集成（推荐方式）
+
+### 为什么使用pytest集成？
+
+**pytest-dsl是用于测试DSL文件的工具**，核心的自动化测试能力还是依靠pytest生态系统。使用pytest集成有以下优势：
+
+- 🎯 **数据驱动支持**：只有pytest方式才支持数据驱动测试
+- 📊 **丰富报告**：支持HTML、Allure等专业测试报告  
+- 🔧 **灵活配置**：利用pytest的fixture、参数化等功能
+- 🚀 **自动发现**：使用`auto_dsl`装饰器自动转换DSL文件为pytest测试
+- ⚙️ **生态集成**：充分利用pytest插件生态系统
+
+### 创建pytest测试运行器
+
+创建文件 `test_runner.py`：
+
+```python
+# test_runner.py
+from pytest_dsl.core.auto_decorator import auto_dsl
+
+@auto_dsl("./tests")
+class TestAPI:
+    """自动加载tests目录下的所有DSL文件"""
+    pass
+```
+
+### 目录结构
+
+```
+project/
+├── test_runner.py           # pytest测试运行器
+├── config.yaml              # 配置文件
+└── tests/                   # DSL测试目录
+    ├── hello.dsl
+    ├── api_test.dsl
+    ├── custom_test.dsl
+    └── data_driven_test.dsl  # 数据驱动测试
+```
+
+### 运行pytest集成测试
+
+```bash
+# 基本运行
+pytest test_runner.py -v
+
+# 使用配置文件运行
+pytest test_runner.py -v --yaml-vars config.yaml
+
+# 生成HTML报告
+pytest test_runner.py --html=report.html --self-contained-html
+
+# 并行运行（需要安装pytest-xdist）
+pip install pytest-xdist
+pytest test_runner.py -n auto
+```
+
+## 第八步：数据驱动测试（仅限pytest方式）
+
+::: warning 重要提示
+**数据驱动测试只有在使用pytest方式运行时才会生效！**
+使用`pytest-dsl`命令直接运行DSL文件时，数据驱动功能不会工作。
+:::
+
+### 创建测试数据
+
+创建数据文件 `test_data.csv`：
+
+```csv
+username,password,expected_status,test_description
+admin,admin123,200,管理员登录成功
+user1,password123,200,普通用户登录成功
+guest,guest123,403,访客权限不足
+invalid_user,wrong_pass,401,无效用户登录失败
+```
+
+### 创建数据驱动测试
+
+创建文件 `tests/data_driven_test.dsl`：
+
+```python
+@name: "数据驱动登录测试"
+@description: "使用CSV数据测试不同用户的登录场景"
+@data: "test_data.csv" using csv
+
+[打印], 内容: "测试场景: ${test_description}"
+[打印], 内容: "测试用户: ${username}"
+
+# 模拟登录API调用
+[HTTP请求], 客户端: "default", 配置: '''
+    method: POST
+    url: https://jsonplaceholder.typicode.com/posts
+    request:
+        json:
+            username: "${username}"
+            password: "${password}"
+            title: "Login Test for ${username}"
+    captures:
+        response_status: ["status"]
+    asserts:
+        - ["status", "eq", ${expected_status}]
+'''
+
+[打印], 内容: "✓ ${test_description} - 期望状态码: ${expected_status}"
+```
+
+### 运行数据驱动测试
+
+```bash
+# 必须使用pytest方式运行，数据驱动才会生效
+pytest test_runner.py -v --yaml-vars config.yaml
+
+# 输出示例：
+# test_runner.py::TestAPI::test_data_driven_test[admin-admin123-200-管理员登录成功] PASSED
+# test_runner.py::TestAPI::test_data_driven_test[user1-password123-200-普通用户登录成功] PASSED
+# test_runner.py::TestAPI::test_data_driven_test[guest-guest123-403-访客权限不足] PASSED
+# test_runner.py::TestAPI::test_data_driven_test[invalid_user-wrong_pass-401-无效用户登录失败] PASSED
+```
+
+### 对比：直接运行vs pytest运行
+
+```bash
+# ❌ 直接运行DSL文件 - 数据驱动不生效，只执行一次
+pytest-dsl tests/data_driven_test.dsl --yaml-vars config.yaml
+
+# ✅ 使用pytest运行 - 数据驱动生效，每行数据执行一次
+pytest test_runner.py -v --yaml-vars config.yaml
+```
+
+## 第九步：批量运行测试
 
 创建测试目录结构：
 
@@ -251,15 +379,40 @@ pytest-dsl my-tests/ --yaml-vars config.yaml
 
 ## 常用命令速查
 
+### pytest方式运行（推荐）
+
 ```bash
-# 基本运行
-pytest-dsl test.dsl                    # 运行单个文件
-pytest-dsl tests/                      # 运行目录
+# 基本运行（支持数据驱动）
+pytest test_runner.py -v              # 详细输出
+pytest test_runner.py --yaml-vars config.yaml  # 使用配置文件
+
+# 高级功能
+pytest test_runner.py --html=report.html --self-contained-html  # HTML报告
+pytest test_runner.py --alluredir=reports  # Allure报告
+pytest test_runner.py -k "api"        # 过滤测试
+pytest test_runner.py -m "smoke"      # 运行标记测试
+pytest test_runner.py -n auto         # 并行运行（需要pytest-xdist）
+
+# 调试和详细输出
+pytest test_runner.py -v -s           # 显示打印输出
+pytest test_runner.py --pdb           # 失败时进入调试器
+```
+
+### 直接运行DSL文件（限制较多）
+
+```bash
+# 基本运行（不支持数据驱动）
+pytest-dsl test.dsl                   # 运行单个文件
+pytest-dsl tests/                     # 运行目录
 
 # 使用配置
 pytest-dsl tests/ --yaml-vars config.yaml
 pytest-dsl tests/ --yaml-vars-dir config/
+```
 
+### 工具命令
+
+```bash
 # 查看关键字
 pytest-dsl-list                       # 查看所有关键字
 pytest-dsl-list --format text         # 文本格式输出
@@ -270,13 +423,22 @@ pytest-dsl-list --category builtin    # 查看内置关键字
 # 远程服务器
 pytest-dsl-server                     # 启动远程服务器
 pytest-dsl-server --host 0.0.0.0 --port 8270  # 指定地址和端口
-
-# 使用pytest运行（支持更多功能）
-pytest test_runner.py -v              # 详细输出
-pytest test_runner.py --alluredir=reports  # Allure报告
-pytest test_runner.py --html=report.html   # HTML报告
-pytest test_runner.py -k "api"        # 过滤测试
 ```
+
+### 运行方式对比
+
+**说明**：pytest-dsl是用于测试DSL文件的工具，核心自动化测试能力依靠pytest
+
+| 功能 | pytest方式（推荐） | 直接运行方式（有限） |
+|------|------------|-------------|
+| 定位 | 🎯 完整的自动化测试框架 | 📝 DSL文件验证工具 |
+| 数据驱动测试 | ✅ 支持 | ❌ 不支持 |
+| 测试报告 | ✅ 丰富（HTML、Allure等） | ❌ 基础控制台输出 |
+| 并行执行 | ✅ 支持 | ❌ 不支持 |
+| 测试过滤 | ✅ 支持 | ❌ 不支持 |
+| Fixture集成 | ✅ 支持 | ❌ 不支持 |
+| CI/CD集成 | ✅ 完善 | ❌ 有限 |
+| 插件生态 | ✅ 完整pytest生态 | ❌ 无 |
 
 ## 下一步学习
 
@@ -307,13 +469,40 @@ A: 使用帮助命令：
 pytest-dsl-list
 ```
 
-### Q: 如何调试DSL文件？
+### Q: 为什么推荐使用pytest方式而不是直接运行DSL？
 
-A: 使用详细输出模式：
+A: **pytest-dsl是用于测试DSL文件的工具，核心自动化测试能力来自pytest**。pytest方式支持更多高级功能：
+- ✅ **数据驱动测试**：只有pytest方式才支持`@data`指令
+- ✅ **专业报告**：HTML、Allure等丰富的测试报告
+- ✅ **并行执行**：使用`pytest-xdist`进行并行测试
+- ✅ **灵活过滤**：使用`-k`、`-m`等参数过滤测试
+- ✅ **生态集成**：利用整个pytest插件生态系统
+
+### Q: 数据驱动测试为什么不生效？
+
+A: 请确保使用pytest方式运行：
 
 ```bash
-# 使用pytest运行获得详细输出
+# ❌ 错误方式 - 数据驱动不生效
+pytest-dsl tests/data_driven_test.dsl
+
+# ✅ 正确方式 - 数据驱动生效
+pytest test_runner.py -v
+```
+
+### Q: 如何调试DSL文件？
+
+A: 使用pytest的调试功能：
+
+```bash
+# 详细输出模式
 pytest test_runner.py -v -s
+
+# 失败时进入调试器
+pytest test_runner.py --pdb
+
+# 指定调试特定测试
+pytest test_runner.py -k "test_name" -v -s
 ```
 
 ### Q: 如何在团队中共享自定义关键字？
@@ -322,8 +511,20 @@ A: 创建资源文件（`.resource`），详见[资源文件](./resource-files)�
 
 ### Q: 支持哪些数据格式？
 
-A: 支持CSV、JSON、YAML等格式的数据驱动测试，详见[数据驱动测试](./data-driven)章节。
+A: 支持CSV、JSON、Excel等格式的数据驱动测试（**仅pytest方式**），详见[数据驱动测试](./data-driven)章节。
 
 ---
 
-🎉 **恭喜您完成了快速开始教程！** 现在您已经掌握了pytest-dsl的基本使用方法，可以开始创建自己的测试项目了。 
+## 📝 重要总结
+
+**pytest-dsl的定位**：
+- 🎯 **DSL文件测试工具** - 专门用于测试DSL格式的测试文件
+- ⚙️ **pytest增强器** - 为pytest添加DSL文件支持能力
+- 🚀 **桥梁工具** - 连接DSL语法和pytest生态系统
+
+**推荐使用方式**：
+- ✅ **生产环境**：使用pytest集成方式，获得完整功能
+- 📝 **快速验证**：使用直接运行方式，验证DSL文件语法
+- 📊 **数据驱动**：必须使用pytest方式，直接运行不支持
+
+🎉 **恭喜您完成了快速开始教程！** 现在您已经掌握了pytest-dsl的正确使用方法，可以开始创建自己的自动化测试项目了。 

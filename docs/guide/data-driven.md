@@ -2,6 +2,13 @@
 
 数据驱动测试是pytest-dsl的核心特性之一，允许您使用外部数据源（如CSV、JSON、Excel等）来驱动测试执行，实现同一测试逻辑在不同数据集上的重复执行。
 
+::: warning 重要提示
+**数据驱动测试只有在使用pytest集成方式运行时才会生效！**
+
+使用`pytest-dsl`命令直接运行包含`@data`指令的DSL文件时，数据驱动功能不会工作，测试只会执行一次。
+要使用数据驱动功能，必须通过`auto_dsl`装饰器和pytest来运行测试。
+:::
+
 ## 什么是数据驱动测试
 
 数据驱动测试将测试逻辑与测试数据分离，通过外部数据源提供测试输入和期望结果，使得：
@@ -13,7 +20,9 @@
 
 ## 基本语法
 
-使用`@data`指令指定数据源：
+数据驱动测试需要两个步骤：
+
+### 1. 在DSL文件中使用`@data`指令
 
 ```python
 @name: "数据驱动测试示例"
@@ -21,6 +30,29 @@
 
 # 测试逻辑中可以直接使用数据列名作为变量
 [打印], 内容: "测试用户: ${username}, 期望结果: ${expected_result}"
+```
+
+### 2. 通过pytest运行（必需步骤）
+
+创建`test_runner.py`：
+
+```python
+from pytest_dsl.core.auto_decorator import auto_dsl
+
+@auto_dsl("./tests")  # 指向包含DSL文件的目录
+class TestDataDriven:
+    """数据驱动测试类"""
+    pass
+```
+
+运行测试：
+
+```bash
+# ✅ 正确方式 - 数据驱动生效
+pytest test_runner.py -v
+
+# ❌ 错误方式 - 数据驱动不生效，只执行一次
+pytest-dsl tests/data_driven_test.dsl
 ```
 
 ## 支持的数据格式

@@ -1,6 +1,6 @@
 # 教程指南
 
-欢迎来到pytest-dsl教程！本教程将带您从零开始学习pytest-dsl，逐步掌握这个强大的关键字驱动测试框架。
+欢迎来到pytest-dsl教程！本教程将带您从零开始学习pytest-dsl，逐步掌握这个用于测试DSL文件的工具。pytest-dsl基于pytest构建，核心的自动化测试能力依靠pytest生态系统。
 
 ## 学习路径
 

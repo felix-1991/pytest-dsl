@@ -5,11 +5,12 @@
 """
 import pytest
 import os
-from pathlib import Path
 
 # 导入模块化组件
 from pytest_dsl.core.yaml_loader import add_yaml_options, load_yaml_variables
-from pytest_dsl.core.plugin_discovery import load_all_plugins, scan_local_keywords
+from pytest_dsl.core.plugin_discovery import (
+    load_all_plugins, scan_local_keywords
+)
 from pytest_dsl.core.global_context import global_context
 
 

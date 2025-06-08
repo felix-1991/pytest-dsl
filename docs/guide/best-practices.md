@@ -2,80 +2,280 @@
 
 本章总结了使用pytest-dsl进行测试开发的最佳实践，帮助您建立高质量、可维护的测试项目。
 
-## 项目组织结构
+**核心建议：使用pytest集成方式组织测试案例**，通过`auto_dsl`装饰器自动管理DSL文件，充分利用pytest生态系统的强大能力。
 
-### 推荐的目录结构
+## 核心理念
+
+### 🎯 为什么推荐pytest集成？
+
+**pytest-dsl的定位**：DSL文件测试工具，核心自动化测试能力依靠pytest生态系统。
+
+**auto_dsl装饰器的优势**：
+- 🚀 **零配置自动化** - 自动扫描并转换DSL文件为pytest测试方法
+- 📊 **数据驱动支持** - 只有pytest方式才支持`@data`指令的数据驱动测试
+- 🔧 **强大的pytest能力** - fixture、参数化、标记、报告、插件生态
+- 🎭 **灵活的测试组织** - 简单场景用目录形式，复杂场景可细化拆分
+- 🛠️ **易于维护** - 清晰的项目结构，便于团队协作
+
+### 🎨 组织策略选择
+
+```python
+# 🟢 简单项目：目录形式（推荐）
+@auto_dsl("./tests")
+class TestAll:
+    """自动加载所有测试 - 适合小型项目"""
+    pass
+
+# 🟡 中型项目：模块拆分
+@auto_dsl("./tests/api")
+class TestAPI:
+    """API测试模块"""
+    pass
+
+@auto_dsl("./tests/ui")  
+class TestUI:
+    """UI测试模块"""
+    pass
+
+# 🟠 大型项目：细化拆分（特殊场景）
+@pytest.mark.smoke
+@auto_dsl("./tests/api/auth")
+class TestAPIAuth:
+    """认证API - 用于精确控制执行策略"""
+    pass
+```
+
+## 推荐的项目组织方式
+
+### 1. 基础pytest集成结构（推荐）
+
+使用`auto_dsl`装饰器的目录形式，简单高效：
 
 ```
 my-test-project/
-├── tests/                           # 测试文件目录
-│   ├── api/                         # API测试
-│   │   ├── auth/
-│   │   │   ├── test_login.dsl
-│   │   │   └── test_logout.dsl
-│   │   ├── users/
-│   │   │   ├── test_create_user.dsl
-│   │   │   ├── test_update_user.dsl
-│   │   │   └── test_delete_user.dsl
-│   │   └── orders/
-│   │       ├── test_create_order.dsl
-│   │       └── test_order_workflow.dsl
-│   ├── ui/                          # UI测试
-│   │   ├── login/
-│   │   └── dashboard/
-│   └── integration/                 # 集成测试
-│       └── test_end_to_end.dsl
+├── test_runner.py                   # pytest主运行器
+├── conftest.py                      # pytest共享配置
+├── pytest.ini                      # pytest配置文件
+├── tests/                           # DSL测试文件目录
+│   ├── setup.dsl                    # 全局setup（可选）
+│   ├── teardown.dsl                 # 全局teardown（可选）
+│   ├── api/                         # API测试模块
+│   │   ├── setup.dsl                # API模块setup（可选）
+│   │   ├── teardown.dsl             # API模块teardown（可选）
+│   │   ├── auth_login.dsl
+│   │   ├── auth_logout.dsl
+│   │   ├── users_crud.dsl
+│   │   └── orders_workflow.dsl
+│   ├── ui/                          # UI测试模块
+│   │   ├── login_flow.dsl
+│   │   └── dashboard_ops.dsl
+│   └── integration/                 # 集成测试模块
+│       └── end_to_end.dsl
 ├── resources/                       # 资源文件
-│   ├── common/                      # 通用资源
-│   │   ├── constants.resource
+│   ├── common/
 │   │   ├── utilities.resource
 │   │   └── validators.resource
-│   ├── api/                         # API相关资源
-│   │   ├── auth.resource
-│   │   ├── crud_operations.resource
-│   │   └── response_handlers.resource
-│   ├── ui/                          # UI相关资源
-│   │   ├── page_objects.resource
-│   │   └── ui_utilities.resource
-│   └── business/                    # 业务流程资源
-│       ├── user_workflows.resource
-│       └── order_workflows.resource
+│   ├── api/
+│   │   └── http_helpers.resource
+│   └── business/
+│       └── workflows.resource
 ├── data/                            # 测试数据
-│   ├── users/
-│   │   ├── valid_users.csv
-│   │   ├── invalid_users.csv
-│   │   └── admin_users.json
-│   ├── scenarios/
-│   │   ├── login_scenarios.json
-│   │   └── api_test_cases.xlsx
+│   ├── users.csv                    # 数据驱动测试数据
+│   ├── scenarios.json
 │   └── fixtures/
-│       ├── sample_products.json
-│       └── reference_data.csv
 ├── config/                          # 配置文件
-│   ├── environments/
-│   │   ├── dev.yaml
-│   │   ├── test.yaml
-│   │   ├── staging.yaml
-│   │   └── prod.yaml
-│   └── clients/
-│       ├── http_clients.yaml
-│       └── database_clients.yaml
-├── reports/                         # 测试报告
-│   ├── html/
-│   ├── json/
-│   └── allure/
-├── scripts/                         # 辅助脚本
-│   ├── run_smoke_tests.sh
-│   ├── run_regression.sh
-│   └── cleanup_data.py
-├── docs/                           # 项目文档
-│   ├── test_plan.md
-│   ├── api_documentation.md
-│   └── setup_guide.md
-├── requirements.txt                # Python依赖
-├── pytest.ini                     # pytest配置
-├── .gitignore                      # Git忽略文件
-└── README.md                       # 项目说明
+│   ├── dev.yaml
+│   ├── test.yaml
+│   └── prod.yaml
+├── requirements.txt                 # Python依赖
+└── README.md                        # 项目说明
+```
+
+**主运行器示例：**
+
+```python
+# test_runner.py
+from pytest_dsl.core.auto_decorator import auto_dsl
+import pytest
+
+@auto_dsl("./tests/api")
+class TestAPI:
+    """API测试套件 - 自动加载tests/api/目录下的所有DSL文件"""
+    pass
+
+@auto_dsl("./tests/ui") 
+class TestUI:
+    """UI测试套件 - 自动加载tests/ui/目录下的所有DSL文件"""
+    pass
+
+@auto_dsl("./tests/integration")
+class TestIntegration:
+    """集成测试套件 - 自动加载tests/integration/目录下的所有DSL文件"""
+    pass
+
+# 支持直接运行
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
+```
+
+**运行方式：**
+
+```bash
+# 运行所有测试
+pytest test_runner.py -v
+
+# 运行特定测试类
+pytest test_runner.py::TestAPI -v
+
+# 使用配置文件
+pytest test_runner.py --yaml-vars config/dev.yaml
+
+# 生成报告
+pytest test_runner.py --html=report.html --alluredir=allure-results
+```
+
+### 2. 特殊场景下的细化拆分
+
+在某些特殊场景下，您可能需要更细粒度的控制，可以拆分为更具体的测试类：
+
+```python
+# test_runner_advanced.py
+from pytest_dsl.core.auto_decorator import auto_dsl
+import pytest
+
+# === API测试的细化拆分 ===
+@pytest.mark.smoke
+@auto_dsl("./tests/api/auth")
+class TestAPIAuth:
+    """认证相关API测试"""
+    pass
+
+@pytest.mark.regression  
+@auto_dsl("./tests/api/users")
+class TestAPIUsers:
+    """用户管理API测试"""
+    pass
+
+@pytest.mark.critical
+@auto_dsl("./tests/api/orders")
+class TestAPIOrders:
+    """订单相关API测试"""
+    pass
+
+# === 按测试类型拆分 ===
+@pytest.mark.smoke
+@auto_dsl("./tests/smoke")
+class TestSmoke:
+    """冒烟测试套件"""
+    pass
+
+@pytest.mark.integration
+@auto_dsl("./tests/integration") 
+class TestIntegration:
+    """集成测试套件"""
+    pass
+
+# === 单文件测试（特殊场景）===
+@pytest.mark.critical
+@auto_dsl("./tests/critical/payment_flow.dsl", is_file=True)
+class TestCriticalPayment:
+    """关键支付流程测试"""
+    pass
+```
+
+**特殊场景适用情况：**
+
+1. **大型项目** - 需要精确控制测试执行粒度
+2. **CI/CD管道** - 不同阶段运行不同测试集
+3. **并行执行** - 需要平衡不同测试类的执行时间
+4. **测试隔离** - 某些测试需要特殊的环境或数据准备
+5. **标记管理** - 需要复杂的pytest标记策略
+
+### 3. 利用pytest核心能力
+
+**pytest集成的优势：**
+
+```python
+# conftest.py - 利用pytest的fixture系统
+import pytest
+from pytest_dsl.core.context import get_context
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_environment(request):
+    """会话级别的环境设置"""
+    # 全局环境初始化
+    context = get_context()
+    context.set_variable("test_start_time", "2024-01-15 10:00:00")
+    context.set_variable("test_environment", "pytest")
+    
+    yield
+    
+    # 全局清理
+    context.clear()
+
+@pytest.fixture(scope="class")
+def api_client_config():
+    """为API测试类提供客户端配置"""
+    return {
+        "base_url": "https://api.test.com",
+        "timeout": 30,
+        "headers": {"User-Agent": "pytest-dsl-test"}
+    }
+
+@pytest.fixture
+def test_data_cleanup():
+    """自动测试数据清理"""
+    created_resources = []
+    
+    def register_resource(resource_id, resource_type):
+        created_resources.append((resource_id, resource_type))
+    
+    yield register_resource
+    
+    # 测试完成后自动清理
+    for resource_id, resource_type in created_resources:
+        print(f"清理 {resource_type}: {resource_id}")
+```
+
+**利用pytest参数化：**
+
+```python
+# test_runner_parametrized.py
+import pytest
+from pytest_dsl.core.auto_decorator import auto_dsl
+
+class TestAPIEnvironments:
+    """多环境API测试"""
+    
+    @pytest.mark.parametrize("env_config", [
+        {"name": "dev", "config": "config/dev.yaml"},
+        {"name": "test", "config": "config/test.yaml"},
+        {"name": "staging", "config": "config/staging.yaml"}
+    ])
+    def test_api_in_environment(self, env_config):
+        """在不同环境中运行API测试"""
+        from pytest_dsl import run_dsl_file
+        
+        result = run_dsl_file(
+            "tests/api/health_check.dsl",
+            variables={"environment": env_config["name"]},
+            config_file=env_config["config"]
+        )
+        assert result.success, f"API测试在{env_config['name']}环境中失败"
+```
+
+**利用pytest标记和过滤：**
+
+```bash
+# 利用pytest的强大过滤能力
+pytest test_runner.py -m "smoke"                    # 只运行冒烟测试
+pytest test_runner.py -m "not slow"                 # 排除慢速测试
+pytest test_runner.py -m "api and critical"         # 运行关键API测试
+pytest test_runner.py -k "auth"                     # 运行包含auth的测试
+pytest test_runner.py --lf                          # 只运行上次失败的测试
+pytest test_runner.py --ff                          # 先运行上次失败的测试
+pytest test_runner.py -x                            # 遇到失败立即停止
+pytest test_runner.py --maxfail=3                   # 失败3次后停止
 ```
 
 ## 代码规范
@@ -555,37 +755,91 @@ end
 
 ## 测试执行策略
 
-### 测试分类和标签
+### 使用pytest标记管理测试（推荐）
+
+利用pytest的标记系统对测试进行分类和管理：
 
 ```python
-# 使用标签对测试进行分类
-@name: "用户登录测试"
-@tags: ["smoke", "auth", "api", "critical"]
+# test_runner.py
+import pytest
+from pytest_dsl.core.auto_decorator import auto_dsl
 
-@name: "用户权限验证"
-@tags: ["regression", "auth", "security"]
+@pytest.mark.smoke
+@pytest.mark.api
+@auto_dsl("./tests/api/auth")
+class TestAPIAuth:
+    """认证API测试 - 冒烟测试"""
+    pass
 
-@name: "批量用户导入"
-@tags: ["integration", "batch", "admin"]
+@pytest.mark.regression
+@pytest.mark.api
+@auto_dsl("./tests/api/users")
+class TestAPIUsers:
+    """用户API测试 - 回归测试"""
+    pass
+
+@pytest.mark.integration
+@pytest.mark.slow
+@auto_dsl("./tests/integration")
+class TestIntegration:
+    """集成测试 - 耗时较长"""
+    pass
 ```
 
-### 测试套件组织
+**pytest.ini配置：**
+
+```ini
+# pytest.ini
+[tool:pytest]
+markers =
+    smoke: 冒烟测试，快速验证核心功能
+    regression: 回归测试，全面功能验证
+    integration: 集成测试，跨系统测试
+    api: API接口测试
+    ui: 用户界面测试
+    slow: 执行时间较长的测试
+    critical: 关键业务流程测试
+    auth: 认证相关测试
+    data_driven: 数据驱动测试
+```
+
+### 测试套件执行策略
+
+**使用pytest命令（推荐）：**
 
 ```bash
-# scripts/run_smoke_tests.sh
-#!/bin/bash
-echo "运行冒烟测试..."
-pytest-dsl tests/ --tags smoke --html-report reports/smoke_report.html
+# 运行不同类型的测试
+pytest test_runner.py -m smoke                      # 冒烟测试
+pytest test_runner.py -m "regression and not slow"  # 回归测试（排除慢速）
+pytest test_runner.py -m "api and critical"         # 关键API测试
+pytest test_runner.py -m integration                # 集成测试
 
-# scripts/run_regression.sh  
-#!/bin/bash
-echo "运行回归测试..."
-pytest-dsl tests/ --tags regression --json-report reports/regression_report.json
+# 并行执行（需要pytest-xdist）
+pytest test_runner.py -m smoke -n auto              # 并行冒烟测试
+pytest test_runner.py -m regression -n 4            # 4个进程并行回归测试
 
-# scripts/run_api_tests.sh
+# 生成报告
+pytest test_runner.py -m smoke --html=smoke_report.html
+pytest test_runner.py -m regression --alluredir=allure-results
+```
+
+**CI/CD脚本示例：**
+
+```bash
+# scripts/run_tests.sh
 #!/bin/bash
-echo "运行API测试..."
-pytest-dsl tests/api/ --parallel 4 --html-report reports/api_report.html
+
+# 冒烟测试 - 快速验证
+echo "=== 运行冒烟测试 ==="
+pytest test_runner.py -m smoke --tb=short
+
+# 回归测试 - 详细验证
+echo "=== 运行回归测试 ==="
+pytest test_runner.py -m regression --html=regression_report.html --self-contained-html
+
+# 集成测试 - 完整流程
+echo "=== 运行集成测试 ==="
+pytest test_runner.py -m integration --maxfail=1
 ```
 
 ### 并行执行优化
@@ -675,11 +929,13 @@ end
 
 ## 持续集成最佳实践
 
-### CI/CD 管道配置
+### CI/CD 管道配置（pytest集成）
+
+**利用pytest的强大CI/CD支持：**
 
 ```yaml
 # .github/workflows/test.yml
-name: 自动化测试
+name: pytest-dsl自动化测试
 
 on:
   push:
@@ -689,23 +945,86 @@ on:
 
 jobs:
   smoke-tests:
+    name: 冒烟测试
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      
+      - name: 设置Python环境
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: 安装依赖
+        run: |
+          pip install pytest pytest-dsl pytest-html pytest-xdist
+          
       - name: 运行冒烟测试
         run: |
-          pip install pytest-dsl
-          pytest-dsl tests/ --tags smoke --environment test
-  
+          pytest test_runner.py -m smoke -v --tb=short --html=smoke_report.html
+          
+      - name: 上传冒烟测试报告
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: smoke-test-report
+          path: smoke_report.html
+
   regression-tests:
+    name: 回归测试
     runs-on: ubuntu-latest
     needs: smoke-tests
     if: github.event_name == 'push'
+    strategy:
+      matrix:
+        test-group: [api, ui, integration]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      
+      - name: 设置Python环境
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: 安装依赖
+        run: |
+          pip install pytest pytest-dsl pytest-html allure-pytest pytest-xdist
+          
       - name: 运行回归测试
         run: |
-          pytest-dsl tests/ --tags regression --environment test --parallel 4
+          pytest test_runner.py -m "regression and ${{ matrix.test-group }}" \
+                 -n auto --alluredir=allure-results-${{ matrix.test-group }}
+          
+      - name: 生成Allure报告
+        if: always()
+        run: |
+          allure generate allure-results-${{ matrix.test-group }} \
+                 -o allure-report-${{ matrix.test-group }} --clean
+          
+      - name: 上传回归测试报告
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: regression-report-${{ matrix.test-group }}
+          path: allure-report-${{ matrix.test-group }}
+
+  integration-tests:
+    name: 集成测试
+    runs-on: ubuntu-latest
+    needs: [smoke-tests, regression-tests]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: 设置Python环境
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: 运行集成测试
+        run: |
+          pytest test_runner.py -m integration --maxfail=1 \
+                 --html=integration_report.html --self-contained-html
 ```
 
 ### 测试数据准备
@@ -883,4 +1202,50 @@ teardown do
 end
 ```
 
-通过遵循这些最佳实践，您可以构建高质量、可维护、易扩展的pytest-dsl测试项目，提高团队的测试效率和代码质量。 
+## 总结
+
+### 🎯 最佳实践要点
+
+1. **优先使用pytest集成** - 获得完整的测试框架能力
+2. **善用auto_dsl装饰器** - 简化DSL文件管理，自动转换为pytest测试
+3. **合理选择组织策略** - 简单场景用目录形式，复杂场景可细化拆分  
+4. **充分利用pytest生态** - fixture、标记、参数化、报告、插件
+5. **数据驱动必须pytest** - `@data`指令只在pytest方式下生效
+
+### 📈 价值体现
+
+**通过pytest集成，pytest-dsl从单纯的DSL执行工具升级为完整的测试解决方案：**
+
+```bash
+# 🚀 强大的测试执行能力
+pytest test_runner.py -m "smoke and api" -n auto --html=report.html
+
+# 📊 丰富的报告和分析  
+pytest test_runner.py --alluredir=results --tb=short --durations=10
+
+# 🔧 灵活的测试控制
+pytest test_runner.py --lf --pdb -k "auth"
+
+# 🎯 精确的测试过滤
+pytest test_runner.py -m "not slow" --maxfail=3
+```
+
+**核心优势总结：**
+
+| 能力 | 直接运行DSL | pytest集成 |
+|------|------------|------------|
+| 定位 | 📝 DSL验证工具 | 🎯 完整测试框架 |
+| 数据驱动 | ❌ 不支持 | ✅ 完全支持 |
+| 测试组织 | ❌ 基础 | ✅ 专业化 |  
+| 并行执行 | ❌ 不支持 | ✅ 多进程 |
+| 测试报告 | ❌ 简单输出 | ✅ 专业报告 |
+| 生态集成 | ❌ 无 | ✅ 完整生态 |
+
+### 🎉 实施建议
+
+1. **新项目** - 直接采用pytest集成方式，使用`auto_dsl`装饰器
+2. **现有项目** - 逐步迁移到pytest方式，优先迁移数据驱动测试
+3. **团队协作** - 建立pytest集成的规范和培训
+4. **CI/CD** - 利用pytest的标记和过滤能力优化构建管道
+
+通过遵循这些最佳实践，您可以构建高质量、可维护、易扩展的pytest-dsl测试项目，充分发挥pytest生态系统的强大能力，提高团队的测试效率和代码质量。 
