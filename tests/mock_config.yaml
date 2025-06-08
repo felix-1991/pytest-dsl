@@ -1,0 +1,11 @@
+# Mock服务器配置
+http_clients:
+  mock_server:
+    name: mock_server
+    base_url: "http://localhost:8888"
+    timeout: 30
+    verify_ssl: false
+    session: true
+    headers:
+      Content-Type: application/json
+      User-Agent: pytest-dsl-test-client 

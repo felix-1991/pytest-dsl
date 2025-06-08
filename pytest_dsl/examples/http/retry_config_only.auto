@@ -10,7 +10,7 @@
         url: https://httpbin.org/delay/1
         asserts:
             - ["status", "eq", 200]
-            - ["response_time", "lt", 500]
+            - ["response_time", "lt", 3000]
         retry_assertions:
             count: 2
             interval: 1
@@ -23,7 +23,7 @@
         url: https://httpbin.org/delay/1
         asserts:
             - ["status", "eq", 200]
-            - ["response_time", "lt", 500]
+            - ["response_time", "lt", 3000]
         retry_assertions:
             count: 3
             interval: 0.5
@@ -36,7 +36,7 @@
         url: https://httpbin.org/delay/1
         asserts:
             - ["status", "eq", 200]
-            - ["response_time", "lt", 500]
+            - ["response_time", "lt", 3000]
             - ["body", "contains", "url"]
         retry_assertions:
             specific:

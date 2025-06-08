@@ -1,8 +1,8 @@
 import json
+import logging
 import re
-import yaml
 import jsonpath_ng.ext as jsonpath
-from typing import Dict, List, Any, Union, Optional, Tuple, Set
+from typing import Dict, List, Any, Tuple
 import lxml.etree as etree
 from requests import Response
 import allure
@@ -10,6 +10,7 @@ import requests
 
 from pytest_dsl.core.http_client import http_client_manager
 
+logger = logging.getLogger(__name__)
 
 # 定义支持的比较操作符
 COMPARISON_OPERATORS = {
@@ -25,7 +26,8 @@ ASSERTION_TYPES = {
 
 # 操作符和断言类型重叠的集合（可以作为二者使用的）
 DUAL_PURPOSE = {
-    "contains", "not_contains", "matches", "in", "not_in", "startswith", "endswith"
+    "contains", "not_contains", "matches", "in", "not_in", "startswith",
+    "endswith"
 }
 
 
@@ -35,7 +37,8 @@ class HTTPRequest:
     负责处理HTTP请求、响应捕获和断言
     """
 
-    def __init__(self, config: Dict[str, Any], client_name: str = "default", session_name: str = None):
+    def __init__(self, config: Dict[str, Any], client_name: str = "default",
+                 session_name: str = None):
         """初始化HTTP请求
 
         Args:
@@ -60,7 +63,8 @@ class HTTPRequest:
         """
         # 获取HTTP客户端
         if self.session_name:
-            client = http_client_manager.get_session(self.session_name, self.client_name)
+            client = http_client_manager.get_session(
+                self.session_name, self.client_name)
         else:
             client = http_client_manager.get_client(self.client_name)
 
@@ -91,7 +95,8 @@ class HTTPRequest:
             'data': request_config.get('data'),
             'files': request_config.get('files'),
             'cookies': request_config.get('cookies'),
-            'auth': tuple(request_config.get('auth')) if request_config.get('auth') else None,
+            'auth': (tuple(request_config.get('auth'))
+                     if request_config.get('auth') else None),
             'timeout': request_config.get('timeout'),
             'allow_redirects': request_config.get('allow_redirects'),
             'verify': request_config.get('verify'),
@@ -101,7 +106,8 @@ class HTTPRequest:
         }
 
         # 过滤掉None值
-        request_kwargs = {k: v for k, v in request_kwargs.items() if v is not None}
+        request_kwargs = {k: v for k,
+                          v in request_kwargs.items() if v is not None}
 
         # 使用Allure记录请求信息
         self._log_request_to_allure(method, url, request_kwargs)
@@ -113,8 +119,21 @@ class HTTPRequest:
             # 使用Allure记录响应信息
             self._log_response_to_allure(self.response)
 
-            # 处理捕获
-            self.process_captures()
+            # 处理捕获 - 确保即使后续断言失败，捕获的变量也能被正确设置
+            try:
+                self.process_captures()
+            except Exception as capture_error:
+                # 捕获处理失败不应该影响请求的执行，只记录警告
+                # 但确保captured_values至少是空字典
+                if (not hasattr(self, 'captured_values') or
+                        self.captured_values is None):
+                    self.captured_values = {}
+                logger.warning(f"变量捕获处理失败: {str(capture_error)}")
+                allure.attach(
+                    f"变量捕获处理失败: {str(capture_error)}",
+                    name="变量捕获警告",
+                    attachment_type=allure.attachment_type.TEXT
+                )
 
             return self.response
         except requests.exceptions.RequestException as e:
@@ -149,13 +168,16 @@ class HTTPRequest:
         Raises:
             ValueError: 如果响应对象不存在
         """
-        if not self.response:
+        if self.response is None:
             error_message = f"需要先执行请求才能{operation}"
             # 记录更详细的错误信息到Allure
+            config_json = json.dumps(
+                self.config, indent=2, ensure_ascii=False, default=str)
             debug_info = (
                 f"错误详情: self.response 为 None\n"
-                f"配置信息: {json.dumps(self.config, indent=2, ensure_ascii=False, default=str)}\n"
-                f"当前状态: 客户端名称={self.client_name}, 会话名称={self.session_name}"
+                f"配置信息: {config_json}\n"
+                f"当前状态: 客户端名称={self.client_name}, "
+                f"会话名称={self.session_name}"
             )
             allure.attach(
                 debug_info,
@@ -170,6 +192,7 @@ class HTTPRequest:
         Returns:
             捕获的值字典
         """
+
         self._ensure_response_exists("捕获响应")
 
         captures_config = self.config.get('captures', {})
@@ -181,18 +204,22 @@ class HTTPRequest:
             # 提取捕获信息
             try:
                 extractor_type = capture_spec[0]
-                extraction_path = capture_spec[1] if len(capture_spec) > 1 else None
+                extraction_path = capture_spec[1] if len(
+                    capture_spec) > 1 else None
 
                 # 检查是否有length参数
                 is_length_capture = False
                 if len(capture_spec) > 2 and capture_spec[2] == "length":
                     is_length_capture = True
-                    default_value = capture_spec[3] if len(capture_spec) > 3 else None
+                    default_value = capture_spec[3] if len(
+                        capture_spec) > 3 else None
                 else:
-                    default_value = capture_spec[2] if len(capture_spec) > 2 else None
+                    default_value = capture_spec[2] if len(
+                        capture_spec) > 2 else None
 
                 # 提取值
-                captured_value = self._extract_value(extractor_type, extraction_path, default_value)
+                captured_value = self._extract_value(
+                    extractor_type, extraction_path, default_value)
 
                 # 特殊处理length
                 if is_length_capture:
@@ -219,7 +246,8 @@ class HTTPRequest:
                             attachment_type=allure.attachment_type.TEXT
                         )
                         # 抛出更具体的异常，而不是用0替代
-                        raise ValueError(f"断言类型'length'无法应用于值 '{original_value}': {str(e)}")
+                        raise ValueError(
+                            f"断言类型'length'无法应用于值 '{original_value}': {str(e)}")
                 else:
                     # 记录捕获到Allure
                     allure.attach(
@@ -246,15 +274,15 @@ class HTTPRequest:
         return self.captured_values
 
     def _format_error_details(self,
-                        extractor_type: str,
-                        extraction_path: str,
-                        assertion_type: str,
-                        compare_operator: str,
-                        actual_value: Any,
-                        expected_value: Any,
-                        original_actual_value: Any = None,
-                        error_message: str = None,
-                        additional_context: str = None) -> str:
+                              extractor_type: str,
+                              extraction_path: str,
+                              assertion_type: str,
+                              compare_operator: str,
+                              actual_value: Any,
+                              expected_value: Any,
+                              original_actual_value: Any = None,
+                              error_message: str = None,
+                              additional_context: str = None) -> str:
         """格式化断言错误的详细信息
 
         Args:
@@ -287,7 +315,7 @@ class HTTPRequest:
 
         # 添加断言类型和值信息
         if assertion_type == "length":
-            error_details.append(f"断言类型: 长度比较")
+            error_details.append("断言类型: 长度比较")
             if original_actual_value is not None:
                 error_details.append(f"原始值: {original_actual_value}")
             error_details.append(f"实际长度: {actual_value}")
@@ -324,6 +352,7 @@ class HTTPRequest:
         Returns:
             Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]: 断言结果列表和失败需重试的断言列表
         """
+
         self._ensure_response_exists("进行断言")
 
         asserts_config = self.config.get('asserts', [])
@@ -340,15 +369,19 @@ class HTTPRequest:
         global_retry_enabled = bool(retry_config)
 
         # 3. 提取重试默认设置
-        global_retry_count = retry_assertions_config.get('count', retry_config.get('count', 3))
-        global_retry_interval = retry_assertions_config.get('interval', retry_config.get('interval', 1))
+        global_retry_count = retry_assertions_config.get(
+            'count', retry_config.get('count', 3))
+        global_retry_interval = retry_assertions_config.get(
+            'interval', retry_config.get('interval', 1))
 
         # 4. 提取应该重试的断言索引列表
-        retry_all_assertions = retry_assertions_config.get('all', global_retry_enabled)
+        retry_all_assertions = retry_assertions_config.get(
+            'all', global_retry_enabled)
         retry_assertion_indices = retry_assertions_config.get('indices', [])
 
         # 5. 提取特定断言的重试配置
-        specific_assertion_configs = retry_assertions_config.get('specific', {})
+        specific_assertion_configs = retry_assertions_config.get(
+            'specific', {})
 
         # 如果传入了specific_asserts，只处理指定的断言
         process_asserts = specific_asserts if specific_asserts is not None else asserts_config
@@ -361,7 +394,8 @@ class HTTPRequest:
             extractor_type = assertion[0]
 
             # 获取原始索引（用于重试配置查找）
-            original_idx = index_mapping.get(assertion_idx, assertion_idx) if index_mapping else assertion_idx
+            original_idx = index_mapping.get(
+                assertion_idx, assertion_idx) if index_mapping else assertion_idx
 
             # 判断该断言是否应该重试（只使用retry_assertions配置）
             is_retryable = False
@@ -371,7 +405,8 @@ class HTTPRequest:
             # retry_assertions特定配置 - 使用原始索引和支持整数键
             original_idx_str = str(original_idx)
             if original_idx_str in specific_assertion_configs or original_idx in specific_assertion_configs:
-                spec_config = specific_assertion_configs.get(original_idx_str) or specific_assertion_configs.get(original_idx)
+                spec_config = specific_assertion_configs.get(
+                    original_idx_str) or specific_assertion_configs.get(original_idx)
                 is_retryable = True
                 if isinstance(spec_config, dict):
                     if 'count' in spec_config:
@@ -395,7 +430,8 @@ class HTTPRequest:
                 # 检查第二个元素是否是操作符或二者兼用的断言类型
                 if assertion[1] in COMPARISON_OPERATORS or assertion[1] in DUAL_PURPOSE:
                     # 这是操作符格式的断言 ["status", "eq", 200]
-                    extraction_path = None if extractor_type in ["status", "body", "response_time"] else assertion[1]
+                    extraction_path = None if extractor_type in [
+                        "status", "body", "response_time"] else assertion[1]
 
                     # 特殊处理二者兼用的断言类型
                     if assertion[1] in DUAL_PURPOSE:
@@ -443,20 +479,23 @@ class HTTPRequest:
                         else:
                             # 检查断言类型是否有效
                             if assertion_type not in ASSERTION_TYPES:
-                                raise ValueError(f"不支持的断言类型: {assertion_type} 在 {assertion}")
+                                raise ValueError(
+                                    f"不支持的断言类型: {assertion_type} 在 {assertion}")
 
                             # 检查此断言类型是否需要预期值
                             if assertion_type not in ["exists", "not_exists"]:
                                 # 特殊处理类型断言，它确实需要一个值但在这种格式中没有提供
                                 if assertion_type == "type":
-                                    raise ValueError(f"断言类型 'type' 需要预期值(string/number/boolean/array/object/null)，但未提供: {assertion}")
+                                    raise ValueError(
+                                        f"断言类型 'type' 需要预期值(string/number/boolean/array/object/null)，但未提供: {assertion}")
                                 # 断言类型作为操作符
                                 expected_value = None
                                 compare_operator = assertion_type  # 使用断言类型作为操作符
                             else:
                                 expected_value = None
                                 compare_operator = assertion_type  # 存在性断言的操作符就是断言类型本身
-            elif len(assertion) == 4:  # 带操作符的断言 ["jsonpath", "$.id", "eq", 1] 或特殊断言 ["jsonpath", "$.type", "type", "string"] 或长度断言 ["body", "length", "gt", 50]
+            # 带操作符的断言 ["jsonpath", "$.id", "eq", 1] 或特殊断言 ["jsonpath", "$.type", "type", "string"] 或长度断言 ["body", "length", "gt", 50]
+            elif len(assertion) == 4:
                 extraction_path = assertion[1]
 
                 # 特殊处理长度断言：["body", "length", "gt", 50]
@@ -475,7 +514,8 @@ class HTTPRequest:
                 else:
                     # 检查断言类型是否有效
                     if assertion[2] not in ASSERTION_TYPES:
-                        raise ValueError(f"不支持的断言类型: {assertion[2]} 在 {assertion}")
+                        raise ValueError(
+                            f"不支持的断言类型: {assertion[2]} 在 {assertion}")
 
                     # 其他类型的断言，比如特殊断言
                     assertion_type = assertion[2]
@@ -495,13 +535,15 @@ class HTTPRequest:
 
                 # 检查断言类型是否有效
                 if assertion_type not in ASSERTION_TYPES:
-                    raise ValueError(f"不支持的断言类型: {assertion_type} 在 {assertion}")
+                    raise ValueError(
+                        f"不支持的断言类型: {assertion_type} 在 {assertion}")
 
                 # 特殊处理长度断言
                 if assertion_type == "length":
                     # 验证第四个元素是有效的比较操作符
                     if assertion[3] not in COMPARISON_OPERATORS:
-                        raise ValueError(f"长度断言的比较操作符必须是 {', '.join(COMPARISON_OPERATORS)} 之一: {assertion}")
+                        raise ValueError(
+                            f"长度断言的比较操作符必须是 {', '.join(COMPARISON_OPERATORS)} 之一: {assertion}")
 
                     # 验证第五个元素是有效的长度值
                     try:
@@ -557,7 +599,8 @@ class HTTPRequest:
                             attachment_type=allure.attachment_type.TEXT
                         )
                         # 抛出更具体的异常，而不是用0替代
-                        raise ValueError(f"断言类型'length'无法应用于值 '{original_actual_value}': {str(e)}")
+                        raise ValueError(
+                            f"断言类型'length'无法应用于值 '{original_actual_value}': {str(e)}")
 
             # 执行断言
             assertion_result = {
@@ -576,7 +619,8 @@ class HTTPRequest:
 
             try:
                 # 验证断言
-                result = self._perform_assertion(assertion_type, compare_operator, actual_value, expected_value)
+                result = self._perform_assertion(
+                    assertion_type, compare_operator, actual_value, expected_value)
                 assertion_result['result'] = result
 
                 # 根据返回的布尔值确定断言是否通过
@@ -596,7 +640,8 @@ class HTTPRequest:
 
                     # 使用Allure记录断言失败
                     allure.attach(
-                        self._format_assertion_details(assertion_result) + "\n\n错误: 断言结果为False",
+                        self._format_assertion_details(
+                            assertion_result) + "\n\n错误: 断言结果为False",
                         name=f"断言失败: {extractor_type}",
                         attachment_type=allure.attachment_type.TEXT
                     )
@@ -643,7 +688,8 @@ class HTTPRequest:
 
                 # 使用Allure记录断言失败
                 allure.attach(
-                    self._format_assertion_details(assertion_result) + f"\n\n错误: {str(e)}",
+                    self._format_assertion_details(
+                        assertion_result) + f"\n\n错误: {str(e)}",
                     name=f"断言失败: {extractor_type}",
                     attachment_type=allure.attachment_type.TEXT
                 )
@@ -676,7 +722,8 @@ class HTTPRequest:
 
                 # 使用Allure记录断言错误
                 allure.attach(
-                    self._format_assertion_details(assertion_result) + f"\n\n错误: {assertion_result['error']}",
+                    self._format_assertion_details(
+                        assertion_result) + f"\n\n错误: {assertion_result['error']}",
                     name=f"断言执行错误: {extractor_type}",
                     attachment_type=allure.attachment_type.TEXT
                 )
@@ -689,7 +736,8 @@ class HTTPRequest:
         # 执行完所有断言后，如果有失败的断言，抛出异常
         if failed_assertions:
             # 检查是否只收集失败而不抛出异常（由重试机制设置）
-            collect_only = self.config.get('_collect_failed_assertions_only', False)
+            collect_only = self.config.get(
+                '_collect_failed_assertions_only', False)
 
             if not collect_only:
                 if len(failed_assertions) == 1:
@@ -702,7 +750,8 @@ class HTTPRequest:
                         # 从错误消息中提取关键部分
                         if "[" in error_msg and "]" in error_msg:
                             # 尝试提取提取器类型
-                            extractor_type = error_msg.split("[", 1)[1].split("]")[0] if "[" in error_msg else "未知"
+                            extractor_type = error_msg.split("[", 1)[1].split("]")[
+                                0] if "[" in error_msg else "未知"
                         else:
                             extractor_type = "未知"
 
@@ -759,7 +808,7 @@ class HTTPRequest:
         Returns:
             提取的值
         """
-        if not self.response:
+        if self.response is None:
             return default_value
 
         try:
@@ -868,14 +917,33 @@ class HTTPRequest:
             else:
                 text = self.response.text
 
-            matches = re.findall(pattern, text)
+            # 检查正则表达式是否包含捕获组
+            compiled_pattern = re.compile(pattern)
+            has_groups = compiled_pattern.groups > 0
 
-            if not matches:
-                return default_value
-            elif len(matches) == 1:
-                return matches[0]
+            if has_groups:
+                # 如果有捕获组，只返回第一个匹配的捕获组内容
+                first_match = re.search(pattern, text)
+                if not first_match:
+                    return default_value
+
+                # 获取第一个匹配的捕获组
+                if compiled_pattern.groups == 1:
+                    # 只有一个捕获组，返回字符串
+                    return first_match.group(1)
+                else:
+                    # 多个捕获组，返回元组
+                    return first_match.groups()
             else:
-                return matches
+                # 如果没有捕获组，使用findall获取所有完整匹配
+                matches = re.findall(pattern, text)
+
+                if not matches:
+                    return default_value
+                elif len(matches) == 1:
+                    return matches[0]
+                else:
+                    return matches
         except Exception as e:
             if default_value is not None:
                 return default_value
@@ -1013,7 +1081,8 @@ class HTTPRequest:
                 return isinstance(actual_value, str) and actual_value.endswith(str(expected_value))
             elif assertion_type == "matches":
                 if not isinstance(actual_value, str):
-                    actual_value = str(actual_value) if actual_value is not None else ""
+                    actual_value = str(
+                        actual_value) if actual_value is not None else ""
                 try:
                     import re
                     pattern = str(expected_value)
@@ -1124,17 +1193,20 @@ class HTTPRequest:
         elif operator == "startswith":
             # startswith操作符检查actual是否以expected开头
             if not isinstance(actual_value, str):
-                actual_value = str(actual_value) if actual_value is not None else ""
+                actual_value = str(
+                    actual_value) if actual_value is not None else ""
             return actual_value.startswith(str(expected_value))
         elif operator == "endswith":
             # endswith操作符检查actual是否以expected结尾
             if not isinstance(actual_value, str):
-                actual_value = str(actual_value) if actual_value is not None else ""
+                actual_value = str(
+                    actual_value) if actual_value is not None else ""
             return actual_value.endswith(str(expected_value))
         elif operator == "matches":
             # matches操作符使用正则表达式进行匹配
             if not isinstance(actual_value, str):
-                actual_value = str(actual_value) if actual_value is not None else ""
+                actual_value = str(
+                    actual_value) if actual_value is not None else ""
             try:
                 import re
                 pattern = str(expected_value)
@@ -1198,7 +1270,8 @@ class HTTPRequest:
         if "json" in request_kwargs and request_kwargs["json"]:
             request_details.append("JSON Body:")
             try:
-                request_details.append(json.dumps(request_kwargs["json"], indent=2, ensure_ascii=False))
+                request_details.append(json.dumps(
+                    request_kwargs["json"], indent=2, ensure_ascii=False))
             except:
                 request_details.append(str(request_kwargs["json"]))
         elif "data" in request_kwargs and request_kwargs["data"]:
@@ -1243,7 +1316,8 @@ class HTTPRequest:
         response_details.append("Body:")
         try:
             if 'application/json' in response.headers.get('Content-Type', ''):
-                response_details.append(json.dumps(response.json(), indent=2, ensure_ascii=False))
+                response_details.append(json.dumps(
+                    response.json(), indent=2, ensure_ascii=False))
             elif len(response.content) < 10240:  # 限制大小
                 response_details.append(response.text)
             else:

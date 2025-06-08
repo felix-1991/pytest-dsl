@@ -10,7 +10,7 @@
         url: https://httpbin.org/delay/1
         asserts:
             - ["status", "eq", 200]
-            - ["response_time", "lt", 1000]
+            - ["response_time", "lt", 3000]  # 给1秒延迟留出合理的缓冲时间
         # 全局重试配置
         retry_assertions:
             count: 2

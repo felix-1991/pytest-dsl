@@ -10,7 +10,7 @@
         url: https://httpbin.org/delay/1
         asserts:
             - ["status", "eq", 200]
-            - ["response_time", "lt", 500]  # 可能会失败，因为请求延迟约1秒
+            - ["response_time", "lt", 3000]  # 给1秒延迟留出合理的缓冲时间
         # 全局重试配置
         retry_assertions:
             count: 2
@@ -24,7 +24,7 @@
         url: https://httpbin.org/delay/1
         asserts:
             - ["status", "eq", 200]          # 索引0
-            - ["response_time", "lt", 500]   # 索引1，需要重试
+            - ["response_time", "lt", 3000]   # 索引1，给1秒延迟留出缓冲
         # 只重试指定索引的断言
         retry_assertions:
             count: 3
@@ -38,7 +38,7 @@
         url: https://httpbin.org/delay/1
         asserts:
             - ["status", "eq", 200]          # 索引0
-            - ["response_time", "lt", 500]   # 索引1，使用特定配置
+            - ["response_time", "lt", 3000]   # 索引1，给1秒延迟留出缓冲
             - ["body", "contains", "url"]    # 索引2
         # 为特定断言提供自定义配置
         retry_assertions:

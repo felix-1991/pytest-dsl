@@ -19,3 +19,11 @@ http_clients:
     timeout: 30
     verify_ssl: true
     session: true
+  
+  mock_server:  # Mock服务器配置
+    base_url: "http://localhost:8888"
+    timeout: 30
+    headers:
+      User-Agent: "pytest-dsl-test/1.0"
+      Accept: "application/json"
+    verify_ssl: false

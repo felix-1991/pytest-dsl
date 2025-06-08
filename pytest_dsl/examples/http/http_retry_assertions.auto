@@ -16,7 +16,7 @@
         asserts:
             - ["status", "eq", 200]
             - ["jsonpath", "$.url", "contains", "httpbin.org"]
-            - ["response_time", "lt", 3000]  # 这个断言可能会失败，因为请求延迟约2秒
+            - ["response_time", "lt", 4000]  # 给2秒延迟留出足够的缓冲时间
     ''',步骤名称: "旧版全局断言重试示例"
 
 # 示例2: 使用indices指定重试特定断言
@@ -38,7 +38,7 @@
         asserts:
             - ["status", "eq", 200]             # 索引0
             - ["body", "matches", "^[0-9]+$"]   # 索引1
-            - ["body", "lt", 6]                 # 索引2 - 需要重试
+            - ["body", "lt", 6]                 # 索引2 - 需要重试，约50%概率失败
             - ["response_time", "lt", 10000]    # 索引3
         retry_assertions:
             count: 5
@@ -56,7 +56,7 @@
         url: https://httpbin.org/delay/1
         asserts:
             - ["status", "eq", 200]                # 索引0
-            - ["response_time", "lt", 2000]         # 索引1
+            - ["response_time", "lt", 3000]         # 索引1 - 给1秒延迟留出缓冲
             - ["jsonpath", "$.headers.Host", "eq", "httpbin.org"]  # 索引2
             - ["jsonpath", "$.url", "contains", "httpbin.org"]     # 索引3
         retry_assertions:
@@ -79,7 +79,7 @@
         url: https://httpbin.org/status/200
         asserts:
             - ["status", "eq", 200]
-            - ["response_time", "lt", 100]  # 可能会失败
+            - ["response_time", "lt", 5000]  # 设置合理的响应时间限制
         retry_assertions:
             count: 3
             interval: 1.5

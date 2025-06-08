@@ -130,7 +130,8 @@ def _load_file_content(file_path: str, is_template: bool = False,
 
 
 def _process_request_config(config: Dict[str, Any],
-                            test_context: TestContext = None) -> Dict[str, Any]:
+                            test_context: TestContext = None) -> \
+        Dict[str, Any]:
     """处理请求配置，检查并处理文件引用
 
     Args:
@@ -219,7 +220,15 @@ def _normalize_retry_config(config, assert_retry_count=None,
         if 'indices' in retry_assertions:
             standard_retry_config['indices'] = retry_assertions['indices']
         if 'specific' in retry_assertions:
-            standard_retry_config['specific'] = retry_assertions['specific']
+            # 确保specific配置中的整数键被转换为字符串键，保持兼容性
+            specific_config = {}
+            for key, value in retry_assertions['specific'].items():
+                # 同时支持整数键和字符串键
+                specific_config[str(key)] = value
+                # 保留原始键类型以便查找
+                if isinstance(key, int):
+                    specific_config[key] = value
+            standard_retry_config['specific'] = specific_config
 
     # 处理传统retry配置（如果专用配置不存在）
     elif 'retry' in config and config['retry']:
@@ -360,7 +369,17 @@ def http_request(context, **kwargs):
         # 执行请求
         response = http_req.execute(disable_auth=disable_auth)
 
-        # 处理捕获
+        # 统一处理断言逻辑
+        with allure.step("执行断言验证"):
+            if retry_config['enabled']:
+                # 使用统一的重试处理函数
+                _process_assertions_with_unified_retry(http_req, retry_config,
+                                                       disable_auth)
+            else:
+                # 不需要重试，直接断言
+                http_req.process_asserts()
+
+        # 在断言完成后获取最终的捕获值（可能在重试期间被更新）
         captured_values = http_req.captured_values
 
         # 将捕获的变量注册到上下文
@@ -370,15 +389,6 @@ def http_request(context, **kwargs):
         # 保存完整响应（如果需要）
         if save_response:
             context.set(save_response, response)
-
-        # 统一处理断言逻辑
-        with allure.step("执行断言验证"):
-            if retry_config['enabled']:
-                # 使用统一的重试处理函数
-                _process_assertions_with_unified_retry(http_req, retry_config)
-            else:
-                # 不需要重试，直接断言
-                http_req.process_asserts()
 
         # 获取会话状态（如果使用了会话）
         session_state = None
@@ -447,7 +457,8 @@ def _deep_merge(dict1, dict2):
     return dict1
 
 
-def _process_assertions_with_unified_retry(http_req, retry_config):
+def _process_assertions_with_unified_retry(http_req, retry_config,
+                                           disable_auth=False):
     """使用统一的重试配置处理断言
 
     Args:
@@ -481,6 +492,11 @@ def _process_assertions_with_unified_retry(http_req, retry_config):
         try:
             # 临时替换配置
             http_req.config = temp_config
+
+            # 确保在收集失败断言之前，response和captures是可用的
+            if not http_req.response:
+                # 如果response为空，重新执行一次请求
+                http_req.execute(disable_auth=disable_auth)
 
             # 重新运行断言，这次只收集失败的断言而不抛出异常
             _, failed_retryable_assertions = http_req.process_asserts()
@@ -582,7 +598,17 @@ def _process_assertions_with_unified_retry(http_req, retry_config):
                 time.sleep(retry_interval)
 
                 # 重新发送请求
-                http_req.execute()
+                try:
+                    http_req.execute(disable_auth=disable_auth)
+                except Exception as exec_error:
+                    # 如果重新执行请求失败，记录错误并继续重试
+                    allure.attach(
+                        f"重试执行请求失败: {type(exec_error).__name__}: "
+                        f"{str(exec_error)}",
+                        name=f"重试请求执行失败 #{attempt}",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    continue
 
                 # 过滤出仍在重试范围内的断言
                 still_retryable_assertions = []
@@ -657,6 +683,8 @@ def _process_assertions_with_unified_retry(http_req, retry_config):
         )
 
         try:
+            # 确保在最终断言之前重新执行一次请求
+            http_req.execute(disable_auth=disable_auth)
             results, _ = http_req.process_asserts()
             return results
         except AssertionError as final_err:
