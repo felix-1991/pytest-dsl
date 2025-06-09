@@ -67,6 +67,7 @@ def p_metadata_item(p):
                     | TAGS_KEYWORD COLON LBRACKET tags RBRACKET
                     | AUTHOR_KEYWORD COLON metadata_value
                     | DATE_KEYWORD COLON DATE
+                    | DATE_KEYWORD COLON STRING
                     | DATA_KEYWORD COLON data_source
                     | IMPORT_KEYWORD COLON STRING
                     | REMOTE_KEYWORD COLON STRING AS ID'''
@@ -412,10 +413,14 @@ def get_parser(debug=False):
     return yacc.yacc(debug=debug)
 
 # 定义远程关键字调用的语法规则
+
+
 def p_remote_keyword_call(p):
     '''remote_keyword_call : ID PIPE LBRACKET ID RBRACKET COMMA parameter_list
                           | ID PIPE LBRACKET ID RBRACKET'''
     if len(p) == 8:
-        p[0] = Node('RemoteKeywordCall', [p[7]], {'alias': p[1], 'keyword': p[4]})
+        p[0] = Node('RemoteKeywordCall', [p[7]], {
+                    'alias': p[1], 'keyword': p[4]})
     else:
-        p[0] = Node('RemoteKeywordCall', [[]], {'alias': p[1], 'keyword': p[4]})
+        p[0] = Node('RemoteKeywordCall', [[]], {
+                    'alias': p[1], 'keyword': p[4]})

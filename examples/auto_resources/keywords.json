@@ -1,0 +1,392 @@
+{
+  "summary": {
+    "total_count": 14,
+    "category_counts": {
+      "project_custom": 14
+    },
+    "source_counts": {
+      "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/simple/test_utils.resource": 4,
+      "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/common/utils.resource": 6,
+      "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/api/http_utils.resource": 4
+    }
+  },
+  "keywords": [
+    {
+      "name": "创建资源",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "资源类型",
+          "mapping": "资源类型",
+          "description": "自定义关键字参数 资源类型"
+        },
+        {
+          "name": "数据",
+          "mapping": "数据",
+          "description": "自定义关键字参数 数据",
+          "default": ""
+        },
+        {
+          "name": "token",
+          "mapping": "token",
+          "description": "自定义关键字参数 token",
+          "default": ""
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/api/http_utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "安全等待",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "秒数",
+          "mapping": "秒数",
+          "description": "自定义关键字参数 秒数"
+        },
+        {
+          "name": "描述",
+          "mapping": "描述",
+          "description": "自定义关键字参数 描述",
+          "default": "操作"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/common/utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "带认证的API调用",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "方法",
+          "mapping": "方法",
+          "description": "自定义关键字参数 方法"
+        },
+        {
+          "name": "路径",
+          "mapping": "路径",
+          "description": "自定义关键字参数 路径"
+        },
+        {
+          "name": "数据",
+          "mapping": "数据",
+          "description": "自定义关键字参数 数据",
+          "default": ""
+        },
+        {
+          "name": "token",
+          "mapping": "token",
+          "description": "自定义关键字参数 token",
+          "default": ""
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/api/http_utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "格式化消息",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "模板",
+          "mapping": "模板",
+          "description": "自定义关键字参数 模板"
+        },
+        {
+          "name": "变量值",
+          "mapping": "变量值",
+          "description": "自定义关键字参数 变量值"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/common/utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "清理字符串",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "输入字符串",
+          "mapping": "输入字符串",
+          "description": "自定义关键字参数 输入字符串"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/common/utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "清理测试环境",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "环境类型",
+          "mapping": "环境类型",
+          "description": "自定义关键字参数 环境类型",
+          "default": "默认"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/simple/test_utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "生成测试数据",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "数据类型",
+          "mapping": "数据类型",
+          "description": "自定义关键字参数 数据类型"
+        },
+        {
+          "name": "数量",
+          "mapping": "数量",
+          "description": "自定义关键字参数 数量",
+          "default": 1
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/simple/test_utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "登录获取Token",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "用户名",
+          "mapping": "用户名",
+          "description": "自定义关键字参数 用户名"
+        },
+        {
+          "name": "密码",
+          "mapping": "密码",
+          "description": "自定义关键字参数 密码"
+        },
+        {
+          "name": "服务器",
+          "mapping": "服务器",
+          "description": "自定义关键字参数 服务器",
+          "default": "default"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/api/http_utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "简单计算",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "数字1",
+          "mapping": "数字1",
+          "description": "自定义关键字参数 数字1"
+        },
+        {
+          "name": "数字2",
+          "mapping": "数字2",
+          "description": "自定义关键字参数 数字2"
+        },
+        {
+          "name": "操作",
+          "mapping": "操作",
+          "description": "自定义关键字参数 操作",
+          "default": "加法"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/common/utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "简单问候",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "姓名",
+          "mapping": "姓名",
+          "description": "自定义关键字参数 姓名"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/simple/test_utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "获取资源",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "资源类型",
+          "mapping": "资源类型",
+          "description": "自定义关键字参数 资源类型"
+        },
+        {
+          "name": "资源ID",
+          "mapping": "资源ID",
+          "description": "自定义关键字参数 资源ID"
+        },
+        {
+          "name": "token",
+          "mapping": "token",
+          "description": "自定义关键字参数 token",
+          "default": ""
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/api/http_utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "验证测试结果",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "实际值",
+          "mapping": "实际值",
+          "description": "自定义关键字参数 实际值"
+        },
+        {
+          "name": "预期值",
+          "mapping": "预期值",
+          "description": "自定义关键字参数 预期值"
+        },
+        {
+          "name": "测试名称",
+          "mapping": "测试名称",
+          "description": "自定义关键字参数 测试名称",
+          "default": "测试"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/simple/test_utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "验证邮箱格式",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "邮箱地址",
+          "mapping": "邮箱地址",
+          "description": "自定义关键字参数 邮箱地址"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/common/utils.resource",
+      "documentation": "自定义关键字执行器"
+    },
+    {
+      "name": "验证非空",
+      "category": "project_custom",
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl.core.custom_keyword_manager",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "值",
+          "mapping": "值",
+          "description": "自定义关键字参数 值"
+        },
+        {
+          "name": "字段名",
+          "mapping": "字段名",
+          "description": "自定义关键字参数 字段名",
+          "default": "字段"
+        }
+      ],
+      "file_location": "/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/common/utils.resource",
+      "documentation": "自定义关键字执行器"
+    }
+  ]
+}

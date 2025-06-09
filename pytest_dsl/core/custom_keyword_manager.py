@@ -15,6 +15,7 @@ class CustomKeywordManager:
         """初始化自定义关键字管理器"""
         self.resource_cache = {}  # 缓存已加载的资源文件
         self.resource_paths = []  # 资源文件搜索路径
+        self.auto_imported_resources = set()  # 记录已自动导入的资源文件
 
     def add_resource_path(self, path: str) -> None:
         """添加资源文件搜索路径
@@ -24,6 +25,141 @@ class CustomKeywordManager:
         """
         if path not in self.resource_paths:
             self.resource_paths.append(path)
+
+    def auto_import_resources_directory(
+            self, project_root: str = None) -> None:
+        """自动导入项目中的resources目录
+
+        Args:
+            project_root: 项目根目录，默认为当前工作目录
+        """
+        if project_root is None:
+            project_root = os.getcwd()
+
+        # 查找resources目录
+        resources_dir = os.path.join(project_root, "resources")
+
+        if (not os.path.exists(resources_dir) or
+                not os.path.isdir(resources_dir)):
+            # 如果没有resources目录，静默返回
+            return
+
+        print(f"发现resources目录: {resources_dir}")
+
+        # 递归查找所有.resource文件
+        resource_files = []
+        for root, dirs, files in os.walk(resources_dir):
+            for file in files:
+                if file.endswith('.resource'):
+                    resource_files.append(os.path.join(root, file))
+
+        if not resource_files:
+            print("resources目录中没有找到.resource文件")
+            return
+
+        print(f"在resources目录中发现 {len(resource_files)} 个资源文件")
+
+        # 按照依赖关系排序并加载资源文件
+        sorted_files = self._sort_resources_by_dependencies(resource_files)
+
+        for resource_file in sorted_files:
+            try:
+                # 检查是否已经自动导入过
+                absolute_path = os.path.abspath(resource_file)
+                if absolute_path not in self.auto_imported_resources:
+                    self.load_resource_file(resource_file)
+                    self.auto_imported_resources.add(absolute_path)
+                    print(f"自动导入资源文件: {resource_file}")
+            except Exception as e:
+                print(f"自动导入资源文件失败 {resource_file}: {e}")
+
+    def _sort_resources_by_dependencies(self, resource_files):
+        """根据依赖关系对资源文件进行排序
+
+        Args:
+            resource_files: 资源文件列表
+
+        Returns:
+            list: 按依赖关系排序后的资源文件列表
+        """
+        # 简单的拓扑排序实现
+        dependencies = {}
+        all_files = set()
+
+        # 分析每个文件的依赖关系
+        for file_path in resource_files:
+            all_files.add(file_path)
+            dependencies[file_path] = self._extract_dependencies(file_path)
+
+        # 拓扑排序
+        sorted_files = []
+        visited = set()
+        temp_visited = set()
+
+        def visit(file_path):
+            if file_path in temp_visited:
+                # 检测到循环依赖，跳过
+                return
+            if file_path in visited:
+                return
+
+            temp_visited.add(file_path)
+
+            # 访问依赖的文件
+            for dep in dependencies.get(file_path, []):
+                if dep in all_files:  # 只处理在当前文件列表中的依赖
+                    visit(dep)
+
+            temp_visited.remove(file_path)
+            visited.add(file_path)
+            sorted_files.append(file_path)
+
+        # 访问所有文件
+        for file_path in resource_files:
+            if file_path not in visited:
+                visit(file_path)
+
+        return sorted_files
+
+    def _extract_dependencies(self, file_path):
+        """提取资源文件的依赖关系
+
+        Args:
+            file_path: 资源文件路径
+
+        Returns:
+            list: 依赖的文件路径列表
+        """
+        dependencies = []
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # 解析文件获取导入信息
+            lexer = get_lexer()
+            parser = get_parser()
+            ast = parser.parse(content, lexer=lexer)
+
+            if ast.type == 'Start' and ast.children:
+                metadata_node = ast.children[0]
+                if metadata_node.type == 'Metadata':
+                    for item in metadata_node.children:
+                        if item.type == '@import':
+                            imported_file = item.value
+                            # 处理相对路径
+                            if not os.path.isabs(imported_file):
+                                imported_file = os.path.join(
+                                    os.path.dirname(file_path), imported_file)
+                            # 规范化路径
+                            imported_file = os.path.normpath(imported_file)
+                            dependencies.append(imported_file)
+
+        except Exception as e:
+            # 如果解析失败，返回空依赖列表
+            print(f"解析资源文件依赖失败 {file_path}: {e}")
+
+        return dependencies
 
     def load_resource_file(self, file_path: str) -> None:
         """加载资源文件

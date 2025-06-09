@@ -628,10 +628,156 @@ function 复杂业务逻辑 (输入数据) do
 end
 ```
 
+## 自动导入resources目录
+
+### 零配置自动导入
+
+pytest-dsl 支持自动发现和导入项目根目录下的 `resources` 目录中的所有 `.resource` 文件，无需手动使用 `@import` 指令。这个功能让项目中的自定义关键字可以自动可用，大大简化了测试文件的编写。
+
+### 项目结构
+
+```
+your_project/
+├── resources/                    # 自动导入的资源目录
+│   ├── common/                  # 通用工具关键字
+│   │   └── utils.resource       # 基础工具函数
+│   ├── api/                     # API 测试关键字
+│   │   └── http_utils.resource  # HTTP 工具
+│   └── business/                # 业务流程关键字
+│       └── workflows.resource   # 业务流程
+├── tests/                       # 测试文件目录
+│   ├── *.dsl                   # DSL 测试文件
+│   └── *.py                    # Python 测试文件
+└── config/                     # 配置文件目录（可选）
+    └── *.yaml
+```
+
+### 使用示例
+
+**resources/common/utils.resource:**
+```python
+@name: "通用工具关键字"
+
+function 格式化消息 (模板, 变量值) do
+    格式化结果 = "${模板}: ${变量值}"
+    [打印], 内容: "格式化消息 - ${格式化结果}"
+    return ${格式化结果}
+end
+
+function 验证非空 (值, 字段名="字段") do
+    if ${值} == "" do
+        [打印], 内容: "验证失败: ${字段名}不能为空"
+        return "验证失败"
+    end
+    
+    [打印], 内容: "验证通过: ${字段名}值为'${值}'"
+    return "验证通过"
+end
+```
+
+**resources/api/http_utils.resource:**
+```python
+@name: "HTTP工具关键字"
+@import: "../common/utils.resource"  # 可以导入其他资源文件
+
+function 登录获取Token (用户名, 密码) do
+    # 使用导入的格式化消息关键字
+    登录消息 = [格式化消息], 模板: "用户登录", 变量值: ${用户名}
+    [打印], 内容: ${登录消息}
+    
+    # 模拟登录过程
+    模拟Token = "token_${用户名}_123456"
+    [打印], 内容: "登录成功 - Token: ${模拟Token}"
+    
+    return ${模拟Token}
+end
+```
+
+**test_example.dsl:**
+```python
+@name: "自动导入示例测试"
+
+# 直接使用resources中定义的关键字，无需@import指令
+用户名 = "testuser"
+验证结果 = [验证非空], 值: ${用户名}, 字段名: "用户名"
+
+登录结果 = [登录获取Token], 用户名: ${用户名}, 密码: "password123"
+
+[打印], 内容: "验证结果: ${验证结果}"
+[打印], 内容: "登录结果: ${登录结果}"
+```
+
+### 功能特点
+
+- **零配置自动导入** - 无需手动配置，系统自动发现并导入`resources`目录
+- **智能依赖解析** - 自动处理资源文件之间的依赖关系，按正确顺序加载
+- **高性能缓存机制** - 避免重复导入同一文件
+- **多环境支持** - 在CLI、pytest等不同环境中都能正常工作
+- **向后兼容** - 不影响现有的`@import`功能
+
+### 工作原理
+
+1. **自动发现机制**：系统会自动检测项目根目录下的`resources`目录
+2. **递归扫描**：递归查找所有`.resource`文件
+3. **依赖分析**：解析文件中的`@import`指令，构建依赖关系图
+4. **拓扑排序**：使用拓扑排序算法确定加载顺序
+5. **按序加载**：按依赖关系顺序加载文件，避免依赖冲突
+
+### 最佳实践
+
+1. **目录组织**
+   ```
+   resources/
+   ├── common/          # 通用工具（最基础）
+   ├── api/             # API 相关
+   ├── ui/              # UI 相关
+   ├── database/        # 数据库相关
+   └── business/        # 业务流程（最复杂）
+   ```
+
+2. **避免循环依赖**
+   - 使用分层设计：common -> functional -> business
+   - 明确依赖关系：在文件头部声明所有依赖
+   - 合理规划：避免相互引用
+
+3. **命名规范**
+   - 文件命名：使用描述性名称，如`user_management.resource`
+   - 关键字命名：使用清晰的中文名称
+   - 参数命名：使用有意义的参数名
+
+### 运行方式
+
+```bash
+# CLI工具自动导入
+python -m pytest_dsl.cli run test_example.dsl
+
+# pytest集成自动导入
+pytest test_example.py -v
+
+# 查看所有可用关键字（包括自动导入的）
+python -m pytest_dsl.cli list-keywords --format json
+```
+
+### 调试信息
+
+运行时会显示详细的自动导入过程：
+
+```
+发现resources目录: /path/to/project/resources
+在resources目录中发现 3 个资源文件
+已注册自定义关键字: 格式化消息 来自文件: .../utils.resource
+已注册自定义关键字: 登录获取Token 来自文件: .../http_utils.resource
+...
+共 43 个关键字
+  内置: 29 个
+  项目自定义: 14 个
+```
+
 ## 与其他功能的结合
 
 DSL内自定义关键字可以与pytest-dsl的其他功能完美结合：
 
+- **自动导入** - 在`resources`目录中组织和管理关键字，自动导入无需配置
 - **资源文件** - 在资源文件中定义通用关键字，在测试文件中定义特定关键字
 - **HTTP测试** - 封装复杂的API测试流程
 - **数据驱动** - 结合参数化测试使用

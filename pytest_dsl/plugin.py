@@ -40,6 +40,23 @@ def pytest_configure(config):
 
     # 加载所有已安装的关键字插件
     load_all_plugins()
-    
+
     # 加载本地关键字（向后兼容）
-    scan_local_keywords() 
+    scan_local_keywords()
+
+    # 自动导入项目中的resources目录
+    try:
+        from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
+
+        # 获取pytest的根目录
+        project_root = str(config.rootdir) if config.rootdir else os.getcwd()
+
+        # 检查是否存在resources目录
+        resources_dir = os.path.join(project_root, "resources")
+        if os.path.exists(resources_dir) and os.path.isdir(resources_dir):
+            custom_keyword_manager.auto_import_resources_directory(
+                project_root)
+            print(f"pytest环境：已自动导入resources目录 {resources_dir}")
+
+    except Exception as e:
+        print(f"pytest环境：自动导入resources目录时出现警告: {str(e)}")

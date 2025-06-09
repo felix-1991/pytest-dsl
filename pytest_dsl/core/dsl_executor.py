@@ -300,6 +300,9 @@ class DSLExecutor:
             metadata = {}
             teardown_node = None
 
+            # 自动导入项目中的resources目录
+            self._auto_import_resources()
+
             # 先处理元数据和找到teardown节点
             for child in node.children:
                 if child.type == 'Metadata':
@@ -333,6 +336,40 @@ class DSLExecutor:
         finally:
             # 测试用例执行完成后清空上下文
             self.test_context.clear()
+
+    def _auto_import_resources(self):
+        """自动导入项目中的resources目录"""
+        try:
+            from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
+
+            # 尝试从多个可能的项目根目录位置导入resources
+            possible_roots = [
+                os.getcwd(),  # 当前工作目录
+                os.path.dirname(os.getcwd()),  # 上级目录
+            ]
+
+            # 如果在pytest环境中，尝试获取pytest的根目录
+            try:
+                import pytest
+                if hasattr(pytest, 'config') and pytest.config:
+                    pytest_root = pytest.config.rootdir
+                    if pytest_root:
+                        possible_roots.insert(0, str(pytest_root))
+            except:
+                pass
+
+            # 尝试每个可能的根目录
+            for project_root in possible_roots:
+                if project_root and os.path.exists(project_root):
+                    resources_dir = os.path.join(project_root, "resources")
+                    if os.path.exists(resources_dir) and os.path.isdir(resources_dir):
+                        custom_keyword_manager.auto_import_resources_directory(
+                            project_root)
+                        break
+
+        except Exception as e:
+            # 自动导入失败不应该影响测试执行，只记录警告
+            print(f"自动导入resources目录时出现警告: {str(e)}")
 
     def _handle_import(self, file_path):
         """处理导入指令

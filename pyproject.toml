@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytest-dsl"
-version = "0.12.1"
+version = "0.13.0"
 description = "A DSL testing framework based on pytest"
 readme = "README.md"
 requires-python = ">=3.9"

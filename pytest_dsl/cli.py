@@ -78,7 +78,7 @@ def parse_args():
         list_parser.add_argument(
             '--category',
             choices=[
-                'builtin', 'plugin', 'custom', 
+                'builtin', 'plugin', 'custom',
                 'project_custom', 'remote', 'all'
             ],
             default='all',
@@ -108,7 +108,7 @@ def parse_args():
             parser.add_argument(
                 '--category',
                 choices=[
-                    'builtin', 'plugin', 'custom', 
+                    'builtin', 'plugin', 'custom',
                     'project_custom', 'remote', 'all'
                 ],
                 default='all'
@@ -156,6 +156,29 @@ def load_all_keywords(include_remote=False):
 
     # 扫描本地关键字
     scan_local_keywords()
+
+    # 自动导入项目中的resources目录
+    try:
+        from pytest_dsl.core.custom_keyword_manager import (
+            custom_keyword_manager)
+
+        # 尝试从多个可能的项目根目录位置导入resources
+        possible_roots = [
+            os.getcwd(),  # 当前工作目录
+            os.path.dirname(os.getcwd()),  # 上级目录
+        ]
+
+        # 尝试每个可能的根目录
+        for project_root in possible_roots:
+            if project_root and os.path.exists(project_root):
+                resources_dir = os.path.join(project_root, "resources")
+                if (os.path.exists(resources_dir) and
+                        os.path.isdir(resources_dir)):
+                    custom_keyword_manager.auto_import_resources_directory(
+                        project_root)
+                    break
+    except Exception as e:
+        print(f"自动导入resources目录时出现警告: {str(e)}")
 
     # 扫描项目中的自定义关键字（.resource文件中定义的）
     project_custom_keywords = scan_project_custom_keywords()
