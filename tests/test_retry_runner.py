@@ -7,7 +7,6 @@
 
 import subprocess
 import time
-import threading
 from test_mock_server import MockServer
 
 

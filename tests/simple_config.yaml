@@ -1,0 +1,64 @@
+http_clients:
+  # 无认证客户端
+  no_auth:
+    base_url: "http://localhost:8889"
+    timeout: 30
+    verify_ssl: false
+  
+  # Basic认证客户端 - 有效凭据
+  basic_auth_valid:
+    base_url: "http://localhost:8889"
+    timeout: 30
+    auth:
+      type: "basic"
+      username: "admin"
+      password: "admin123"
+    verify_ssl: false
+  
+  # Bearer Token认证客户端
+  bearer_auth_valid:
+    base_url: "http://localhost:8889"
+    timeout: 30
+    auth:
+      type: "token"
+      token: "valid_bearer_token_123"
+      scheme: "Bearer"
+    verify_ssl: false
+  
+  # API Key认证客户端 - Header方式
+  apikey_header_valid:
+    base_url: "http://localhost:8889"
+    timeout: 30
+    auth:
+      type: "api_key"
+      api_key: "test_api_key_123"
+      key_name: "X-API-Key"
+      in_header: true
+      in_query: false
+    verify_ssl: false
+  
+  # API Key认证客户端 - Query方式
+  apikey_query_valid:
+    base_url: "http://localhost:8889"
+    timeout: 30
+    auth:
+      type: "api_key"
+      api_key: "test_api_key_123"
+      key_name: "api_key"
+      in_header: false
+      in_query: true
+      query_param_name: "api_key"
+    verify_ssl: false
+  
+  # OAuth2客户端认证
+  oauth2_client:
+    base_url: "http://localhost:8889"
+    timeout: 30
+    auth:
+      type: "oauth2"
+      token_url: "http://localhost:8889/oauth/token"
+      client_id: "test_client_id"
+      client_secret: "test_client_secret"
+      grant_type: "client_credentials"
+      scope: "read write"
+    verify_ssl: false 

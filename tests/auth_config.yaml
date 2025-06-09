@@ -1,0 +1,280 @@
+# 授权功能测试配置文件
+# 为pytest-dsl HTTP授权功能提供全面的测试配置
+
+# 测试变量
+variables:
+  auth_server_host: "localhost"
+  auth_server_port: 8889
+  auth_base_url: "http://${auth_server_host}:${auth_server_port}"
+  
+  # 测试用户凭据
+  test_users:
+    admin:
+      username: "admin"
+      password: "admin123"
+    user1:
+      username: "user1"
+      password: "password1"
+    test:
+      username: "test"
+      password: "test123"
+  
+  # 测试Token
+  test_tokens:
+    valid_bearer: "valid_bearer_token_123"
+    expired_bearer: "expired_token_456"
+    test_bearer: "test_token_789"
+  
+  # 测试API Keys
+  test_api_keys:
+    admin_key: "test_api_key_123"
+    readonly_key: "readonly_key_456"
+    dev_key: "dev_key_789"
+    invalid_key: "invalid_api_key_999"
+  
+  # OAuth2测试客户端
+  oauth_clients:
+    test_client:
+      client_id: "test_client_id"
+      client_secret: "test_client_secret"
+    readonly_client:
+      client_id: "readonly_client"
+      client_secret: "readonly_secret"
+
+# HTTP客户端配置 - 覆盖各种授权方式
+http_clients:
+  
+  # 无认证客户端
+  no_auth:
+    base_url: "${auth_base_url}"
+    timeout: 30
+    headers:
+      User-Agent: "pytest-dsl-auth-test/1.0"
+      Accept: "application/json"
+    verify_ssl: false
+  
+  # Basic认证客户端 - 有效凭据
+  basic_auth_valid:
+    base_url: "${auth_base_url}"
+    timeout: 30
+    headers:
+      User-Agent: "pytest-dsl-auth-test/1.0"
+      Accept: "application/json"
+    auth:
+      type: "basic"
+      username: "${test_users.admin.username}"
+      password: "${test_users.admin.password}"
+    verify_ssl: false
+  
+  # Basic认证客户端 - 无效凭据
+  basic_auth_invalid:
+    base_url: "${auth_base_url}"
+    timeout: 30
+    headers:
+      User-Agent: "pytest-dsl-auth-test/1.0"
+      Accept: "application/json"
+    auth:
+      type: "basic"
+      username: "invalid_user"
+      password: "invalid_password"
+    verify_ssl: false
+  
+  # Bearer Token认证客户端 - 有效Token
+  bearer_auth_valid:
+    base_url: "${auth_base_url}"
+    timeout: 30
+    headers:
+      User-Agent: "pytest-dsl-auth-test/1.0"
+      Accept: "application/json"
+    auth:
+      type: "token"
+      token: "${test_tokens.valid_bearer}"
+      scheme: "Bearer"
+    verify_ssl: false
+  
+  # Bearer Token认证客户端 - 过期Token
+  bearer_auth_expired:
+    base_url: "${auth_base_url}"
+    timeout: 30
+    headers:
+      User-Agent: "pytest-dsl-auth-test/1.0"
+      Accept: "application/json"
+    auth:
+      type: "token"
+      token: "${test_tokens.expired_bearer}"
+      scheme: "Bearer"
+    verify_ssl: false
+  
+  # Bearer Token认证客户端 - 无效Token
+  bearer_auth_invalid:
+    base_url: "${auth_base_url}"
+    timeout: 30
+    headers:
+      User-Agent: "pytest-dsl-auth-test/1.0"
+      Accept: "application/json"
+    auth:
+      type: "token"
+      token: "invalid_bearer_token_999"
+      scheme: "Bearer"
+    verify_ssl: false
+  
+  # API Key认证客户端 - Header方式，有效Key
+  apikey_header_valid:
+    base_url: "${auth_base_url}"
+    timeout: 30
+    headers:
+      User-Agent: "pytest-dsl-auth-test/1.0"
+      Accept: "application/json"
+    auth:
+      type: "api_key"
+      api_key: "${test_api_keys.admin_key}"
+      key_name: "X-API-Key"
+      in_header: true
+      in_query: false
+    verify_ssl: false
+  
+  # API Key认证客户端 - Query方式，有效Key
+  apikey_query_valid:
+    base_url: "${auth_base_url}"
+    timeout: 30
+    headers:
+      User-Agent: "pytest-dsl-auth-test/1.0"
+      Accept: "application/json"
+    auth:
+      type: "api_key"
+      api_key: "${test_api_keys.dev_key}"
+      key_name: "api_key"
+      in_header: false
+      in_query: true
+      query_param_name: "api_key"
+    verify_ssl: false
+  
+  # API Key认证客户端 - Header+Query，有效Key
+  apikey_both_valid:
+    base_url: "${auth_base_url}"
+    timeout: 30
+    headers:
+      User-Agent: "pytest-dsl-auth-test/1.0"
+      Accept: "application/json"
+    auth:
+      type: "api_key"
+      api_key: "${test_api_keys.readonly_key}"
+      key_name: "X-API-Key"
+      in_header: true
+      in_query: true
+      query_param_name: "api_key"
+    verify_ssl: false
+  
+  # API Key认证客户端 - 无效Key
+  apikey_invalid:
+    base_url: "${auth_base_url}"
+    timeout: 30
+    headers:
+      User-Agent: "pytest-dsl-auth-test/1.0"
+      Accept: "application/json"
+    auth:
+      type: "api_key"
+      api_key: "${test_api_keys.invalid_key}"
+      key_name: "X-API-Key"
+      in_header: true
+      in_query: false
+    verify_ssl: false
+  
+  # OAuth2客户端认证
+  oauth2_client:
+    base_url: "${auth_base_url}"
+    timeout: 30
+    headers:
+      User-Agent: "pytest-dsl-auth-test/1.0"
+      Accept: "application/json"
+    auth:
+      type: "oauth2"
+      token_url: "${auth_base_url}/oauth/token"
+      client_id: "${oauth_clients.test_client.client_id}"
+      client_secret: "${oauth_clients.test_client.client_secret}"
+      grant_type: "client_credentials"
+      scope: "read write"
+    verify_ssl: false
+  
+  # 自定义Token认证客户端（无Bearer前缀）
+  custom_token_auth:
+    base_url: "${auth_base_url}"
+    timeout: 30
+    headers:
+      User-Agent: "pytest-dsl-auth-test/1.0"
+      Accept: "application/json"
+    auth:
+      type: "token"
+      token: "${test_tokens.test_bearer}"
+      scheme: ""  # 无前缀
+      header: "Authorization"
+    verify_ssl: false
+
+# 测试数据和端点映射
+test_endpoints:
+  health: "/health"
+  public: "/public"
+  auth_basic: "/auth/basic"
+  auth_bearer: "/auth/bearer"
+  auth_apikey: "/auth/apikey"
+  auth_digest: "/auth/digest"
+  auth_oauth: "/auth/oauth"
+  auth_custom: "/auth/custom"
+  auth_mixed: "/auth/mixed"
+  oauth_token: "/oauth/token"
+  protected_resource: "/api/users"
+  
+# 预期响应数据
+expected_responses:
+  health_check:
+    status: "healthy"
+    server: "auth-mock-server"
+    supported_auth: ["basic", "bearer", "api_key", "oauth2", "digest", "custom"]
+  
+  auth_success:
+    basic:
+      message: "Basic authentication successful"
+      auth_type: "basic"
+    bearer:
+      message: "Bearer token authentication successful"
+      auth_type: "bearer"
+    api_key:
+      message: "API key authentication successful"
+      auth_type: "api_key"
+    oauth2:
+      message: "OAuth2 authentication successful"
+      auth_type: "oauth2"
+    custom:
+      message: "Custom authentication successful"
+      auth_type: "custom"
+  
+  auth_errors:
+    unauthorized:
+      status_code: 401
+    invalid_token:
+      error: "invalid_token"
+    invalid_client:
+      error: "invalid_client"
+
+# RFC标准验证配置
+rfc_compliance:
+  # RFC 7617 - Basic Authentication
+  basic_auth:
+    www_authenticate_header: 'Basic realm="TestRealm"'
+    authorization_scheme: "Basic"
+    
+  # RFC 6750 - Bearer Token
+  bearer_token:
+    www_authenticate_header: 'Bearer realm="TestRealm"'
+    authorization_scheme: "Bearer"
+    
+  # RFC 6749 - OAuth2
+  oauth2:
+    token_endpoint: "/oauth/token"
+    supported_grant_types: ["client_credentials"]
+    token_type: "Bearer"
+    
+  # RFC 7235 - HTTP Authentication
+  http_auth:
+    challenge_status_code: 401
+    challenge_header: "WWW-Authenticate" 
