@@ -1,12 +1,12 @@
 {
   "summary": {
-    "total_count": 25,
+    "total_count": 35,
     "category_counts": {
-      "builtin": 19,
+      "builtin": 29,
       "project_custom": 6
     },
     "source_counts": {
-      "builtin:pytest-dsl内置": 19,
+      "builtin:pytest-dsl内置": 29,
       "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/pytest_dsl/examples/custom/resources/common_utils.resource": 2,
       "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/examples/readme_validation/auth.resource": 2,
       "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/pytest_dsl/examples/custom/resources/base_utils.resource": 1,
@@ -160,6 +160,31 @@
         }
       ],
       "documentation": "删除全局变量"
+    },
+    {
+      "name": "四舍五入",
+      "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "数值",
+          "mapping": "number",
+          "description": "要四舍五入的数字"
+        },
+        {
+          "name": "小数位数",
+          "mapping": "ndigits",
+          "description": "保留的小数位数",
+          "default": 0
+        }
+      ],
+      "documentation": "对数字进行四舍五入\n\n    Args:\n        number: 要四舍五入的数字\n        ndigits: 保留的小数位数，默认为0（整数）\n\n    Returns:\n        四舍五入后的数字"
     },
     {
       "name": "字符串操作",
@@ -386,6 +411,31 @@
       "documentation": "自定义关键字执行器"
     },
     {
+      "name": "求和",
+      "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "数据",
+          "mapping": "data",
+          "description": "要求和的数字列表或可迭代对象"
+        },
+        {
+          "name": "起始值",
+          "mapping": "start",
+          "description": "求和的起始值",
+          "default": 0
+        }
+      ],
+      "documentation": "计算数字列表的总和\n\n    Args:\n        data: 要求和的数字列表\n        start: 求和的起始值，默认为0\n\n    Returns:\n        数字总和"
+    },
+    {
       "name": "清除所有全局变量",
       "category": "builtin",
       "source_info": {
@@ -585,6 +635,25 @@
       "documentation": "断言值的类型\n\n    Args:\n        value: 要检查的值\n        type: 预期的类型 (string, number, boolean, list, object, null)\n        message: 断言失败时的错误消息\n\n    Returns:\n        断言结果 (True/False)\n\n    Raises:\n        AssertionError: 如果断言失败"
     },
     {
+      "name": "绝对值",
+      "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "数值",
+          "mapping": "number",
+          "description": "要计算绝对值的数字"
+        }
+      ],
+      "documentation": "计算数字的绝对值\n\n    Args:\n        number: 要计算绝对值的数字\n\n    Returns:\n        数字的绝对值"
+    },
+    {
       "name": "获取全局变量",
       "category": "builtin",
       "source_info": {
@@ -630,6 +699,73 @@
       "documentation": "获取当前时间\n\n    Args:\n        format: 时间格式，如果设置为'timestamp'则返回时间戳\n        timezone: 时区，默认为Asia/Shanghai\n\n    Returns:\n        str/float: 格式化的时间字符串或时间戳"
     },
     {
+      "name": "获取最大值",
+      "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "数据",
+          "mapping": "data",
+          "description": "要比较的数据列表或多个参数"
+        },
+        {
+          "name": "默认值",
+          "mapping": "default",
+          "description": "当数据为空时的默认值"
+        }
+      ],
+      "documentation": "获取最大值\n\n    Args:\n        data: 要比较的数据\n        default: 当数据为空时的默认值\n\n    Returns:\n        最大值"
+    },
+    {
+      "name": "获取最小值",
+      "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "数据",
+          "mapping": "data",
+          "description": "要比较的数据列表或多个参数"
+        },
+        {
+          "name": "默认值",
+          "mapping": "default",
+          "description": "当数据为空时的默认值"
+        }
+      ],
+      "documentation": "获取最小值\n\n    Args:\n        data: 要比较的数据\n        default: 当数据为空时的默认值\n\n    Returns:\n        最小值"
+    },
+    {
+      "name": "获取长度",
+      "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "对象",
+          "mapping": "obj",
+          "description": "要获取长度的对象（字符串、列表、字典等）"
+        }
+      ],
+      "documentation": "获取对象的长度\n\n    Args:\n        obj: 要获取长度的对象\n\n    Returns:\n        int: 对象的长度"
+    },
+    {
       "name": "计算长度",
       "category": "project_custom",
       "source_info": {
@@ -672,6 +808,88 @@
         }
       ],
       "documentation": "设置全局变量"
+    },
+    {
+      "name": "转换为字符串",
+      "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "值",
+          "mapping": "value",
+          "description": "要转换为字符串的值"
+        }
+      ],
+      "documentation": "将值转换为字符串\n\n    Args:\n        value: 要转换的值\n\n    Returns:\n        str: 转换后的字符串"
+    },
+    {
+      "name": "转换为布尔值",
+      "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "值",
+          "mapping": "value",
+          "description": "要转换为布尔值的值"
+        }
+      ],
+      "documentation": "将值转换为布尔值\n\n    Args:\n        value: 要转换的值\n\n    Returns:\n        bool: 转换后的布尔值"
+    },
+    {
+      "name": "转换为整数",
+      "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "值",
+          "mapping": "value",
+          "description": "要转换为整数的值"
+        },
+        {
+          "name": "进制",
+          "mapping": "base",
+          "description": "数字进制（当值为字符串时）",
+          "default": 10
+        }
+      ],
+      "documentation": "将值转换为整数\n\n    Args:\n        value: 要转换的值\n        base: 数字进制（当值为字符串时），默认为10\n\n    Returns:\n        int: 转换后的整数"
+    },
+    {
+      "name": "转换为浮点数",
+      "category": "builtin",
+      "source_info": {
+        "type": "builtin",
+        "name": "pytest-dsl内置",
+        "display_name": "pytest-dsl内置",
+        "module": "pytest_dsl.keywords.system_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "值",
+          "mapping": "value",
+          "description": "要转换为浮点数的值"
+        }
+      ],
+      "documentation": "将值转换为浮点数\n\n    Args:\n        value: 要转换的值\n\n    Returns:\n        float: 转换后的浮点数"
     },
     {
       "name": "返回结果",
