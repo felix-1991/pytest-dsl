@@ -1452,5 +1452,4 @@ pip install pytest-dsl-database[postgresql]
 
 - 学习 [资源文件](./resource-files.md) 了解如何组织Python关键字
 - 查看 [远程关键字](./remote-keywords.md) 了解分布式测试
-- 阅读 [最佳实践](./best-practices.md) 了解项目组织方法
-- 探索 [插件开发指南](./plugin-development.md) 深入了解插件开发 
+- 阅读 [最佳实践](./best-practices.md) 了解项目组织方法 
