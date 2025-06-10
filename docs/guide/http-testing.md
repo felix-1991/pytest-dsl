@@ -89,6 +89,171 @@ http_clients:
       token: "${AUTH_TOKEN}"
 ```
 
+## 默认授权配置
+
+pytest-dsl支持在HTTP客户端配置中设置默认授权，一旦配置后，所有使用该客户端的请求都会自动携带授权信息，无需在每个请求中单独设置。
+
+### 支持的授权类型
+
+#### 1. Bearer Token认证
+
+最常用的API认证方式，适用于JWT、OAuth2等场景：
+
+```yaml
+# config.yaml
+http_clients:
+  api_with_token:
+    base_url: "https://api.example.com"
+    auth:
+      type: "token"
+      token: "${AUTH_TOKEN}"        # 使用变量引用
+      scheme: "Bearer"              # 认证方案，默认为Bearer
+      header: "Authorization"       # 认证头名称，默认为Authorization
+```
+
+使用示例：
+
+```python
+# 请求会自动携带 Authorization: Bearer <token>
+[HTTP请求], 客户端: "api_with_token", 配置: '''
+    method: GET
+    url: /protected/users
+    asserts:
+        - ["status", "eq", 200]
+'''
+```
+
+#### 2. Basic认证
+
+HTTP基本认证，使用用户名密码：
+
+```yaml
+# config.yaml
+http_clients:
+  basic_auth_api:
+    base_url: "https://api.example.com"
+    auth:
+      type: "basic"
+      username: "${API_USERNAME}"
+      password: "${API_PASSWORD}"
+```
+
+使用示例：
+
+```python
+# 请求会自动携带 Authorization: Basic <base64(username:password)>
+[HTTP请求], 客户端: "basic_auth_api", 配置: '''
+    method: GET
+    url: /admin/users
+    asserts:
+        - ["status", "eq", 200]
+'''
+```
+
+#### 3. API Key认证
+
+支持Header或查询参数方式的API Key认证：
+
+```yaml
+# config.yaml
+http_clients:
+  # Header方式API Key
+  apikey_header:
+    base_url: "https://api.example.com"
+    auth:
+      type: "api_key"
+      api_key: "${API_KEY}"
+      key_name: "X-API-Key"         # API Key头名称，默认为X-API-Key
+      in_header: true               # 是否在请求头中添加，默认为true
+      in_query: false               # 是否在查询参数中添加，默认为false
+
+  # 查询参数方式API Key
+  apikey_query:
+    base_url: "https://api.example.com"
+    auth:
+      type: "api_key"
+      api_key: "${API_KEY}"
+      in_header: false
+      in_query: true
+      query_param_name: "api_key"   # 查询参数名称
+
+  # 同时支持Header和查询参数
+  apikey_both:
+    base_url: "https://api.example.com"
+    auth:
+      type: "api_key"
+      api_key: "${API_KEY}"
+      key_name: "X-API-Key"
+      in_header: true
+      in_query: true
+      query_param_name: "key"
+```
+
+使用示例：
+
+```python
+# Header方式：请求会自动携带 X-API-Key: <api_key>
+[HTTP请求], 客户端: "apikey_header", 配置: '''
+    method: GET
+    url: /data
+'''
+
+# 查询参数方式：请求URL会自动添加 ?api_key=<api_key>
+[HTTP请求], 客户端: "apikey_query", 配置: '''
+    method: GET
+    url: /data
+'''
+```
+
+#### 4. OAuth2 Client Credentials认证
+
+适用于服务器到服务器的认证场景：
+
+```yaml
+# config.yaml
+http_clients:
+  oauth2_api:
+    base_url: "https://api.example.com"
+    auth:
+      type: "oauth2"
+      token_url: "https://auth.example.com/oauth/token"
+      client_id: "${OAUTH_CLIENT_ID}"
+      client_secret: "${OAUTH_CLIENT_SECRET}"
+      scope: "read write"                    # 可选，权限范围
+      grant_type: "client_credentials"       # 授权类型，默认为client_credentials
+      token_refresh_window: 60               # 令牌刷新窗口(秒)，默认60秒
+```
+
+OAuth2密码模式示例：
+
+```yaml
+# config.yaml
+http_clients:
+  oauth2_password:
+    base_url: "https://api.example.com"
+    auth:
+      type: "oauth2"
+      token_url: "https://auth.example.com/oauth/token"
+      client_id: "${OAUTH_CLIENT_ID}"
+      client_secret: "${OAUTH_CLIENT_SECRET}"
+      grant_type: "password"
+      username: "${OAUTH_USERNAME}"
+      password: "${OAUTH_PASSWORD}"
+      scope: "read write"
+```
+
+使用示例：
+
+```python
+# OAuth2会自动获取token并携带 Authorization: Bearer <access_token>
+[HTTP请求], 客户端: "oauth2_api", 配置: '''
+    method: GET
+    url: /protected/data
+    asserts:
+        - ["status", "eq", 200]
+'''
+```
+
 ### 使用配置
 
 ```bash
@@ -96,11 +261,85 @@ pytest-dsl tests/ --yaml-vars config.yaml
 ```
 
 ```python
-# 使用配置中的客户端
+# 使用配置中的客户端，会自动应用默认授权
 [HTTP请求], 客户端: "api_server", 配置: '''
     method: GET
     url: /users
 '''
+```
+
+### 默认授权的优势
+
+1. **简化测试代码**：无需在每个请求中重复设置认证信息
+2. **统一管理**：认证信息集中配置，便于维护和更新
+3. **环境隔离**：不同环境可以使用不同的配置文件
+4. **安全性**：敏感信息可以通过环境变量引用，避免硬编码
+
+### 禁用默认授权
+
+在某些测试场景中，您可能需要测试未授权的访问，可以临时禁用默认授权：
+
+```python
+# 临时禁用客户端配置中的授权
+[HTTP请求], 客户端: "api_server", 禁用授权: true, 配置: '''
+    method: GET
+    url: /public-endpoint
+    asserts:
+        - ["status", "eq", 200]
+'''
+
+# 测试未授权访问受保护资源
+[HTTP请求], 客户端: "api_server", 禁用授权: true, 配置: '''
+    method: GET
+    url: /protected-endpoint
+    asserts:
+        - ["status", "eq", 401]  # 期望返回未授权错误
+'''
+```
+
+### 覆盖默认授权
+
+如果需要为特定请求使用不同的授权信息，可以在请求配置中覆盖：
+
+```python
+# 使用不同的token覆盖默认授权
+[HTTP请求], 客户端: "api_server", 配置: '''
+    method: GET
+    url: /admin-only
+    request:
+        headers:
+            Authorization: "Bearer ${ADMIN_TOKEN}"  # 覆盖默认token
+    asserts:
+        - ["status", "eq", 200]
+'''
+```
+
+### 变量引用
+
+默认授权配置支持变量引用，可以从环境变量或YAML变量中动态获取认证信息：
+
+```yaml
+# config.yaml
+# 全局变量定义
+variables:
+  api_token: "${API_TOKEN}"          # 从环境变量获取
+  api_username: "admin"              # 静态值
+  api_password: "${API_PASSWORD}"    # 从环境变量获取
+
+http_clients:
+  dynamic_auth:
+    base_url: "https://api.example.com"
+    auth:
+      type: "token"
+      token: "${api_token}"           # 引用全局变量
+```
+
+环境变量设置：
+
+```bash
+export API_TOKEN="your_actual_token_here"
+export API_PASSWORD="your_password_here"
+pytest-dsl tests/ --yaml-vars config.yaml
 ```
 
 ## 请求配置详解
@@ -398,10 +637,14 @@ pytest-dsl tests/ --yaml-vars config.yaml
 '''
 ```
 
-### 认证流程
+### 认证流程示例
+
+#### 方式一：手动管理认证流程
+
+适用于需要动态获取token的场景：
 
 ```python
-@name: "完整认证流程"
+@name: "手动认证流程"
 
 # 第一步：登录获取token
 [HTTP请求], 客户端: "default", 配置: '''
@@ -428,6 +671,98 @@ pytest-dsl tests/ --yaml-vars config.yaml
         - ["status", "eq", 200]
         - ["jsonpath", "$.headers.Authorization", "contains", "Bearer"]
 ''', 步骤名称: "访问受保护资源"
+```
+
+#### 方式二：使用默认授权配置（推荐）
+
+适用于已知认证信息的场景：
+
+```yaml
+# config.yaml
+http_clients:
+  authenticated_api:
+    base_url: "https://api.example.com"
+    auth:
+      type: "token"
+      token: "${API_TOKEN}"
+
+  basic_auth_api:
+    base_url: "https://admin.example.com"
+    auth:
+      type: "basic"
+      username: "${ADMIN_USERNAME}"
+      password: "${ADMIN_PASSWORD}"
+```
+
+```python
+@name: "默认授权认证流程"
+
+# 直接使用配置的Bearer Token认证
+[HTTP请求], 客户端: "authenticated_api", 配置: '''
+    method: GET
+    url: /users
+    captures:
+        user_list: ["jsonpath", "$"]
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$", "type", "array"]
+''', 步骤名称: "获取用户列表(自动Bearer认证)"
+
+# 使用Basic认证访问管理接口
+[HTTP请求], 客户端: "basic_auth_api", 配置: '''
+    method: GET
+    url: /admin/stats
+    captures:
+        total_users: ["jsonpath", "$.total_users"]
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$.total_users", "type", "number"]
+''', 步骤名称: "获取统计信息(自动Basic认证)"
+
+# 测试未授权访问
+[HTTP请求], 客户端: "authenticated_api", 禁用授权: true, 配置: '''
+    method: GET
+    url: /protected-endpoint
+    asserts:
+        - ["status", "eq", 401]
+        - ["jsonpath", "$.error", "contains", "Unauthorized"]
+''', 步骤名称: "测试未授权访问"
+```
+
+#### 方式三：混合认证流程
+
+结合动态获取和默认配置：
+
+```python
+@name: "混合认证流程"
+
+# 使用默认客户端登录获取特殊权限token
+[HTTP请求], 客户端: "basic_auth_api", 配置: '''
+    method: POST
+    url: /auth/admin-token
+    request:
+        json:
+            scope: "admin:write"
+    captures:
+        admin_token: ["jsonpath", "$.access_token"]
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$.access_token", "exists"]
+''', 步骤名称: "获取管理员权限token"
+
+# 使用特殊token执行高权限操作
+[HTTP请求], 客户端: "authenticated_api", 配置: '''
+    method: POST
+    url: /admin/users
+    request:
+        headers:
+            Authorization: "Bearer ${admin_token}"  # 覆盖默认token
+        json:
+            username: "newuser"
+            role: "admin"
+    asserts:
+        - ["status", "eq", 201]
+''', 步骤名称: "创建管理员用户(特殊权限)"
 ```
 
 ## 断言重试机制
@@ -773,6 +1108,195 @@ HTTP请求断言重试功能允许您在断言失败时自动重试请求，这�
 [打印], 内容: "订单创建成功，订单ID: ${order_id}"
 ```
 
+### 企业API测试流程（使用默认授权）
+
+使用默认授权配置的完整企业API测试示例：
+
+```yaml
+# enterprise_config.yaml
+variables:
+  api_token: "${ENTERPRISE_API_TOKEN}"
+  admin_username: "${ADMIN_USERNAME}"
+  admin_password: "${ADMIN_PASSWORD}"
+
+http_clients:
+  # 企业API客户端（Bearer Token认证）
+  enterprise_api:
+    base_url: "https://api.enterprise.com"
+    timeout: 30
+    headers:
+      Content-Type: "application/json"
+      User-Agent: "pytest-dsl/enterprise-test"
+    auth:
+      type: "token"
+      token: "${api_token}"
+      scheme: "Bearer"
+
+  # 管理员API客户端（Basic认证）
+  admin_api:
+    base_url: "https://admin.enterprise.com"
+    timeout: 60
+    auth:
+      type: "basic"
+      username: "${admin_username}"
+      password: "${admin_password}"
+
+  # 第三方API客户端（API Key认证）
+  partner_api:
+    base_url: "https://partner-api.example.com"
+    auth:
+      type: "api_key"
+      api_key: "${PARTNER_API_KEY}"
+      key_name: "X-Partner-Key"
+```
+
+```python
+@name: "企业API完整测试流程"
+@description: "使用默认授权配置的企业级API测试"
+
+# 1. 获取企业信息（自动Bearer Token认证）
+[HTTP请求], 客户端: "enterprise_api", 配置: '''
+    method: GET
+    url: /v1/company/info
+    captures:
+        company_id: ["jsonpath", "$.company.id"]
+        company_name: ["jsonpath", "$.company.name"]
+        employee_count: ["jsonpath", "$.company.employee_count"]
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$.company.id", "exists"]
+        - ["jsonpath", "$.company.status", "eq", "active"]
+''', 步骤名称: "获取企业基本信息"
+
+[打印], 内容: "企业信息: ${company_name} (ID: ${company_id}), 员工数: ${employee_count}"
+
+# 2. 获取部门列表（自动Bearer Token认证）
+[HTTP请求], 客户端: "enterprise_api", 配置: '''
+    method: GET
+    url: /v1/departments
+    request:
+        params:
+            company_id: ${company_id}
+            include_employees: true
+    captures:
+        departments: ["jsonpath", "$.departments"]
+        first_dept_id: ["jsonpath", "$.departments[0].id"]
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$.departments", "type", "array"]
+        - ["jsonpath", "$.departments", "length", "gt", 0]
+''', 步骤名称: "获取部门列表"
+
+# 3. 创建新员工（自动Bearer Token认证）
+[HTTP请求], 客户端: "enterprise_api", 配置: '''
+    method: POST
+    url: /v1/employees
+    request:
+        json:
+            name: "张三"
+            email: "zhangsan@enterprise.com"
+            department_id: ${first_dept_id}
+            position: "软件工程师"
+            hire_date: "2024-01-15"
+    captures:
+        new_employee_id: ["jsonpath", "$.employee.id"]
+        employee_number: ["jsonpath", "$.employee.employee_number"]
+    asserts:
+        - ["status", "eq", 201]
+        - ["jsonpath", "$.employee.name", "eq", "张三"]
+        - ["jsonpath", "$.employee.status", "eq", "active"]
+''', 步骤名称: "创建新员工"
+
+[打印], 内容: "创建员工成功: ${employee_number}"
+
+# 4. 管理员操作 - 审批员工（自动Basic认证）
+[HTTP请求], 客户端: "admin_api", 配置: '''
+    method: POST
+    url: /admin/employees/${new_employee_id}/approve
+    request:
+        json:
+            action: "approve"
+            approver_comment: "员工信息审核通过"
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$.status", "eq", "approved"]
+''', 步骤名称: "管理员审批员工"
+
+# 5. 同步到第三方系统（自动API Key认证）
+[HTTP请求], 客户端: "partner_api", 配置: '''
+    method: POST
+    url: /sync/employee
+    request:
+        json:
+            employee_id: ${new_employee_id}
+            company_id: ${company_id}
+            sync_type: "new_employee"
+    captures:
+        sync_id: ["jsonpath", "$.sync_id"]
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$.sync_status", "eq", "success"]
+''', 步骤名称: "同步员工到第三方系统"
+
+# 6. 验证同步状态（自动API Key认证）
+[HTTP请求], 客户端: "partner_api", 配置: '''
+    method: GET
+    url: /sync/${sync_id}/status
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$.status", "eq", "completed"]
+        - ["jsonpath", "$.error_count", "eq", 0]
+    retry_assertions:
+        count: 5
+        interval: 2
+        indices: [1, 2]  # 重试状态和错误计数检查
+''', 步骤名称: "验证第三方同步状态"
+
+# 7. 测试权限控制 - 普通用户访问管理接口（应该失败）
+[HTTP请求], 客户端: "enterprise_api", 配置: '''
+    method: GET
+    url: /admin/company/settings
+    asserts:
+        - ["status", "eq", 403]
+        - ["jsonpath", "$.error", "contains", "insufficient_privileges"]
+''', 步骤名称: "测试权限控制"
+
+# 8. 测试未授权访问（禁用默认授权）
+[HTTP请求], 客户端: "enterprise_api", 禁用授权: true, 配置: '''
+    method: GET
+    url: /v1/company/info
+    asserts:
+        - ["status", "eq", 401]
+        - ["jsonpath", "$.error", "eq", "unauthorized"]
+''', 步骤名称: "测试未授权访问"
+
+# 9. 清理测试数据（管理员权限）
+[HTTP请求], 客户端: "admin_api", 配置: '''
+    method: DELETE
+    url: /admin/employees/${new_employee_id}
+    request:
+        json:
+            reason: "测试数据清理"
+    asserts:
+        - ["status", "eq", 200]
+''', 步骤名称: "清理测试员工数据"
+
+[打印], 内容: "✅ 企业API测试流程完成"
+```
+
+运行测试：
+
+```bash
+# 设置环境变量
+export ENTERPRISE_API_TOKEN="your_enterprise_token"
+export ADMIN_USERNAME="admin"
+export ADMIN_PASSWORD="admin_password"
+export PARTNER_API_KEY="partner_api_key_123"
+
+# 运行测试
+pytest-dsl enterprise_test.dsl --yaml-vars enterprise_config.yaml
+```
+
 ## 最佳实践
 
 ### 1. 使用有意义的步骤名称
@@ -833,6 +1357,62 @@ HTTP请求断言重试功能允许您在断言失败时自动重试请求，这�
 '''
 ```
 
+### 4. 合理使用默认授权
+
+```python
+# ✅ 推荐：使用默认授权配置
+# config.yaml中配置授权
+http_clients:
+  api_client:
+    base_url: "https://api.example.com"
+    auth:
+      type: "token"
+      token: "${API_TOKEN}"
+
+# 测试代码简洁
+[HTTP请求], 客户端: "api_client", 配置: '''
+    method: GET
+    url: /protected/data
+'''
+
+# ❌ 避免：每个请求都手动设置授权
+[HTTP请求], 客户端: "default", 配置: '''
+    method: GET
+    url: https://api.example.com/protected/data
+    request:
+        headers:
+            Authorization: "Bearer ${token}"
+'''
+```
+
+### 5. 环境隔离策略
+
+```yaml
+# dev_config.yaml
+http_clients:
+  api_client:
+    base_url: "https://dev-api.example.com"
+    auth:
+      type: "token"
+      token: "${DEV_API_TOKEN}"
+
+# prod_config.yaml  
+http_clients:
+  api_client:
+    base_url: "https://api.example.com"
+    auth:
+      type: "token"
+      token: "${PROD_API_TOKEN}"
+```
+
+```bash
+# 开发环境测试
+pytest-dsl tests/ --yaml-vars dev_config.yaml
+
+# 生产环境测试
+pytest-dsl tests/ --yaml-vars prod_config.yaml
+```
+
 ### 4. 错误处理
 
 ```python
@@ -891,6 +1471,131 @@ A: 使用调试模式运行：
 ```bash
 # 使用pytest运行获得详细输出
 pytest test_runner.py -v -s
+```
+
+### Q: 默认授权不生效怎么办？
+
+A: 检查以下几个方面：
+
+1. **确认配置文件已正确加载**：
+```bash
+pytest-dsl tests/ --yaml-vars config.yaml -v
+```
+
+2. **检查环境变量是否设置**：
+```bash
+echo $API_TOKEN  # 确认环境变量已设置
+```
+
+3. **验证客户端配置**：
+```python
+# 在测试中打印客户端配置进行调试
+[打印], 内容: "使用客户端: api_client"
+[HTTP请求], 客户端: "api_client", 配置: '''
+    method: GET
+    url: /debug
+'''
+```
+
+### Q: 如何为不同的API使用不同的认证方式？
+
+A: 在YAML配置中定义多个客户端：
+
+```yaml
+http_clients:
+  # 使用Bearer Token的API
+  main_api:
+    base_url: "https://api.example.com"
+    auth:
+      type: "token"
+      token: "${API_TOKEN}"
+  
+  # 使用Basic认证的API
+  admin_api:
+    base_url: "https://admin.example.com"
+    auth:
+      type: "basic"
+      username: "${ADMIN_USER}"
+      password: "${ADMIN_PASS}"
+  
+  # 使用API Key的第三方API
+  third_party_api:
+    base_url: "https://partner.example.com"
+    auth:
+      type: "api_key"
+      api_key: "${PARTNER_KEY}"
+```
+
+### Q: 如何动态切换认证信息？
+
+A: 有几种方式：
+
+1. **使用不同的配置文件**：
+```bash
+# 开发环境
+pytest-dsl tests/ --yaml-vars dev_config.yaml
+
+# 生产环境  
+pytest-dsl tests/ --yaml-vars prod_config.yaml
+```
+
+2. **在测试中临时覆盖**：
+```python
+# 使用不同的token
+[HTTP请求], 客户端: "api_client", 配置: '''
+    method: GET
+    url: /admin-only
+    request:
+        headers:
+            Authorization: "Bearer ${ADMIN_TOKEN}"
+'''
+```
+
+3. **禁用默认授权后手动设置**：
+```python
+[HTTP请求], 客户端: "api_client", 禁用授权: true, 配置: '''
+    method: GET
+    url: /public-endpoint
+    request:
+        headers:
+            X-Custom-Auth: "${CUSTOM_TOKEN}"
+'''
+```
+
+### Q: OAuth2认证失败怎么处理？
+
+A: 检查OAuth2配置和网络连接：
+
+1. **验证OAuth2配置**：
+```yaml
+http_clients:
+  oauth_api:
+    base_url: "https://api.example.com"
+    auth:
+      type: "oauth2"
+      token_url: "https://auth.example.com/oauth/token"  # 确认URL正确
+      client_id: "${OAUTH_CLIENT_ID}"
+      client_secret: "${OAUTH_CLIENT_SECRET}"
+      scope: "read write"  # 确认scope正确
+```
+
+2. **测试token端点**：
+```python
+# 手动测试OAuth2 token获取
+[HTTP请求], 客户端: "default", 配置: '''
+    method: POST
+    url: https://auth.example.com/oauth/token
+    request:
+        data:
+            grant_type: "client_credentials"
+            client_id: "${OAUTH_CLIENT_ID}"
+            client_secret: "${OAUTH_CLIENT_SECRET}"
+    captures:
+        test_token: ["jsonpath", "$.access_token"]
+    asserts:
+        - ["status", "eq", 200]
+        - ["jsonpath", "$.access_token", "exists"]
+'''
 ```
 
 ## 下一步

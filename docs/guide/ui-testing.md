@@ -26,7 +26,7 @@ uv pip install pytest-dsl-ui
 [启动浏览器], 浏览器: "firefox"
 
 # 启用无头模式
-[启动浏览器], 浏览器: "chromium", 无头模式: true
+[启动浏览器], 浏览器: "chromium", 无头模式: True
 
 # 设置视口大小
 [启动浏览器], 浏览器: "chromium", 视口宽度: 1920, 视口高度: 1080
@@ -35,7 +35,7 @@ uv pip install pytest-dsl-ui
 [启动浏览器], 浏览器: "chromium", 慢动作: 1000
 
 # 忽略HTTPS证书错误
-[启动浏览器], 浏览器: "chromium", 忽略证书错误: true
+[启动浏览器], 浏览器: "chromium", 忽略证书错误: True
 ```
 
 ### 关闭浏览器
@@ -143,7 +143,7 @@ page_title = [获取页面标题]
 [取消勾选复选框], 定位器: "input[name='newsletter']"
 
 # 设置复选框状态
-[设置复选框状态], 定位器: "input[name='agree']", 选中状态: true
+[设置复选框状态], 定位器: "input[name='agree']", 选中状态: True
 
 # 选择单选框
 [选择单选框], 定位器: "input[name='gender'][value='male']"
@@ -198,7 +198,7 @@ page_title = [获取页面标题]
 [断言输入值], 定位器: "input[name='username']", 期望值: "admin"
 
 # 断言复选框状态
-[断言复选框状态], 定位器: "input[name='agree']", 期望状态: true
+[断言复选框状态], 定位器: "input[name='agree']", 期望状态: True
 
 # 断言元素数量
 [断言元素数量], 定位器: ".list-item", 期望数量: 5
@@ -230,7 +230,7 @@ page_title = [获取页面标题]
 [截图], 元素定位器: "#main-content", 文件名: "element.png"
 
 # 全页面截图
-[截图], 文件名: "fullpage.png", 全页面: true
+[截图], 文件名: "fullpage.png", 全页面: True
 
 # 执行JavaScript代码
 [执行JavaScript], 脚本: "return document.title;", 变量名: "page_title"
@@ -299,7 +299,7 @@ page_title = [获取页面标题]
 [保存认证状态], 状态名称: "admin_login", 用户名: "admin", 描述: "管理员登录状态"
 
 # 加载认证状态
-[加载认证状态], 状态名称: "admin_login", 创建新上下文: true, 验证登录: true
+[加载认证状态], 状态名称: "admin_login", 创建新上下文: True, 验证登录: True
 
 # 列出认证状态
 [列出认证状态], 变量名: "auth_states"
@@ -311,14 +311,14 @@ page_title = [获取页面标题]
 [删除认证状态], 状态名称: "admin_login"
 
 # 清除所有认证状态
-[清除所有认证状态], 确认清除: true
+[清除所有认证状态], 确认清除: True
 ```
 
 ### 验证码识别
 
 ```python
 # 识别文字验证码
-[识别文字验证码], 图片源: "#captcha-image", 源类型: "element", 变量名: "captcha_text", 预处理: true
+[识别文字验证码], 图片源: "#captcha-image", 源类型: "element", 变量名: "captcha_text", 预处理: True
 ```
 
 ## 检查功能
@@ -397,11 +397,11 @@ page_title = [获取页面标题]
 # pytest-dsl.yaml
 ui:
   default_browser: "chromium"
-  headless: false
+  headless: False
   viewport_width: 1920
   viewport_height: 1080
   slow_mo: 0
-  ignore_https_errors: true
+  ignore_https_errors: True
   
   # 浏览器启动配置
   browser_config:

@@ -249,11 +249,11 @@ end
 **数据文件：** `filtered_test_data.csv`
 ```csv
 username,password,environment,enabled,test_type
-admin,admin123,dev,true,smoke
-user1,pass123,dev,true,regression
-user2,pass456,prod,true,smoke
-user3,pass789,dev,false,regression
-manager,mgr123,staging,true,integration
+admin,admin123,dev,True,smoke
+user1,pass123,dev,True,regression
+user2,pass456,prod,True,smoke
+user3,pass789,dev,False,regression
+manager,mgr123,staging,True,integration
 ```
 
 **测试文件：** `test_filtered.dsl`
@@ -262,7 +262,7 @@ manager,mgr123,staging,true,integration
 @data: "filtered_test_data.csv" using csv
 
 # 只测试开发环境且启用的用户
-if "${environment}" == "dev" and ${enabled} == true do
+if "${environment}" == "dev" and ${enabled} == True do
     [打印], 内容: "测试用户: ${username} (${test_type})"
     
     # 执行测试逻辑

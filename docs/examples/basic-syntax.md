@@ -27,8 +27,8 @@ price = 19.99
 count = 0
 
 # 布尔变量
-is_active = true
-debug_mode = false
+is_active = True
+debug_mode = False
 
 # 数组/列表
 colors = ["红色", "蓝色", "绿色"]
@@ -39,7 +39,7 @@ user = {
     "name": "李四",
     "age": 30,
     "email": "lisi@example.com",
-    "active": true
+    "active": True
 }
 
 # ===== 变量使用演示 =====
