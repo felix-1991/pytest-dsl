@@ -200,22 +200,36 @@ class CustomKeywordManager:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
 
-            # 解析资源文件
-            lexer = get_lexer()
-            parser = get_parser()
-            ast = parser.parse(content, lexer=lexer)
-
-            # 标记为已加载
+            # 标记为已加载（在解析前标记，避免循环导入）
             self.resource_cache[absolute_path] = True
 
-            # 处理导入指令
-            self._process_imports(ast, os.path.dirname(file_path))
+            # 使用公共方法解析和处理资源文件内容
+            self._process_resource_file_content(content, file_path)
 
-            # 注册关键字
-            self._register_keywords(ast, file_path)
         except Exception as e:
+            # 如果处理失败，移除缓存标记
+            self.resource_cache.pop(absolute_path, None)
             print(f"资源文件 {file_path} 加载失败: {str(e)}")
             raise
+
+    def _process_resource_file_content(self, content: str, 
+                                       file_path: str) -> None:
+        """处理资源文件内容
+
+        Args:
+            content: 文件内容
+            file_path: 文件路径
+        """
+        # 解析资源文件
+        lexer = get_lexer()
+        parser = get_parser()
+        ast = parser.parse(content, lexer=lexer)
+
+        # 处理导入指令
+        self._process_imports(ast, os.path.dirname(file_path))
+
+        # 注册关键字
+        self._register_keywords_from_ast(ast, file_path)
 
     def _process_imports(self, ast: Node, base_dir: str) -> None:
         """处理资源文件中的导入指令
@@ -244,12 +258,13 @@ class CustomKeywordManager:
                 # 递归加载导入的资源文件
                 self.load_resource_file(imported_file)
 
-    def _register_keywords(self, ast: Node, file_path: str) -> None:
-        """从AST中注册关键字
+    def _register_keywords_from_ast(self, ast: Node, 
+                                    source_name: str) -> None:
+        """从AST中注册关键字（重构后的版本）
 
         Args:
             ast: 抽象语法树
-            file_path: 文件路径
+            source_name: 来源名称
         """
         if ast.type != 'Start' or len(ast.children) < 2:
             return
@@ -261,7 +276,7 @@ class CustomKeywordManager:
 
         for node in statements_node.children:
             if node.type in ['CustomKeyword', 'Function']:
-                self._register_custom_keyword(node, file_path)
+                self._register_custom_keyword(node, source_name)
 
     def _register_custom_keyword(self, node: Node, file_path: str) -> None:
         """注册自定义关键字
@@ -341,6 +356,91 @@ class CustomKeywordManager:
             return result
 
         print(f"已注册自定义关键字: {keyword_name} 来自文件: {file_path}")
+
+    def register_keyword_from_dsl_content(self, dsl_content: str, 
+                                          source_name: str = "DSL内容") -> list:
+        """从DSL内容注册关键字（公共方法）
+
+        Args:
+            dsl_content: DSL文本内容
+            source_name: 来源名称，用于日志显示
+
+        Returns:
+            list: 注册成功的关键字名称列表
+
+        Raises:
+            Exception: 解析或注册失败时抛出异常
+        """
+        try:
+            # 解析DSL内容
+            lexer = get_lexer()
+            parser = get_parser()
+            ast = parser.parse(dsl_content, lexer=lexer)
+
+            # 收集注册前的关键字列表
+            existing_keywords = (
+                set(keyword_manager._keywords.keys()) 
+                if hasattr(keyword_manager, '_keywords') 
+                else set()
+            )
+
+            # 使用统一的注册方法
+            self._register_keywords_from_ast(ast, source_name)
+
+            # 计算新注册的关键字
+            new_keywords = (
+                set(keyword_manager._keywords.keys()) 
+                if hasattr(keyword_manager, '_keywords') 
+                else set()
+            )
+            registered_keywords = list(new_keywords - existing_keywords)
+
+            if not registered_keywords:
+                raise ValueError("在DSL内容中未找到任何关键字定义")
+
+            return registered_keywords
+
+        except Exception as e:
+            print(f"从DSL内容注册关键字失败（来源：{source_name}）: {e}")
+            raise
+
+    def register_specific_keyword_from_dsl_content(
+            self, keyword_name: str, dsl_content: str, 
+            source_name: str = "DSL内容") -> bool:
+        """从DSL内容注册指定的关键字（公共方法）
+
+        Args:
+            keyword_name: 要注册的关键字名称
+            dsl_content: DSL文本内容
+            source_name: 来源名称，用于日志显示
+
+        Returns:
+            bool: 是否注册成功
+
+        Raises:
+            Exception: 解析失败或未找到指定关键字时抛出异常
+        """
+        try:
+            # 解析DSL内容
+            lexer = get_lexer()
+            parser = get_parser()
+            ast = parser.parse(dsl_content, lexer=lexer)
+
+            # 查找指定的关键字定义
+            if ast.type == 'Start' and len(ast.children) >= 2:
+                statements_node = ast.children[1]
+                if statements_node.type == 'Statements':
+                    for node in statements_node.children:
+                        if (node.type in ['CustomKeyword', 'Function'] and
+                                node.value == keyword_name):
+                            self._register_custom_keyword(node, source_name)
+                            return True
+
+            raise ValueError(f"在DSL内容中未找到关键字定义: {keyword_name}")
+
+        except Exception as e:
+            print(f"从DSL内容注册关键字失败 {keyword_name}（来源：{source_name}）: {e}")
+            raise
 
 
 # 创建全局自定义关键字管理器实例

@@ -724,12 +724,17 @@ def list_keywords(output_format='json', name_filter=None,
 
 def load_yaml_variables(args):
     """从命令行参数加载YAML变量"""
-    # 使用统一的加载函数，包含远程服务器自动连接功能
+    # 使用统一的加载函数，包含远程服务器自动连接功能和hook支持
     try:
+        # 尝试从环境变量获取环境名称
+        environment = (os.environ.get('PYTEST_DSL_ENVIRONMENT') or
+                       os.environ.get('ENVIRONMENT'))
+
         load_yaml_variables_from_args(
             yaml_files=args.yaml_vars,
             yaml_vars_dir=args.yaml_vars_dir,
-            project_root=os.getcwd()  # CLI模式下使用当前工作目录作为项目根目录
+            project_root=os.getcwd(),  # CLI模式下使用当前工作目录作为项目根目录
+            environment=environment
         )
     except Exception as e:
         print(f"加载YAML变量失败: {str(e)}")
@@ -774,6 +779,33 @@ def run_dsl_tests(args):
     # 加载YAML变量（包括远程服务器自动连接）
     load_yaml_variables(args)
 
+    # 支持hook机制的执行
+    from pytest_dsl.core.hookable_executor import hookable_executor
+
+    # 检查是否有hook提供的用例列表
+    hook_cases = hookable_executor.list_dsl_cases()
+    if hook_cases:
+        # 如果有hook提供的用例，优先执行这些用例
+        print(f"通过Hook发现 {len(hook_cases)} 个DSL用例")
+        failures = 0
+        for case in hook_cases:
+            case_id = case.get('id') or case.get('name', 'unknown')
+            try:
+                print(f"执行用例: {case.get('name', case_id)}")
+                hookable_executor.execute_dsl(str(case_id))
+                print(f"✓ 用例 {case.get('name', case_id)} 执行成功")
+            except Exception as e:
+                print(f"✗ 用例 {case.get('name', case_id)} 执行失败: {e}")
+                failures += 1
+
+        if failures > 0:
+            print(f"总计 {failures}/{len(hook_cases)} 个测试失败")
+            sys.exit(1)
+        else:
+            print(f"所有 {len(hook_cases)} 个测试成功完成")
+        return
+
+    # 如果没有hook用例，使用传统的文件执行方式
     lexer = get_lexer()
     parser = get_parser()
     executor = DSLExecutor()

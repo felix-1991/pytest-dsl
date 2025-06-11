@@ -2,14 +2,11 @@ import re
 import allure
 import csv
 import os
-import pytest
-from pytest_dsl.core.lexer import get_lexer
-from pytest_dsl.core.parser import get_parser, Node
+from typing import Dict, Any
+from pytest_dsl.core.parser import Node
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.core.global_context import global_context
 from pytest_dsl.core.context import TestContext
-import pytest_dsl.keywords
-from pytest_dsl.core.yaml_vars import yaml_vars
 from pytest_dsl.core.variable_utils import VariableReplacer
 
 
@@ -39,14 +36,25 @@ class DSLExecutor:
     - PYTEST_DSL_KEEP_VARIABLES=0: (默认) 执行完成后清空变量，用于正常DSL执行
     """
 
-    def __init__(self):
-        """初始化DSL执行器"""
+    def __init__(self, enable_hooks: bool = True):
+        """初始化DSL执行器
+        
+        Args:
+            enable_hooks: 是否启用hook机制，默认True
+        """
         self.variables = {}
         self.test_context = TestContext()
         self.test_context.executor = self  # 让 test_context 能够访问到 executor
         self.variable_replacer = VariableReplacer(
             self.variables, self.test_context)
         self.imported_files = set()  # 跟踪已导入的文件，避免循环导入
+        
+        # Hook相关配置
+        self.enable_hooks = enable_hooks
+        self.current_dsl_id = None  # 当前执行的DSL标识符
+        
+        if self.enable_hooks:
+            self._init_hooks()
 
     def set_current_data(self, data):
         """设置当前测试数据集"""
@@ -141,7 +149,11 @@ class DSLExecutor:
                 return self.variable_replacer.local_variables[value]
 
             # 定义扩展的变量引用模式，支持数组索引和字典键访问
-            pattern = r'\$\{([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*(?:(?:\.[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)|(?:\[[^\]]+\]))*)\}'
+            pattern = (
+                r'\$\{([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*'
+                r'(?:(?:\.[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)'
+                r'|(?:\[[^\]]+\]))*)\}'
+            )
             # 检查整个字符串是否完全匹配单一变量引用模式
             match = re.fullmatch(pattern, value)
             if match:
@@ -198,13 +210,15 @@ class DSLExecutor:
         operator = expr_node.value  # 操作符: +, -, *, /, %
 
         # 尝试类型转换 - 如果是字符串数字则转为数字
-        if isinstance(left_value, str) and str(left_value).replace('.', '', 1).isdigit():
+        if (isinstance(left_value, str) and
+                str(left_value).replace('.', '', 1).isdigit()):
             left_value = float(left_value)
             # 如果是整数则转为整数
             if left_value.is_integer():
                 left_value = int(left_value)
 
-        if isinstance(right_value, str) and str(right_value).replace('.', '', 1).isdigit():
+        if (isinstance(right_value, str) and
+                str(right_value).replace('.', '', 1).isdigit()):
             right_value = float(right_value)
             # 如果是整数则转为整数
             if right_value.is_integer():
@@ -220,9 +234,11 @@ class DSLExecutor:
             return left_value - right_value
         elif operator == '*':
             # 如果其中一个是字符串，另一个是数字，则进行字符串重复
-            if isinstance(left_value, str) and isinstance(right_value, (int, float)):
+            if (isinstance(left_value, str) and
+                    isinstance(right_value, (int, float))):
                 return left_value * int(right_value)
-            elif isinstance(right_value, str) and isinstance(left_value, (int, float)):
+            elif (isinstance(right_value, str) and
+                  isinstance(left_value, (int, float))):
                 return right_value * int(left_value)
             return left_value * right_value
         elif operator == '/':
@@ -287,7 +303,8 @@ class DSLExecutor:
             for stmt in statements_node.children:
                 if stmt.type == 'CustomKeyword':
                     # 导入自定义关键字管理器
-                    from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
+                    from pytest_dsl.core.custom_keyword_manager import (
+                        custom_keyword_manager)
                     # 注册自定义关键字
                     custom_keyword_manager._register_custom_keyword(
                         stmt, "current_file")
@@ -317,7 +334,7 @@ class DSLExecutor:
                 elif child.type == 'Teardown':
                     teardown_node = child
 
-             # 在_execute_test_iteration之前添加
+            # 在_execute_test_iteration之前添加
             self._handle_custom_keywords_in_file(node)
             # 执行测试
             self._execute_test_iteration(metadata, node, teardown_node)
@@ -339,8 +356,34 @@ class DSLExecutor:
 
     def _auto_import_resources(self):
         """自动导入项目中的resources目录"""
+        # 首先尝试通过hook获取资源列表
+        if (self.enable_hooks and hasattr(self, 'hook_manager') and
+                self.hook_manager):
+            try:
+                cases = []
+                case_results = self.hook_manager.pm.hook.dsl_list_cases()
+                for result in case_results:
+                    if result:
+                        cases.extend(result)
+                
+                # 如果hook返回了资源，导入它们
+                for case in cases:
+                    case_id = case.get('id') or case.get('file_path', '')
+                    if case_id and case_id not in self.imported_files:
+                        try:
+                            print(f"通过hook自动导入资源: {case_id}")
+                            self._handle_import(case_id)
+                        except Exception as e:
+                            print(f"通过hook自动导入资源失败: {case_id}, 错误: {str(e)}")
+                            continue
+            except Exception as e:
+                print(f"通过hook自动导入资源时出现警告: {str(e)}")
+        
+        # 然后进行传统的文件系统自动导入
         try:
-            from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
+            from pytest_dsl.core.custom_keyword_manager import (
+                custom_keyword_manager
+            )
 
             # 尝试从多个可能的项目根目录位置导入resources
             possible_roots = [
@@ -355,14 +398,15 @@ class DSLExecutor:
                     pytest_root = pytest.config.rootdir
                     if pytest_root:
                         possible_roots.insert(0, str(pytest_root))
-            except:
+            except Exception:
                 pass
 
             # 尝试每个可能的根目录
             for project_root in possible_roots:
                 if project_root and os.path.exists(project_root):
                     resources_dir = os.path.join(project_root, "resources")
-                    if os.path.exists(resources_dir) and os.path.isdir(resources_dir):
+                    if (os.path.exists(resources_dir) and
+                            os.path.isdir(resources_dir)):
                         custom_keyword_manager.auto_import_resources_directory(
                             project_root)
                         break
@@ -382,10 +426,34 @@ class DSLExecutor:
             return
 
         try:
-            # 导入自定义关键字文件
-            from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
-            custom_keyword_manager.load_resource_file(file_path)
-            self.imported_files.add(file_path)
+            # 尝试通过hook加载内容
+            content = None
+            if (self.enable_hooks and hasattr(self, 'hook_manager') and
+                    self.hook_manager):
+                content_results = (
+                    self.hook_manager.pm.hook.dsl_load_content(
+                        dsl_id=file_path
+                    )
+                )
+                for result in content_results:
+                    if result is not None:
+                        content = result
+                        break
+            
+            # 如果hook返回了内容，直接使用DSL解析方式处理
+            if content is not None:
+                ast = self._parse_dsl_content(content)
+                
+                # 只处理自定义关键字，不执行测试流程
+                self._handle_custom_keywords_in_file(ast)
+                self.imported_files.add(file_path)
+            else:
+                # 使用传统方式导入文件
+                from pytest_dsl.core.custom_keyword_manager import (
+                    custom_keyword_manager
+                )
+                custom_keyword_manager.load_resource_file(file_path)
+                self.imported_files.add(file_path)
         except Exception as e:
             print(f"导入资源文件失败: {file_path}, 错误: {str(e)}")
             raise
@@ -485,7 +553,8 @@ class DSLExecutor:
                     if capture_var.startswith('g_'):
                         global_context.set_variable(capture_var, capture_value)
                     else:
-                        self.variable_replacer.local_variables[capture_var] = capture_value
+                        self.variable_replacer.local_variables[
+                            capture_var] = capture_value
                         self.test_context.set(capture_var, capture_value)
 
                 # 将主要结果赋值给指定变量
@@ -504,7 +573,8 @@ class DSLExecutor:
                 )
             else:
                 # 存储在本地变量字典和测试上下文中
-                self.variable_replacer.local_variables[var_name] = actual_result
+                self.variable_replacer.local_variables[
+                    var_name] = actual_result
                 self.test_context.set(var_name, actual_result)  # 同时添加到测试上下文
                 allure.attach(
                     f"变量: {var_name}\n值: {actual_result}",
@@ -566,7 +636,7 @@ class DSLExecutor:
             # 由于KeywordManager中的wrapper已经添加了allure.step和日志，这里不再重复添加
             result = keyword_manager.execute(keyword_name, **kwargs)
             return result
-        except Exception as e:
+        except Exception:
             # 异常会在KeywordManager的wrapper中记录，这里只需要向上抛出
             raise
 
@@ -741,7 +811,8 @@ class DSLExecutor:
                     if capture_var.startswith('g_'):
                         global_context.set_variable(capture_var, capture_value)
                     else:
-                        self.variable_replacer.local_variables[capture_var] = capture_value
+                        self.variable_replacer.local_variables[
+                            capture_var] = capture_value
                         self.test_context.set(capture_var, capture_value)
 
                 # 将主要结果赋值给指定变量
@@ -760,7 +831,8 @@ class DSLExecutor:
                 )
             else:
                 # 存储在本地变量字典和测试上下文中
-                self.variable_replacer.local_variables[var_name] = actual_result
+                self.variable_replacer.local_variables[
+                    var_name] = actual_result
                 self.test_context.set(var_name, actual_result)  # 同时添加到测试上下文
                 allure.attach(
                     f"变量: {var_name}\n值: {actual_result}",
@@ -768,7 +840,7 @@ class DSLExecutor:
                     attachment_type=allure.attachment_type.TEXT
                 )
         else:
-            raise Exception(f"远程关键字没有返回结果")
+            raise Exception("远程关键字没有返回结果")
 
     def execute(self, node):
         """执行AST节点"""
@@ -786,7 +858,8 @@ class DSLExecutor:
             'CustomKeyword': lambda _: None,  # 添加对CustomKeyword节点的处理，只需注册不需执行
             'RemoteImport': self._handle_remote_import,
             'RemoteKeywordCall': self._execute_remote_keyword_call,
-            'AssignmentRemoteKeywordCall': self._handle_assignment_remote_keyword_call,
+            'AssignmentRemoteKeywordCall': (
+                self._handle_assignment_remote_keyword_call),
             'Break': self._handle_break,
             'Continue': self._handle_continue
         }
@@ -795,6 +868,122 @@ class DSLExecutor:
         if handler:
             return handler(node)
         raise Exception(f"未知的节点类型: {node.type}")
+
+    def __repr__(self):
+        """返回DSL执行器的字符串表示"""
+        return (f"DSLExecutor(variables={len(self.variables)}, "
+                f"hooks_enabled={self.enable_hooks})")
+    
+    def _init_hooks(self):
+        """初始化hook机制"""
+        try:
+            from .hook_manager import hook_manager
+            hook_manager.initialize()
+            # 调用hook注册自定义关键字
+            hook_manager.pm.hook.dsl_register_custom_keywords()
+            self.hook_manager = hook_manager
+        except ImportError:
+            # 如果没有安装pluggy，禁用hook
+            self.enable_hooks = False
+            self.hook_manager = None
+    
+    def execute_from_content(self, content: str, dsl_id: str = None,
+                             context: Dict[str, Any] = None) -> Any:
+        """从内容执行DSL，支持hook扩展
+        
+        Args:
+            content: DSL内容，如果为空字符串将尝试通过hook加载
+            dsl_id: DSL标识符（可选）
+            context: 执行上下文（可选）
+            
+        Returns:
+            执行结果
+        """
+        self.current_dsl_id = dsl_id
+        
+        # 如果content为空且有dsl_id，尝试通过hook加载内容
+        if (not content and dsl_id and self.enable_hooks and
+                hasattr(self, 'hook_manager') and self.hook_manager):
+            content_results = self.hook_manager.pm.hook.dsl_load_content(
+                dsl_id=dsl_id)
+            for result in content_results:
+                if result is not None:
+                    content = result
+                    break
+        
+        if not content:
+            raise ValueError(f"无法获取DSL内容: {dsl_id}")
+        
+        # 应用执行上下文
+        if context:
+            self.variables.update(context)
+            for key, value in context.items():
+                self.test_context.set(key, value)
+            self.variable_replacer = VariableReplacer(
+                self.variables, self.test_context
+            )
+        
+        # 执行前hook
+        if self.enable_hooks and self.hook_manager:
+            self.hook_manager.pm.hook.dsl_before_execution(
+                dsl_id=dsl_id, context=context or {}
+            )
+        
+        result = None
+        exception = None
+        
+        try:
+            # 解析并执行
+            ast = self._parse_dsl_content(content)
+            result = self.execute(ast)
+            
+        except Exception as e:
+            exception = e
+            # 执行后hook（在异常情况下）
+            if self.enable_hooks and self.hook_manager:
+                try:
+                    self.hook_manager.pm.hook.dsl_after_execution(
+                        dsl_id=dsl_id, 
+                        context=context or {}, 
+                        result=result, 
+                        exception=exception
+                    )
+                except Exception as hook_error:
+                    print(f"Hook执行失败: {hook_error}")
+            raise
+        else:
+            # 执行后hook（在成功情况下）
+            if self.enable_hooks and self.hook_manager:
+                try:
+                    self.hook_manager.pm.hook.dsl_after_execution(
+                        dsl_id=dsl_id, 
+                        context=context or {}, 
+                        result=result, 
+                        exception=None
+                    )
+                except Exception as hook_error:
+                    print(f"Hook执行失败: {hook_error}")
+        
+        return result
+
+    def _parse_dsl_content(self, content: str) -> Node:
+        """解析DSL内容为AST（公共方法）
+        
+        Args:
+            content: DSL文本内容
+            
+        Returns:
+            Node: 解析后的AST根节点
+            
+        Raises:
+            Exception: 解析失败时抛出异常
+        """
+        from pytest_dsl.core.lexer import get_lexer
+        from pytest_dsl.core.parser import get_parser
+        
+        lexer = get_lexer()
+        parser = get_parser()
+        return parser.parse(content, lexer=lexer)
 
 
 def read_file(filename):
