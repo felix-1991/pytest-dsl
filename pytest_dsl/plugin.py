@@ -38,6 +38,13 @@ def pytest_configure(config):
     # 确保全局变量存储目录存在
     os.makedirs(global_context._storage_dir, exist_ok=True)
 
+    # 首先导入内置关键字模块，确保内置关键字被注册
+    try:
+        import pytest_dsl.keywords  # noqa: F401
+        print("pytest环境：内置关键字模块加载完成")
+    except ImportError as e:
+        print(f"pytest环境：加载内置关键字模块失败: {e}")
+
     # 加载所有已安装的关键字插件
     load_all_plugins()
 
@@ -46,7 +53,9 @@ def pytest_configure(config):
 
     # 自动导入项目中的resources目录
     try:
-        from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
+        from pytest_dsl.core.custom_keyword_manager import (
+            custom_keyword_manager
+        )
 
         # 获取pytest的根目录
         project_root = str(config.rootdir) if config.rootdir else os.getcwd()

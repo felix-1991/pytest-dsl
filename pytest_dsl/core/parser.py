@@ -1,12 +1,30 @@
 import ply.yacc as yacc
-from pytest_dsl.core.lexer import tokens, get_lexer
+from pytest_dsl.core.lexer import tokens
 
 
 class Node:
-    def __init__(self, type, children=None, value=None):
+    def __init__(self, type, children=None, value=None, line_number=None,
+                 column=None):
         self.type = type
         self.children = children if children else []
         self.value = value
+        self.line_number = line_number  # 添加行号信息
+        self.column = column  # 添加列号信息
+
+    def set_position(self, line_number, column=None):
+        """设置节点位置信息"""
+        self.line_number = line_number
+        self.column = column
+        return self
+
+    def get_position_info(self):
+        """获取位置信息的字符串表示"""
+        if self.line_number is not None:
+            if self.column is not None:
+                return f"行{self.line_number}:列{self.column}"
+            else:
+                return f"行{self.line_number}"
+        return "位置未知"
 
 
 # 定义优先级和结合性
@@ -25,17 +43,23 @@ def p_start(p):
              | statements teardown
              | statements'''
 
+    # 获取起始行号
+    line_number = getattr(p.slice[1], 'lineno', 1) if len(p) > 1 else 1
+
     if len(p) == 4:
-        p[0] = Node('Start', [p[1], p[2], p[3]])
+        p[0] = Node('Start', [p[1], p[2], p[3]], line_number=line_number)
     elif len(p) == 3:
         # 判断第二个元素是teardown还是statements
         if p[2].type == 'Teardown':
-            p[0] = Node('Start', [Node('Metadata', []), p[1], p[2]])
+            p[0] = Node('Start', [Node('Metadata', [],
+                                       line_number=line_number), p[1], p[2]],
+                        line_number=line_number)
         else:
-            p[0] = Node('Start', [p[1], p[2]])
+            p[0] = Node('Start', [p[1], p[2]], line_number=line_number)
     else:
         # 没有metadata和teardown
-        p[0] = Node('Start', [Node('Metadata', []), p[1]])
+        p[0] = Node('Start', [Node('Metadata', [],
+                    line_number=line_number), p[1]], line_number=line_number)
 
 
 def p_metadata(p):
@@ -135,12 +159,17 @@ def p_assignment(p):
     '''assignment : ID EQUALS expression
                  | ID EQUALS keyword_call
                  | ID EQUALS remote_keyword_call'''
+    line_number = getattr(p.slice[1], 'lineno', None)
+
     if isinstance(p[3], Node) and p[3].type == 'KeywordCall':
-        p[0] = Node('AssignmentKeywordCall', [p[3]], p[1])
+        p[0] = Node('AssignmentKeywordCall', [p[3]],
+                    p[1], line_number=line_number)
     elif isinstance(p[3], Node) and p[3].type == 'RemoteKeywordCall':
-        p[0] = Node('AssignmentRemoteKeywordCall', [p[3]], p[1])
+        p[0] = Node('AssignmentRemoteKeywordCall', [
+                    p[3]], p[1], line_number=line_number)
     else:
-        p[0] = Node('Assignment', value=p[1], children=[p[3]])
+        p[0] = Node('Assignment', value=p[1], children=[
+                    p[3]], line_number=line_number)
 
 
 def p_expression(p):
@@ -225,17 +254,20 @@ def p_dict_item(p):
 
 
 def p_loop(p):
-    '''loop : FOR ID IN RANGE LPAREN expression COMMA expression RPAREN DO statements END'''
-    p[0] = Node('ForLoop', [p[6], p[8], p[11]], p[2])
+    '''loop : FOR ID IN RANGE LPAREN expression COMMA expression RPAREN DO statements END'''  # noqa: E501
+    line_number = getattr(p.slice[1], 'lineno', None)
+    p[0] = Node('ForLoop', [p[6], p[8], p[11]], p[2], line_number=line_number)
 
 
 def p_keyword_call(p):
     '''keyword_call : LBRACKET ID RBRACKET COMMA parameter_list
                    | LBRACKET ID RBRACKET'''
+    line_number = getattr(p.slice[1], 'lineno', None)
+
     if len(p) == 6:
-        p[0] = Node('KeywordCall', [p[5]], p[2])
+        p[0] = Node('KeywordCall', [p[5]], p[2], line_number=line_number)
     else:
-        p[0] = Node('KeywordCall', [[]], p[2])
+        p[0] = Node('KeywordCall', [[]], p[2], line_number=line_number)
 
 
 def p_parameter_list(p):
@@ -268,7 +300,7 @@ def p_data_source(p):
 
 
 def p_custom_keyword(p):
-    '''custom_keyword : FUNCTION ID LPAREN param_definitions RPAREN DO statements END'''
+    '''custom_keyword : FUNCTION ID LPAREN param_definitions RPAREN DO statements END'''  # noqa: E501
     p[0] = Node('CustomKeyword', [p[4], p[7]], p[2])
 
 
@@ -319,7 +351,7 @@ def p_if_statement(p):
     '''if_statement : IF expression DO statements END
                    | IF expression DO statements elif_clauses END
                    | IF expression DO statements ELSE statements END
-                   | IF expression DO statements elif_clauses ELSE statements END'''
+                   | IF expression DO statements elif_clauses ELSE statements END'''  # noqa: E501
     if len(p) == 6:
         # if condition do statements end
         p[0] = Node('IfStatement', [p[2], p[4]], None)
@@ -401,16 +433,60 @@ def p_arithmetic_expr(p):
     p[0] = Node('ArithmeticExpr', [p[1], p[3]], operator)
 
 
+# 全局变量用于存储解析错误
+_parse_errors = []
+
+
 def p_error(p):
+    global _parse_errors
     if p:
-        print(
-            f"语法错误: 在第 {p.lineno} 行, 位置 {p.lexpos}, Token {p.type}, 值: {p.value}")
+        error_msg = (f"语法错误: 在第 {p.lineno} 行, 位置 {p.lexpos}, "
+                     f"Token {p.type}, 值: {p.value}")
+        _parse_errors.append({
+            'message': error_msg,
+            'line': p.lineno,
+            'position': p.lexpos,
+            'token_type': p.type,
+            'token_value': p.value
+        })
+        # 不再直接打印，而是存储错误信息
     else:
-        print("语法错误: 在文件末尾")
+        error_msg = "语法错误: 在文件末尾"
+        _parse_errors.append({
+            'message': error_msg,
+            'line': None,
+            'position': None,
+            'token_type': None,
+            'token_value': None
+        })
 
 
 def get_parser(debug=False):
     return yacc.yacc(debug=debug)
+
+
+def parse_with_error_handling(content, lexer=None):
+    """带错误处理的解析函数
+
+    Args:
+        content: DSL内容
+        lexer: 词法分析器实例
+
+    Returns:
+        tuple: (AST节点, 错误列表)
+    """
+    global _parse_errors
+    _parse_errors = []  # 清空之前的错误
+
+    if lexer is None:
+        from pytest_dsl.core.lexer import get_lexer
+        lexer = get_lexer()
+
+    parser = get_parser()
+    ast = parser.parse(content, lexer=lexer)
+
+    # 返回AST和错误列表
+    return ast, _parse_errors.copy()
 
 # 定义远程关键字调用的语法规则
 

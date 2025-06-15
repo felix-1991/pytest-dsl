@@ -18,7 +18,7 @@ class KeywordManager:
 
     def register(self, name: str, parameters: List[Dict], source_info: Optional[Dict] = None):
         """关键字注册装饰器
-        
+
         Args:
             name: 关键字名称
             parameters: 参数列表
@@ -29,23 +29,29 @@ class KeywordManager:
             def wrapper(**kwargs):
                 # 获取自定义步骤名称，如果未指定则使用关键字名称
                 step_name = kwargs.pop('step_name', name)
-                
+
+                # 检查是否已经在DSL执行器的步骤中，避免重复记录
+                skip_logging = kwargs.pop('skip_logging', False)
+
                 with allure.step(f"{step_name}"):
                     try:
                         result = func(**kwargs)
-                        self._log_execution(step_name, kwargs, result)
+                        if not skip_logging:
+                            self._log_execution(step_name, kwargs, result)
                         return result
                     except Exception as e:
-                        self._log_failure(step_name, kwargs, e)
+                        if not skip_logging:
+                            self._log_failure(step_name, kwargs, e)
                         raise
 
             param_list = [Parameter(**p) for p in parameters]
             mapping = {p.name: p.mapping for p in param_list}
-            defaults = {p.mapping: p.default for p in param_list if p.default is not None}
-            
+            defaults = {
+                p.mapping: p.default for p in param_list if p.default is not None}
+
             # 自动添加 step_name 到 mapping 中
             mapping["步骤名称"] = "step_name"
-            
+
             # 构建关键字信息，包含来源信息
             keyword_info = {
                 'func': wrapper,
@@ -53,14 +59,14 @@ class KeywordManager:
                 'parameters': param_list,
                 'defaults': defaults  # 存储默认值
             }
-            
+
             # 添加来源信息
             if source_info:
                 keyword_info.update(source_info)
             else:
                 # 尝试从函数模块推断来源信息
                 keyword_info.update(self._infer_source_info(func))
-            
+
             self._keywords[name] = keyword_info
             return wrapper
         return decorator
@@ -68,11 +74,11 @@ class KeywordManager:
     def _infer_source_info(self, func: Callable) -> Dict:
         """从函数推断来源信息"""
         source_info = {}
-        
+
         if hasattr(func, '__module__'):
             module_name = func.__module__
             source_info['module_name'] = module_name
-            
+
             if module_name.startswith('pytest_dsl.keywords'):
                 # 内置关键字
                 source_info['source_type'] = 'builtin'
@@ -90,13 +96,13 @@ class KeywordManager:
                     source_info['source_name'] = parts[0]
                 else:
                     source_info['source_name'] = module_name
-        
+
         return source_info
 
-    def register_with_source(self, name: str, parameters: List[Dict], 
-                           source_type: str, source_name: str, **kwargs):
+    def register_with_source(self, name: str, parameters: List[Dict],
+                             source_type: str, source_name: str, **kwargs):
         """带来源信息的关键字注册装饰器
-        
+
         Args:
             name: 关键字名称
             parameters: 参数列表
@@ -116,18 +122,18 @@ class KeywordManager:
         keyword_info = self._keywords.get(keyword_name)
         if not keyword_info:
             raise KeyError(f"未注册的关键字: {keyword_name}")
-        
+
         # 应用默认值
         final_params = {}
         defaults = keyword_info.get('defaults', {})
-        
+
         # 首先设置所有默认值
         for param_key, default_value in defaults.items():
             final_params[param_key] = default_value
-        
+
         # 然后用传入的参数覆盖默认值
         final_params.update(params)
-        
+
         return keyword_info['func'](**final_params)
 
     def get_keyword_info(self, keyword_name: str) -> Dict:
@@ -135,7 +141,7 @@ class KeywordManager:
         keyword_info = self._keywords.get(keyword_name)
         if not keyword_info:
             return None
-            
+
         # 动态添加step_name参数到参数列表中
         if not any(p.name == "步骤名称" for p in keyword_info['parameters']):
             keyword_info['parameters'].append(Parameter(
@@ -143,19 +149,19 @@ class KeywordManager:
                 mapping="step_name",
                 description="自定义的步骤名称，用于在报告中显示"
             ))
-            
+
         return keyword_info
 
     def get_keywords_by_source(self) -> Dict[str, List[str]]:
         """按来源分组获取关键字"""
         by_source = {}
-        
+
         for name, info in self._keywords.items():
             source_name = info.get('source_name', '未知来源')
             if source_name not in by_source:
                 by_source[source_name] = []
             by_source[source_name].append(name)
-        
+
         return by_source
 
     def _log_execution(self, keyword_name: str, params: Dict, result: Any) -> None:
