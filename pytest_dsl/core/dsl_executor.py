@@ -321,8 +321,6 @@ class DSLExecutor:
     def _handle_start(self, node):
         """处理开始节点"""
         try:
-            # 清空上下文，确保每个测试用例都有一个新的上下文
-            self.test_context.clear()
             metadata = {}
             teardown_node = None
 
@@ -722,6 +720,7 @@ class DSLExecutor:
                 kwargs['step_name'] = keyword_name  # 内层步骤只显示关键字名称
                 # 避免KeywordManager重复记录，由DSL执行器统一记录
                 kwargs['skip_logging'] = True
+
                 result = keyword_manager.execute(keyword_name, **kwargs)
 
                 # 执行成功后记录关键字信息，包含行号
@@ -733,9 +732,26 @@ class DSLExecutor:
 
                 return result
             except Exception as e:
-                # 记录关键字执行失败，包含行号信息
+                # 记录关键字执行失败，包含行号信息和更详细的错误信息
+                error_details = (
+                    f"关键字: {keyword_name}\n"
+                    f"错误: {str(e)}\n"
+                    f"错误类型: {type(e).__name__}"
+                    f"{line_info}"
+                )
+                
+                # 如果异常中包含了内部行号信息，提取并显示
+                if hasattr(e, 'args') and e.args:
+                    error_msg = str(e.args[0])
+                    # 尝试从错误消息中提取行号信息
+                    import re
+                    line_match = re.search(r'行(\d+)', error_msg)
+                    if line_match:
+                        inner_line = int(line_match.group(1))
+                        error_details += f"\n内部错误行号: {inner_line}"
+                
                 allure.attach(
-                    f"关键字: {keyword_name}\n错误: {str(e)}{line_info}",
+                    error_details,
                     name="关键字调用失败",
                     attachment_type=allure.attachment_type.TEXT
                 )

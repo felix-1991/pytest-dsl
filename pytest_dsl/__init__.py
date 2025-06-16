@@ -54,6 +54,13 @@ from pytest_dsl.core.keyword_loader import (
     group_keywords_by_source, scan_project_custom_keywords
 )
 
+# 关键字工具
+from pytest_dsl.core.keyword_utils import (
+    KeywordInfo, KeywordListOptions, KeywordFormatter, KeywordLister,
+    keyword_lister, list_keywords, get_keyword_info, search_keywords,
+    generate_html_report
+)
+
 # 便捷导入的别名
 Executor = DSLExecutor
 Validator = DSLValidator
@@ -76,6 +83,11 @@ __all__ = [
     'keyword_loader', 'KeywordLoader',
     'load_all_keywords', 'categorize_keyword', 'get_keyword_source_info',
     'group_keywords_by_source', 'scan_project_custom_keywords',
+
+    # 关键字工具
+    'KeywordInfo', 'KeywordListOptions', 'KeywordFormatter', 'KeywordLister',
+    'keyword_lister', 'list_keywords', 'get_keyword_info', 'search_keywords',
+    'generate_html_report',
 
     # Hook系统
     'hookimpl', 'hookspec', 'DSLHookSpecs',

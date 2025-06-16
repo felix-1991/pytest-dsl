@@ -198,7 +198,12 @@ def p_expr_atom(p):
     elif isinstance(p[1], Node):
         p[0] = p[1]
     else:
-        p[0] = Node('Expression', value=p[1])
+        # 为基本表达式设置行号信息
+        expr_line = getattr(p.slice[1], 'lineno', None)
+        expr_node = Node('Expression', value=p[1])
+        if expr_line is not None:
+            expr_node.set_position(expr_line)
+        p[0] = expr_node
 
 
 def p_boolean_expr(p):
@@ -265,8 +270,29 @@ def p_keyword_call(p):
     line_number = getattr(p.slice[1], 'lineno', None)
 
     if len(p) == 6:
-        p[0] = Node('KeywordCall', [p[5]], p[2], line_number=line_number)
+        # 对于有参数的关键字调用，尝试获取更精确的行号
+        # 优先使用关键字名称的行号，其次是左括号的行号
+        keyword_line = getattr(p.slice[2], 'lineno', None)
+        if keyword_line is not None:
+            line_number = keyword_line
+
+        keyword_node = Node('KeywordCall', [p[5]], p[2],
+                            line_number=line_number)
+
+        # 为参数列表中的每个参数也设置行号信息（如果可用）
+        if p[5] and isinstance(p[5], list):
+            for param in p[5]:
+                if (hasattr(param, 'set_position') and
+                        not hasattr(param, 'line_number')):
+                    # 如果参数没有行号，使用关键字的行号作为默认值
+                    param.set_position(line_number)
+
+        p[0] = keyword_node
     else:
+        # 对于无参数的关键字调用，也优先使用关键字名称的行号
+        keyword_line = getattr(p.slice[2], 'lineno', None)
+        if keyword_line is not None:
+            line_number = keyword_line
         p[0] = Node('KeywordCall', [[]], p[2], line_number=line_number)
 
 
@@ -286,7 +312,15 @@ def p_parameter_items(p):
 
 def p_parameter_item(p):
     '''parameter_item : ID COLON expression'''
-    p[0] = Node('ParameterItem', value=p[1], children=[p[3]])
+    # 获取参数名的行号
+    param_line = getattr(p.slice[1], 'lineno', None)
+    param_node = Node('ParameterItem', value=p[1], children=[p[3]])
+
+    # 设置参数节点的行号
+    if param_line is not None:
+        param_node.set_position(param_line)
+
+    p[0] = param_node
 
 
 def p_teardown(p):

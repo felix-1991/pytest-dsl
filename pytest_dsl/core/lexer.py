@@ -90,6 +90,7 @@ t_PLACEHOLDER = (r'\$\{[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*'
 # 添加管道符的正则表达式定义
 t_PIPE = r'\|'
 
+
 # 添加@remote关键字的token规则
 def t_REMOTE_KEYWORD(t):
     r'@remote'
@@ -111,7 +112,14 @@ def t_STRING(t):
     r"""(\'\'\'[\s\S]*?\'\'\'|\"\"\"[\s\S]*?\"\"\"|'[^']*'|\"[^\"]*\")"""
     # 处理单引号和双引号的多行/单行字符串
     if t.value.startswith("'''") or t.value.startswith('"""'):
+        # 对于多行字符串，需要正确更新行号
+        original_value = t.value
         t.value = t.value[3:-3]  # 去掉三引号
+        
+        # 计算多行字符串包含的换行符数量，更新词法分析器的行号
+        newlines = original_value.count('\n')
+        if newlines > 0:
+            t.lexer.lineno += newlines
     else:
         t.value = t.value[1:-1]  # 去掉单引号或双引号
     return t
