@@ -31,6 +31,28 @@ class ReturnException(Exception):
         super().__init__(f"Return with value: {return_value}")
 
 
+class DSLExecutionError(Exception):
+    """DSL执行异常，包含行号信息"""
+
+    def __init__(self, message: str, line_number: int = None, node_type: str = None,
+                 original_exception: Exception = None):
+        self.line_number = line_number
+        self.node_type = node_type
+        self.original_exception = original_exception
+
+        # 构建详细的错误消息
+        error_parts = [message]
+        if line_number:
+            error_parts.append(f"行号: {line_number}")
+        if node_type:
+            error_parts.append(f"节点类型: {node_type}")
+        if original_exception:
+            error_parts.append(
+                f"原始异常: {type(original_exception).__name__}: {str(original_exception)}")
+
+        super().__init__(" | ".join(error_parts))
+
+
 class DSLExecutor:
     """DSL执行器，负责执行解析后的AST
 
@@ -62,8 +84,139 @@ class DSLExecutor:
         self.enable_tracking = enable_tracking
         self.execution_tracker: ExecutionTracker = None
 
+        # 当前执行节点（用于异常处理时获取行号）
+        self._current_node = None
+        # 节点调用栈，用于追踪有行号信息的节点
+        self._node_stack = []
+
         if self.enable_hooks:
             self._init_hooks()
+
+    def _get_line_info(self, node=None):
+        """获取行号信息字符串
+
+        Args:
+            node: 可选的节点，如果不提供则使用当前节点
+
+        Returns:
+            包含行号信息的字符串
+        """
+        target_node = node or self._current_node
+
+        # 尝试从当前节点获取行号
+        if target_node and hasattr(target_node, 'line_number') and target_node.line_number:
+            return f"\n行号: {target_node.line_number}"
+
+        # 如果当前节点没有行号，从节点栈中查找最近的有行号的节点
+        for stack_node in reversed(self._node_stack):
+            if hasattr(stack_node, 'line_number') and stack_node.line_number:
+                return f"\n行号: {stack_node.line_number}"
+
+        # 如果当前节点没有行号，尝试从当前执行的节点获取
+        if self._current_node and hasattr(self._current_node, 'line_number') and self._current_node.line_number:
+            return f"\n行号: {self._current_node.line_number}"
+
+        return ""
+
+    def _handle_exception_with_line_info(self, e: Exception, node=None, context_info: str = "", skip_allure_logging: bool = False):
+        """统一处理异常并记录行号信息
+
+        Args:
+            e: 原始异常
+            node: 可选的节点，用于获取行号
+            context_info: 额外的上下文信息
+            skip_allure_logging: 是否跳过Allure日志记录，避免重复记录
+
+        Raises:
+            DSLExecutionError: 包含行号信息的DSL执行异常
+        """
+        target_node = node or self._current_node
+        line_number = None
+        node_type = None
+
+        # 尝试从目标节点获取行号
+        if target_node:
+            line_number = getattr(target_node, 'line_number', None)
+            node_type = getattr(target_node, 'type', None)
+
+        # 如果目标节点没有行号，从节点栈中查找最近的有行号的节点
+        if not line_number:
+            for stack_node in reversed(self._node_stack):
+                stack_line = getattr(stack_node, 'line_number', None)
+                if stack_line:
+                    line_number = stack_line
+                    if not node_type:
+                        node_type = getattr(stack_node, 'type', None)
+                    break
+
+        # 如果还是没有行号，尝试从当前执行节点获取
+        if not line_number and self._current_node:
+            line_number = getattr(self._current_node, 'line_number', None)
+            if not node_type:
+                node_type = getattr(self._current_node, 'type', None)
+
+        # 构建错误消息
+        error_msg = str(e)
+        if context_info:
+            error_msg = f"{context_info}: {error_msg}"
+
+        # 只有在没有跳过Allure日志记录时才记录到Allure
+        if not skip_allure_logging:
+            # 记录到Allure
+            line_info = self._get_line_info(target_node)
+            error_details = f"{error_msg}{line_info}"
+            if context_info:
+                error_details += f"\n上下文: {context_info}"
+
+            allure.attach(
+                error_details,
+                name="DSL执行异常",
+                attachment_type=allure.attachment_type.TEXT
+            )
+
+        # 如果原始异常已经是DSLExecutionError，不要重复封装
+        if isinstance(e, DSLExecutionError):
+            raise e
+
+        # 对于控制流异常，直接重抛，不封装
+        if isinstance(e, (BreakException, ContinueException, ReturnException)):
+            raise e
+
+        # 对于断言错误，保持原样但添加行号信息
+        if isinstance(e, AssertionError):
+            enhanced_msg = f"{str(e)}{self._get_line_info(target_node)}"
+            raise AssertionError(enhanced_msg) from e
+
+        # 其他异常封装为DSLExecutionError
+        raise DSLExecutionError(
+            message=error_msg,
+            line_number=line_number,
+            node_type=node_type,
+            original_exception=e
+        ) from e
+
+    def _execute_with_error_handling(self, func, node, *args, **kwargs):
+        """在错误处理包装器中执行函数
+
+        Args:
+            func: 要执行的函数
+            node: 当前节点
+            *args: 函数参数
+            **kwargs: 函数关键字参数
+
+        Returns:
+            函数执行结果
+        """
+        old_node = self._current_node
+        self._current_node = node
+
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            self._handle_exception_with_line_info(
+                e, node, f"执行{getattr(node, 'type', '未知节点')}")
+        finally:
+            self._current_node = old_node
 
     def set_current_data(self, data):
         """设置当前测试数据集"""
@@ -112,67 +265,99 @@ class DSLExecutor:
 
         :param expr_node: AST中的表达式节点
         :return: 表达式求值后的结果
-        :raises Exception: 当遇到未定义变量或无法求值的类型时抛出异常
+        :raises DSLExecutionError: 当遇到未定义变量或无法求值的类型时抛出异常
         """
-        if expr_node.type == 'Expression':
-            value = self._eval_expression_value(expr_node.value)
-            # 统一处理变量替换
-            return self.variable_replacer.replace_in_value(value)
-        elif expr_node.type == 'KeywordCall':
-            return self.execute(expr_node)
-        elif expr_node.type == 'ListExpr':
-            # 处理列表表达式
-            result = []
-            for item in expr_node.children:
-                item_value = self.eval_expression(item)
-                result.append(item_value)
-            return result
-        elif expr_node.type == 'DictExpr':
-            # 处理字典表达式
-            result = {}
-            for item in expr_node.children:
-                # 每个item是DictItem节点，包含键和值
-                key_value = self.eval_expression(item.children[0])
-                value_value = self.eval_expression(item.children[1])
-                result[key_value] = value_value
-            return result
-        elif expr_node.type == 'BooleanExpr':
-            # 处理布尔值表达式
-            return expr_node.value
-        elif expr_node.type == 'ComparisonExpr':
-            # 处理比较表达式
-            return self._eval_comparison_expr(expr_node)
-        elif expr_node.type == 'ArithmeticExpr':
-            # 处理算术表达式
-            return self._eval_arithmetic_expr(expr_node)
-        else:
-            raise Exception(f"无法求值的表达式类型: {expr_node.type}")
+        def _eval_expression_impl():
+            if expr_node.type == 'Expression':
+                value = self._eval_expression_value(expr_node.value)
+                # 统一处理变量替换
+                return self.variable_replacer.replace_in_value(value)
+            elif expr_node.type == 'StringLiteral':
+                # 字符串字面量，如果包含变量占位符则进行替换，否则直接返回
+                if '${' in expr_node.value:
+                    return self.variable_replacer.replace_in_string(expr_node.value)
+                else:
+                    return expr_node.value
+            elif expr_node.type == 'NumberLiteral':
+                # 数字字面量，直接返回值
+                return expr_node.value
+            elif expr_node.type == 'VariableRef':
+                # 变量引用，从变量存储中获取值
+                var_name = expr_node.value
+                try:
+                    return self.variable_replacer.get_variable(var_name)
+                except KeyError:
+                    raise KeyError(f"变量 '{var_name}' 不存在")
+            elif expr_node.type == 'PlaceholderRef':
+                # 变量占位符 ${var}，进行变量替换
+                return self.variable_replacer.replace_in_string(expr_node.value)
+            elif expr_node.type == 'KeywordCall':
+                return self.execute(expr_node)
+            elif expr_node.type == 'ListExpr':
+                # 处理列表表达式
+                result = []
+                for item in expr_node.children:
+                    item_value = self.eval_expression(item)
+                    result.append(item_value)
+                return result
+            elif expr_node.type == 'DictExpr':
+                # 处理字典表达式
+                result = {}
+                for item in expr_node.children:
+                    # 每个item是DictItem节点，包含键和值
+                    key_value = self.eval_expression(item.children[0])
+                    value_value = self.eval_expression(item.children[1])
+                    result[key_value] = value_value
+                return result
+            elif expr_node.type == 'BooleanExpr':
+                # 处理布尔值表达式
+                return expr_node.value
+            elif expr_node.type == 'ComparisonExpr':
+                # 处理比较表达式
+                return self._eval_comparison_expr(expr_node)
+            elif expr_node.type == 'ArithmeticExpr':
+                # 处理算术表达式
+                return self._eval_arithmetic_expr(expr_node)
+            else:
+                raise Exception(f"无法求值的表达式类型: {expr_node.type}")
+
+        return self._execute_with_error_handling(_eval_expression_impl, expr_node)
 
     def _eval_expression_value(self, value):
         """处理表达式值的具体逻辑"""
-        if isinstance(value, Node):
-            return self.eval_expression(value)
-        elif isinstance(value, str):
-            # 如果是ID类型的变量名
-            if value in self.variable_replacer.local_variables:
-                return self.variable_replacer.local_variables[value]
-
-            # 定义扩展的变量引用模式，支持数组索引和字典键访问
-            pattern = (
-                r'\$\{([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*'
-                r'(?:(?:\.[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)'
-                r'|(?:\[[^\]]+\]))*)\}'
-            )
-            # 检查整个字符串是否完全匹配单一变量引用模式
-            match = re.fullmatch(pattern, value)
-            if match:
-                var_ref = match.group(1)
-                # 使用新的变量路径解析器
-                return self.variable_replacer._parse_variable_path(var_ref)
-            else:
-                # 如果不是单一变量，则替换字符串中的所有变量引用
-                return self.variable_replacer.replace_in_string(value)
-        return value
+        try:
+            if isinstance(value, Node):
+                return self.eval_expression(value)
+            elif isinstance(value, str):
+                # 定义扩展的变量引用模式，支持数组索引和字典键访问
+                pattern = (
+                    r'\$\{([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*'
+                    r'(?:(?:\.[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)'
+                    r'|(?:\[[^\]]+\]))*)\}'
+                )
+                # 检查整个字符串是否完全匹配单一变量引用模式
+                match = re.fullmatch(pattern, value)
+                if match:
+                    var_ref = match.group(1)
+                    # 使用新的变量路径解析器
+                    return self.variable_replacer._parse_variable_path(var_ref)
+                elif '${' in value:
+                    # 如果包含变量占位符，则替换字符串中的所有变量引用
+                    return self.variable_replacer.replace_in_string(value)
+                else:
+                    # 对于不包含 ${} 的普通字符串，检查是否为单纯的变量名
+                    # 只有当字符串是有效的变量名格式且确实存在该变量时，才当作变量处理
+                    if (re.match(r'^[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*$', value) and
+                        value in self.variable_replacer.local_variables):
+                        return self.variable_replacer.local_variables[value]
+                    else:
+                        # 否则当作字符串字面量处理
+                        return value
+            return value
+        except Exception as e:
+            # 为变量解析异常添加更多上下文信息
+            context_info = f"解析表达式值 '{value}'"
+            self._handle_exception_with_line_info(e, context_info=context_info)
 
     def _eval_comparison_expr(self, expr_node):
         """
@@ -181,31 +366,35 @@ class DSLExecutor:
         :param expr_node: 比较表达式节点
         :return: 比较结果（布尔值）
         """
-        left_value = self.eval_expression(expr_node.children[0])
-        right_value = self.eval_expression(expr_node.children[1])
-        operator = expr_node.value  # 操作符: >, <, >=, <=, ==, !=
+        try:
+            left_value = self.eval_expression(expr_node.children[0])
+            right_value = self.eval_expression(expr_node.children[1])
+            operator = expr_node.value  # 操作符: >, <, >=, <=, ==, !=
 
-        # 尝试类型转换
-        if isinstance(left_value, str) and str(left_value).isdigit():
-            left_value = int(left_value)
-        if isinstance(right_value, str) and str(right_value).isdigit():
-            right_value = int(right_value)
+            # 尝试类型转换
+            if isinstance(left_value, str) and str(left_value).isdigit():
+                left_value = int(left_value)
+            if isinstance(right_value, str) and str(right_value).isdigit():
+                right_value = int(right_value)
 
-        # 根据操作符执行相应的比较操作
-        if operator == '>':
-            return left_value > right_value
-        elif operator == '<':
-            return left_value < right_value
-        elif operator == '>=':
-            return left_value >= right_value
-        elif operator == '<=':
-            return left_value <= right_value
-        elif operator == '==':
-            return left_value == right_value
-        elif operator == '!=':
-            return left_value != right_value
-        else:
-            raise Exception(f"未知的比较操作符: {operator}")
+            # 根据操作符执行相应的比较操作
+            if operator == '>':
+                return left_value > right_value
+            elif operator == '<':
+                return left_value < right_value
+            elif operator == '>=':
+                return left_value >= right_value
+            elif operator == '<=':
+                return left_value <= right_value
+            elif operator == '==':
+                return left_value == right_value
+            elif operator == '!=':
+                return left_value != right_value
+            else:
+                raise Exception(f"未知的比较操作符: {operator}")
+        except Exception as e:
+            context_info = f"比较表达式求值 '{operator}'"
+            self._handle_exception_with_line_info(e, expr_node, context_info)
 
     def _eval_arithmetic_expr(self, expr_node):
         """
@@ -214,54 +403,58 @@ class DSLExecutor:
         :param expr_node: 算术表达式节点
         :return: 计算结果
         """
-        left_value = self.eval_expression(expr_node.children[0])
-        right_value = self.eval_expression(expr_node.children[1])
-        operator = expr_node.value  # 操作符: +, -, *, /, %
+        try:
+            left_value = self.eval_expression(expr_node.children[0])
+            right_value = self.eval_expression(expr_node.children[1])
+            operator = expr_node.value  # 操作符: +, -, *, /, %
 
-        # 尝试类型转换 - 如果是字符串数字则转为数字
-        if (isinstance(left_value, str) and
-                str(left_value).replace('.', '', 1).isdigit()):
-            left_value = float(left_value)
-            # 如果是整数则转为整数
-            if left_value.is_integer():
-                left_value = int(left_value)
-
-        if (isinstance(right_value, str) and
-                str(right_value).replace('.', '', 1).isdigit()):
-            right_value = float(right_value)
-            # 如果是整数则转为整数
-            if right_value.is_integer():
-                right_value = int(right_value)
-
-        # 进行相应的算术运算
-        if operator == '+':
-            # 对于字符串，+是连接操作
-            if isinstance(left_value, str) or isinstance(right_value, str):
-                return str(left_value) + str(right_value)
-            return left_value + right_value
-        elif operator == '-':
-            return left_value - right_value
-        elif operator == '*':
-            # 如果其中一个是字符串，另一个是数字，则进行字符串重复
+            # 尝试类型转换 - 如果是字符串数字则转为数字
             if (isinstance(left_value, str) and
-                    isinstance(right_value, (int, float))):
-                return left_value * int(right_value)
-            elif (isinstance(right_value, str) and
-                  isinstance(left_value, (int, float))):
-                return right_value * int(left_value)
-            return left_value * right_value
-        elif operator == '/':
-            # 除法时检查除数是否为0
-            if right_value == 0:
-                raise Exception("除法错误: 除数不能为0")
-            return left_value / right_value
-        elif operator == '%':
-            # 模运算时检查除数是否为0
-            if right_value == 0:
-                raise Exception("模运算错误: 除数不能为0")
-            return left_value % right_value
-        else:
-            raise Exception(f"未知的算术操作符: {operator}")
+                    str(left_value).replace('.', '', 1).isdigit()):
+                left_value = float(left_value)
+                # 如果是整数则转为整数
+                if left_value.is_integer():
+                    left_value = int(left_value)
+
+            if (isinstance(right_value, str) and
+                    str(right_value).replace('.', '', 1).isdigit()):
+                right_value = float(right_value)
+                # 如果是整数则转为整数
+                if right_value.is_integer():
+                    right_value = int(right_value)
+
+            # 进行相应的算术运算
+            if operator == '+':
+                # 对于字符串，+是连接操作
+                if isinstance(left_value, str) or isinstance(right_value, str):
+                    return str(left_value) + str(right_value)
+                return left_value + right_value
+            elif operator == '-':
+                return left_value - right_value
+            elif operator == '*':
+                # 如果其中一个是字符串，另一个是数字，则进行字符串重复
+                if (isinstance(left_value, str) and
+                        isinstance(right_value, (int, float))):
+                    return left_value * int(right_value)
+                elif (isinstance(right_value, str) and
+                      isinstance(left_value, (int, float))):
+                    return right_value * int(left_value)
+                return left_value * right_value
+            elif operator == '/':
+                # 除法时检查除数是否为0
+                if right_value == 0:
+                    raise Exception("除法错误: 除数不能为0")
+                return left_value / right_value
+            elif operator == '%':
+                # 模运算时检查除数是否为0
+                if right_value == 0:
+                    raise Exception("模运算错误: 除数不能为0")
+                return left_value % right_value
+            else:
+                raise Exception(f"未知的算术操作符: {operator}")
+        except Exception as e:
+            context_info = f"算术表达式求值 '{operator}'"
+            self._handle_exception_with_line_info(e, expr_node, context_info)
 
     def _get_variable(self, var_name):
         """获取变量值，优先从本地变量获取，如果不存在则尝试从全局上下文获取"""
@@ -520,14 +713,18 @@ class DSLExecutor:
     def _handle_assignment(self, node):
         """处理赋值语句"""
         step_name = f"变量赋值: {node.value}"
-        line_info = (f"\n行号: {node.line_number}"
-                     if hasattr(node, 'line_number') and node.line_number
-                     else "")
+        line_info = self._get_line_info(node)
 
         with allure.step(step_name):
             try:
                 var_name = node.value
-                expr_value = self.eval_expression(node.children[0])
+                # 在求值表达式之前，确保当前节点设置正确
+                old_current_node = self._current_node
+                self._current_node = node
+                try:
+                    expr_value = self.eval_expression(node.children[0])
+                finally:
+                    self._current_node = old_current_node
 
                 # 检查变量名是否以g_开头，如果是则设置为全局变量
                 if var_name.startswith('g_'):
@@ -550,172 +747,163 @@ class DSLExecutor:
                         attachment_type=allure.attachment_type.TEXT
                     )
             except Exception as e:
-                # 记录赋值失败，包含行号信息
+                # 在步骤内部记录异常详情
+                error_details = f"执行Assignment节点: {str(e)}{line_info}\n上下文: 执行Assignment节点"
                 allure.attach(
-                    f"变量: {var_name}\n错误: {str(e)}{line_info}",
-                    name="赋值失败",
+                    error_details,
+                    name="DSL执行异常",
                     attachment_type=allure.attachment_type.TEXT
                 )
+                # 重新抛出异常，让外层的统一异常处理机制处理
                 raise
 
     def _handle_assignment_keyword_call(self, node):
-        """处理关键字调用赋值"""
-        step_name = f"关键字调用赋值: {node.value}"
-        line_info = (f"\n行号: {node.line_number}"
-                     if hasattr(node, 'line_number') and node.line_number
-                     else "")
+        """处理关键字调用赋值
 
-        with allure.step(step_name):
+        Args:
+            node: AssignmentKeywordCall节点
+        """
+        var_name = node.value
+        line_info = self._get_line_info(node)
+
+        with allure.step(f"关键字赋值: {var_name}"):
             try:
-                var_name = node.value
                 keyword_call_node = node.children[0]
                 result = self.execute(keyword_call_node)
 
-                if result is not None:
-                    # 处理新的统一返回格式（支持远程关键字模式）
-                    if isinstance(result, dict) and 'result' in result:
-                        # 提取主要返回值
-                        main_result = result['result']
-
-                        # 处理captures字段中的变量
-                        captures = result.get('captures', {})
-                        for capture_var, capture_value in captures.items():
-                            if capture_var.startswith('g_'):
-                                global_context.set_variable(
-                                    capture_var, capture_value)
-                            else:
-                                self.variable_replacer.local_variables[
-                                    capture_var] = capture_value
-                                self.test_context.set(
-                                    capture_var, capture_value)
-
-                        # 将主要结果赋值给指定变量
-                        actual_result = main_result
-                    else:
-                        # 传统格式，直接使用结果
-                        actual_result = result
-
-                    # 检查变量名是否以g_开头，如果是则设置为全局变量
-                    if var_name.startswith('g_'):
-                        global_context.set_variable(var_name, actual_result)
-                        allure.attach(
-                            f"全局变量: {var_name}\n值: {actual_result}"
-                            f"{line_info}",
-                            name="关键字调用赋值",
-                            attachment_type=allure.attachment_type.TEXT
-                        )
-                    else:
-                        # 存储在本地变量字典和测试上下文中
-                        self.variable_replacer.local_variables[
-                            var_name] = actual_result
-                        self.test_context.set(var_name, actual_result)
-                        allure.attach(
-                            f"变量: {var_name}\n值: {actual_result}"
-                            f"{line_info}",
-                            name="关键字调用赋值",
-                            attachment_type=allure.attachment_type.TEXT
-                        )
+                # 检查变量名是否以g_开头，如果是则设置为全局变量
+                if var_name.startswith('g_'):
+                    global_context.set_variable(var_name, result)
+                    allure.attach(
+                        f"全局变量: {var_name}\n值: {result}{line_info}",
+                        name="关键字赋值详情",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
                 else:
-                    error_msg = f"关键字 {keyword_call_node.value} 没有返回结果"
+                    # 存储在本地变量字典和测试上下文中
+                    self.variable_replacer.local_variables[var_name] = result
+                    self.test_context.set(var_name, result)
+                    # 记录关键字赋值，包含行号信息
                     allure.attach(
-                        f"变量: {var_name}\n错误: {error_msg}{line_info}",
-                        name="关键字调用赋值失败",
+                        f"变量: {var_name}\n值: {result}{line_info}",
+                        name="关键字赋值详情",
                         attachment_type=allure.attachment_type.TEXT
                     )
-                    raise Exception(error_msg)
             except Exception as e:
-                # 如果异常不是我们刚才抛出的，记录异常信息
-                if "没有返回结果" not in str(e):
-                    allure.attach(
-                        f"变量: {var_name}\n错误: {str(e)}{line_info}",
-                        name="关键字调用赋值失败",
-                        attachment_type=allure.attachment_type.TEXT
-                    )
+                # 在步骤内部记录异常详情
+                error_details = f"执行AssignmentKeywordCall节点: {str(e)}{line_info}\n上下文: 执行AssignmentKeywordCall节点"
+                allure.attach(
+                    error_details,
+                    name="DSL执行异常",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+                # 重新抛出异常，让外层的统一异常处理机制处理
                 raise
 
     def _handle_for_loop(self, node):
         """处理for循环"""
-        step_name = f"For循环: {node.value}"
-        line_info = (f"\n行号: {node.line_number}"
-                     if hasattr(node, 'line_number') and node.line_number
-                     else "")
+        step_name = f"执行循环: {node.value}"
+        line_info = self._get_line_info(node)
 
         with allure.step(step_name):
             try:
                 var_name = node.value
-                start = self.eval_expression(node.children[0])
-                end = self.eval_expression(node.children[1])
+                # 计算循环范围
+                loop_range = self.eval_expression(node.children[0])
 
-                # 记录循环信息，包含行号
+                # 如果是range对象，转换为列表
+                if hasattr(loop_range, '__iter__'):
+                    loop_items = list(loop_range)
+                else:
+                    loop_items = [loop_range]
+
                 allure.attach(
-                    f"循环变量: {var_name}\n范围: {start} 到 {end}{line_info}",
-                    name="For循环",
+                    f"循环变量: {var_name}\n循环范围: {loop_items}{line_info}",
+                    name="循环信息",
                     attachment_type=allure.attachment_type.TEXT
                 )
-            except Exception as e:
-                # 记录循环初始化失败
-                allure.attach(
-                    f"循环变量: {var_name}\n错误: {str(e)}{line_info}",
-                    name="For循环初始化失败",
-                    attachment_type=allure.attachment_type.TEXT
-                )
+
+                for i in loop_items:
+                    # 设置循环变量
+                    self.variable_replacer.local_variables[var_name] = i
+                    self.test_context.set(var_name, i)
+
+                    with allure.step(f"循环轮次: {var_name} = {i}"):
+                        try:
+                            self.execute(node.children[2])
+                        except BreakException:
+                            # 遇到break语句，退出循环
+                            allure.attach(
+                                f"在 {var_name} = {i} 时遇到break语句，退出循环",
+                                name="循环Break",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            break
+                        except ContinueException:
+                            # 遇到continue语句，跳过本次循环
+                            allure.attach(
+                                f"在 {var_name} = {i} 时遇到continue语句，跳过本次循环",
+                                name="循环Continue",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            continue
+                        except ReturnException as e:
+                            # 遇到return语句，将异常向上传递
+                            allure.attach(
+                                f"在 {var_name} = {i} 时遇到return语句，退出函数",
+                                name="循环Return",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            raise e
+                        except Exception as e:
+                            # 在循环轮次内部记录异常详情
+                            error_details = f"循环执行异常 ({var_name} = {i}): {str(e)}{line_info}\n上下文: 执行ForLoop节点"
+                            allure.attach(
+                                error_details,
+                                name="DSL执行异常",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            # 重新抛出异常
+                            raise
+            except (BreakException, ContinueException, ReturnException):
+                # 这些控制流异常应该继续向上传递
                 raise
-
-            for i in range(int(start), int(end)):
-                # 存储在本地变量字典和测试上下文中
-                self.variable_replacer.local_variables[var_name] = i
-                self.test_context.set(var_name, i)
-                with allure.step(f"循环轮次: {var_name} = {i}"):
-                    try:
-                        self.execute(node.children[2])
-                    except BreakException:
-                        # 遇到break语句，退出循环
-                        allure.attach(
-                            f"在 {var_name} = {i} 时遇到break语句，退出循环",
-                            name="循环Break",
-                            attachment_type=allure.attachment_type.TEXT
-                        )
-                        break
-                    except ContinueException:
-                        # 遇到continue语句，跳过本次循环
-                        allure.attach(
-                            f"在 {var_name} = {i} 时遇到continue语句，跳过本次循环",
-                            name="循环Continue",
-                            attachment_type=allure.attachment_type.TEXT
-                        )
-                        continue
-                    except ReturnException as e:
-                        # 遇到return语句，将异常向上传递
-                        allure.attach(
-                            f"在 {var_name} = {i} 时遇到return语句，退出函数",
-                            name="循环Return",
-                            attachment_type=allure.attachment_type.TEXT
-                        )
-                        raise e
+            except Exception as e:
+                # 在步骤内部记录异常详情
+                error_details = f"执行ForLoop节点: {str(e)}{line_info}\n上下文: 执行ForLoop节点"
+                allure.attach(
+                    error_details,
+                    name="DSL执行异常",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+                # 重新抛出异常，让外层的统一异常处理机制处理
+                raise
 
     def _execute_keyword_call(self, node):
         """执行关键字调用"""
         keyword_name = node.value
-        line_info = (f"\n行号: {node.line_number}"
-                     if hasattr(node, 'line_number') and node.line_number
-                     else "")
+        line_info = self._get_line_info(node)
 
         # 先检查关键字是否存在
         keyword_info = keyword_manager.get_keyword_info(keyword_name)
         if not keyword_info:
             error_msg = f"未注册的关键字: {keyword_name}"
-            allure.attach(
-                f"关键字: {keyword_name}\n错误: {error_msg}{line_info}",
-                name="关键字调用失败",
-                attachment_type=allure.attachment_type.TEXT
-            )
+            # 在步骤内部记录异常
+            with allure.step(f"调用关键字: {keyword_name}"):
+                allure.attach(
+                    f"执行KeywordCall节点: 未注册的关键字: {keyword_name}{line_info}\n上下文: 执行KeywordCall节点",
+                    name="DSL执行异常",
+                    attachment_type=allure.attachment_type.TEXT
+                )
             raise Exception(error_msg)
 
-        kwargs = self._prepare_keyword_params(node, keyword_info)
         step_name = f"调用关键字: {keyword_name}"
 
         with allure.step(step_name):
             try:
+                # 准备参数（这里可能抛出参数解析异常）
+                kwargs = self._prepare_keyword_params(node, keyword_info)
+                
                 # 传递自定义步骤名称给KeywordManager，避免重复的allure步骤嵌套
                 kwargs['step_name'] = keyword_name  # 内层步骤只显示关键字名称
                 # 避免KeywordManager重复记录，由DSL执行器统一记录
@@ -732,44 +920,62 @@ class DSLExecutor:
 
                 return result
             except Exception as e:
-                # 记录关键字执行失败，包含行号信息和更详细的错误信息
-                error_details = (
-                    f"关键字: {keyword_name}\n"
-                    f"错误: {str(e)}\n"
-                    f"错误类型: {type(e).__name__}"
-                    f"{line_info}"
-                )
-                
-                # 如果异常中包含了内部行号信息，提取并显示
-                if hasattr(e, 'args') and e.args:
-                    error_msg = str(e.args[0])
-                    # 尝试从错误消息中提取行号信息
-                    import re
-                    line_match = re.search(r'行(\d+)', error_msg)
-                    if line_match:
-                        inner_line = int(line_match.group(1))
-                        error_details += f"\n内部错误行号: {inner_line}"
+                # 统一在关键字调用层级记录异常，包含行号信息
+                if "参数解析异常" in str(e) or "无法解析变量引用" in str(e):
+                    # 参数解析异常，提取核心错误信息
+                    core_error = str(e)
+                    if "参数解析异常" in core_error:
+                        # 提取参数名和具体错误
+                        import re
+                        match = re.search(r'参数解析异常 \(([^)]+)\): (.+)', core_error)
+                        if match:
+                            param_name, detailed_error = match.groups()
+                            error_details = f"参数解析失败 ({param_name}): {detailed_error}{line_info}\n上下文: 执行KeywordCall节点"
+                        else:
+                            error_details = f"参数解析失败: {core_error}{line_info}\n上下文: 执行KeywordCall节点"
+                    else:
+                        error_details = f"参数解析失败: {core_error}{line_info}\n上下文: 执行KeywordCall节点"
+                else:
+                    # 其他异常
+                    error_details = f"执行KeywordCall节点: {str(e)}{line_info}\n上下文: 执行KeywordCall节点"
                 
                 allure.attach(
                     error_details,
-                    name="关键字调用失败",
+                    name="DSL执行异常",
                     attachment_type=allure.attachment_type.TEXT
                 )
+                # 重新抛出异常，让外层的统一异常处理机制处理
                 raise
 
     def _prepare_keyword_params(self, node, keyword_info):
         """准备关键字调用参数"""
         mapping = keyword_info.get('mapping', {})
         kwargs = {'context': self.test_context}  # 默认传入context参数
+        line_info = self._get_line_info(node)
 
         # 检查是否有参数列表
         if node.children[0]:
             for param in node.children[0]:
                 param_name = param.value
                 english_param_name = mapping.get(param_name, param_name)
-                # 对参数值进行变量替换
-                param_value = self.eval_expression(param.children[0])
-                kwargs[english_param_name] = param_value
+                
+                # 在子步骤中处理参数值解析，但不记录异常详情
+                with allure.step(f"解析参数: {param_name}"):
+                    try:
+                        # 对参数值进行变量替换
+                        param_value = self.eval_expression(param.children[0])
+                        kwargs[english_param_name] = param_value
+                        
+                        # 只记录参数解析成功的简要信息
+                        allure.attach(
+                            f"参数名: {param_name}\n"
+                            f"参数值: {param_value}",
+                            name="参数解析详情",
+                            attachment_type=allure.attachment_type.TEXT
+                        )
+                    except Exception as e:
+                        # 将异常重新包装，添加参数名信息，但不在这里记录到allure
+                        raise Exception(f"参数解析异常 ({param_name}): {str(e)}")
 
         return kwargs
 
@@ -868,26 +1074,24 @@ class DSLExecutor:
         call_info = node.value
         alias = call_info['alias']
         keyword_name = call_info['keyword']
-        line_info = (f"\n行号: {node.line_number}"
-                     if hasattr(node, 'line_number') and node.line_number
-                     else "")
-
-        # 准备参数
-        params = []
-        if node.children and node.children[0]:
-            params = node.children[0]
-
-        kwargs = {}
-        for param in params:
-            param_name = param.value
-            param_value = self.eval_expression(param.children[0])
-            kwargs[param_name] = param_value
-
-        # 添加测试上下文
-        kwargs['context'] = self.test_context
+        line_info = self._get_line_info(node)
 
         with allure.step(f"执行远程关键字: {alias}|{keyword_name}"):
             try:
+                # 准备参数
+                params = []
+                if node.children and node.children[0]:
+                    params = node.children[0]
+
+                kwargs = {}
+                for param in params:
+                    param_name = param.value
+                    param_value = self.eval_expression(param.children[0])
+                    kwargs[param_name] = param_value
+
+                # 添加测试上下文
+                kwargs['context'] = self.test_context
+
                 # 执行远程关键字
                 result = remote_keyword_manager.execute_remote_keyword(
                     alias, keyword_name, **kwargs)
@@ -899,12 +1103,14 @@ class DSLExecutor:
                 )
                 return result
             except Exception as e:
-                # 记录错误并重新抛出
+                # 在步骤内部记录异常详情
+                error_details = f"执行RemoteKeywordCall节点: {str(e)}{line_info}\n上下文: 执行RemoteKeywordCall节点"
                 allure.attach(
-                    f"远程关键字执行失败: {str(e)}{line_info}",
-                    name="远程关键字错误",
+                    error_details,
+                    name="DSL执行异常",
                     attachment_type=allure.attachment_type.TEXT
                 )
+                # 重新抛出异常，让外层的统一异常处理机制处理
                 raise
 
     def _handle_assignment_remote_keyword_call(self, node):
@@ -914,74 +1120,69 @@ class DSLExecutor:
             node: AssignmentRemoteKeywordCall节点
         """
         var_name = node.value
-        line_info = (f"\n行号: {node.line_number}"
-                     if hasattr(node, 'line_number') and node.line_number
-                     else "")
+        line_info = self._get_line_info(node)
 
-        try:
-            remote_keyword_call_node = node.children[0]
-            result = self.execute(remote_keyword_call_node)
+        with allure.step(f"远程关键字赋值: {var_name}"):
+            try:
+                remote_keyword_call_node = node.children[0]
+                result = self.execute(remote_keyword_call_node)
 
-            if result is not None:
-                # 注意：远程关键字客户端已经处理了新格式的返回值，
-                # 这里接收到的result应该已经是主要返回值，而不是完整的字典格式
-                # 但为了保险起见，我们仍然检查是否为新格式
-                if isinstance(result, dict) and 'result' in result:
-                    # 如果仍然是新格式（可能是嵌套的远程调用），提取主要返回值
-                    main_result = result['result']
+                if result is not None:
+                    # 注意：远程关键字客户端已经处理了新格式的返回值，
+                    # 这里接收到的result应该已经是主要返回值，而不是完整的字典格式
+                    # 但为了保险起见，我们仍然检查是否为新格式
+                    if isinstance(result, dict) and 'result' in result:
+                        # 如果仍然是新格式（可能是嵌套的远程调用），提取主要返回值
+                        main_result = result['result']
 
-                    # 处理captures字段中的变量
-                    captures = result.get('captures', {})
-                    for capture_var, capture_value in captures.items():
-                        if capture_var.startswith('g_'):
-                            global_context.set_variable(
-                                capture_var, capture_value)
-                        else:
-                            self.variable_replacer.local_variables[
-                                capture_var] = capture_value
-                            self.test_context.set(capture_var, capture_value)
+                        # 处理captures字段中的变量
+                        captures = result.get('captures', {})
+                        for capture_var, capture_value in captures.items():
+                            if capture_var.startswith('g_'):
+                                global_context.set_variable(
+                                    capture_var, capture_value)
+                            else:
+                                self.variable_replacer.local_variables[
+                                    capture_var] = capture_value
+                                self.test_context.set(capture_var, capture_value)
 
-                    # 将主要结果赋值给指定变量
-                    actual_result = main_result
+                        # 将主要结果赋值给指定变量
+                        actual_result = main_result
+                    else:
+                        # 传统格式，直接使用结果
+                        actual_result = result
+
+                    # 检查变量名是否以g_开头，如果是则设置为全局变量
+                    if var_name.startswith('g_'):
+                        global_context.set_variable(var_name, actual_result)
+                        allure.attach(
+                            f"全局变量: {var_name}\n值: {actual_result}{line_info}",
+                            name="远程关键字赋值",
+                            attachment_type=allure.attachment_type.TEXT
+                        )
+                    else:
+                        # 存储在本地变量字典和测试上下文中
+                        self.variable_replacer.local_variables[
+                            var_name] = actual_result
+                        self.test_context.set(var_name, actual_result)
+                        allure.attach(
+                            f"变量: {var_name}\n值: {actual_result}{line_info}",
+                            name="远程关键字赋值",
+                            attachment_type=allure.attachment_type.TEXT
+                        )
                 else:
-                    # 传统格式或已经处理过的格式，直接使用结果
-                    actual_result = result
-
-                # 检查变量名是否以g_开头，如果是则设置为全局变量
-                if var_name.startswith('g_'):
-                    global_context.set_variable(var_name, actual_result)
-                    allure.attach(
-                        f"全局变量: {var_name}\n值: {actual_result}{line_info}",
-                        name="远程关键字赋值",
-                        attachment_type=allure.attachment_type.TEXT
-                    )
-                else:
-                    # 存储在本地变量字典和测试上下文中
-                    self.variable_replacer.local_variables[
-                        var_name] = actual_result
-                    self.test_context.set(var_name, actual_result)
-                    allure.attach(
-                        f"变量: {var_name}\n值: {actual_result}{line_info}",
-                        name="远程关键字赋值",
-                        attachment_type=allure.attachment_type.TEXT
-                    )
-            else:
-                error_msg = "远程关键字没有返回结果"
+                    error_msg = "远程关键字没有返回结果"
+                    raise Exception(error_msg)
+            except Exception as e:
+                # 在步骤内部记录异常详情
+                error_details = f"执行AssignmentRemoteKeywordCall节点: {str(e)}{line_info}\n上下文: 执行AssignmentRemoteKeywordCall节点"
                 allure.attach(
-                    f"变量: {var_name}\n错误: {error_msg}{line_info}",
-                    name="远程关键字赋值失败",
+                    error_details,
+                    name="DSL执行异常",
                     attachment_type=allure.attachment_type.TEXT
                 )
-                raise Exception(error_msg)
-        except Exception as e:
-            # 如果异常不是我们刚才抛出的，记录异常信息
-            if "没有返回结果" not in str(e):
-                allure.attach(
-                    f"变量: {var_name}\n错误: {str(e)}{line_info}",
-                    name="远程关键字赋值失败",
-                    attachment_type=allure.attachment_type.TEXT
-                )
-            raise
+                # 重新抛出异常，让外层的统一异常处理机制处理
+                raise
 
     def execute(self, node):
         """执行AST节点"""
@@ -1018,7 +1219,20 @@ class DSLExecutor:
             error_msg = f"未知的节点类型: {node.type}"
             if self.enable_tracking and self.execution_tracker:
                 self.execution_tracker.finish_current_step(error=error_msg)
-            raise Exception(error_msg)
+            # 使用统一的异常处理机制
+            self._handle_exception_with_line_info(
+                Exception(error_msg), node, f"执行节点 {node.type}")
+
+        # 管理节点栈 - 将有行号的节点推入栈
+        if hasattr(node, 'line_number') and node.line_number:
+            self._node_stack.append(node)
+            stack_pushed = True
+        else:
+            stack_pushed = False
+
+        # 设置当前节点
+        old_node = self._current_node
+        self._current_node = node
 
         try:
             result = handler(node)
@@ -1033,7 +1247,36 @@ class DSLExecutor:
                 if hasattr(node, 'line_number') and node.line_number:
                     error_msg += f" (行{node.line_number})"
                 self.execution_tracker.finish_current_step(error=error_msg)
-            raise
+
+            # 如果是控制流异常或已经是DSLExecutionError，直接重抛
+            if isinstance(e, (BreakException, ContinueException, ReturnException, DSLExecutionError)):
+                raise
+
+            # 如果是断言异常，保持原样但可能添加行号信息
+            if isinstance(e, AssertionError):
+                # 检查是否已经包含行号信息
+                if not ("行号:" in str(e) or "行" in str(e)):
+                    line_info = self._get_line_info(node)
+                    if line_info:
+                        enhanced_msg = f"{str(e)}{line_info}"
+                        raise AssertionError(enhanced_msg) from e
+                raise
+
+            # 其他异常使用统一处理机制
+            # 对于这些节点类型，异常已经在步骤中记录过了，跳过重复记录
+            step_handled_nodes = {
+                'KeywordCall', 'Assignment', 'AssignmentKeywordCall', 
+                'ForLoop', 'RemoteKeywordCall', 'AssignmentRemoteKeywordCall'
+            }
+            skip_logging = node.type in step_handled_nodes
+            self._handle_exception_with_line_info(
+                e, node, f"执行{node.type}节点", skip_allure_logging=skip_logging)
+        finally:
+            # 恢复之前的节点
+            self._current_node = old_node
+            # 从栈中弹出节点
+            if stack_pushed:
+                self._node_stack.pop()
 
     def _get_remote_keyword_description(self, node):
         """获取远程关键字调用的描述"""

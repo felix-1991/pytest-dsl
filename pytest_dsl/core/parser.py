@@ -198,9 +198,27 @@ def p_expr_atom(p):
     elif isinstance(p[1], Node):
         p[0] = p[1]
     else:
-        # 为基本表达式设置行号信息
+        # 为基本表达式设置行号信息和类型信息
         expr_line = getattr(p.slice[1], 'lineno', None)
-        expr_node = Node('Expression', value=p[1])
+        
+        # 根据token类型创建不同的节点类型
+        token_type = p.slice[1].type
+        if token_type == 'STRING':
+            # 字符串字面量
+            expr_node = Node('StringLiteral', value=p[1])
+        elif token_type == 'NUMBER':
+            # 数字字面量
+            expr_node = Node('NumberLiteral', value=p[1])
+        elif token_type == 'ID':
+            # 变量引用
+            expr_node = Node('VariableRef', value=p[1])
+        elif token_type == 'PLACEHOLDER':
+            # 变量占位符 ${var}
+            expr_node = Node('PlaceholderRef', value=p[1])
+        else:
+            # 其他类型，保持原来的行为
+            expr_node = Node('Expression', value=p[1])
+        
         if expr_line is not None:
             expr_node.set_position(expr_line)
         p[0] = expr_node
