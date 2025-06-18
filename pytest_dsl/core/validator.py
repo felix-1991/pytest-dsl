@@ -47,6 +47,7 @@ class DSLValidator:
     def __init__(self):
         self.errors: List[DSLValidationError] = []
         self.warnings: List[DSLValidationError] = []
+        self._temp_registered_keywords = []  # 记录临时注册的关键字，用于清理
 
     def validate(self, content: str, dsl_id: Optional[str] = None
                  ) -> Tuple[bool, List[DSLValidationError]]:
@@ -61,6 +62,7 @@ class DSLValidator:
         """
         self.errors = []
         self.warnings = []
+        self._temp_registered_keywords = []
 
         # 基础验证
         self._validate_basic_format(content)
@@ -68,8 +70,12 @@ class DSLValidator:
         # 语法验证
         ast = self._validate_syntax(content)
 
-        # 如果语法验证通过，进行语义验证
+        # 如果语法验证通过，进行预处理和语义验证
         if ast and not self.errors:
+            # 预注册自定义关键字
+            self._preregister_custom_keywords(ast)
+
+            # 语义验证
             self._validate_semantics(ast)
 
         # 元数据验证
@@ -80,7 +86,71 @@ class DSLValidator:
         if ast and not self.errors:
             self._validate_keywords(ast)
 
+        # 清理临时注册的关键字
+        self._cleanup_temp_keywords()
+
         return len(self.errors) == 0, self.errors + self.warnings
+
+    def _preregister_custom_keywords(self, ast: Node) -> None:
+        """预注册AST中定义的自定义关键字
+
+        Args:
+            ast: 解析后的AST
+        """
+        try:
+            from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
+
+            # 查找并注册自定义关键字
+            self._find_and_register_custom_keywords(ast)
+
+        except Exception as e:
+            # 如果预注册失败，记录警告但不影响验证流程
+            self.warnings.append(DSLValidationError(
+                "关键字预处理警告",
+                f"预注册自定义关键字时出现警告: {str(e)}"
+            ))
+
+    def _find_and_register_custom_keywords(self, node: Node) -> None:
+        """递归查找并注册自定义关键字
+
+        Args:
+            node: 当前节点
+        """
+        # 检查当前节点是否是自定义关键字定义
+        if node.type in ['CustomKeyword', 'Function']:
+            try:
+                from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
+
+                # 注册自定义关键字
+                custom_keyword_manager._register_custom_keyword(
+                    node, "validation_temp")
+
+                # 记录已注册的关键字名称，用于后续清理
+                keyword_name = node.value
+                self._temp_registered_keywords.append(keyword_name)
+
+            except Exception as e:
+                self.warnings.append(DSLValidationError(
+                    "关键字注册警告",
+                    f"注册自定义关键字 '{node.value}' 时出现警告: {str(e)}"
+                ))
+
+        # 递归处理子节点
+        if hasattr(node, 'children') and node.children:
+            for child in node.children:
+                if isinstance(child, Node):
+                    self._find_and_register_custom_keywords(child)
+
+    def _cleanup_temp_keywords(self) -> None:
+        """清理临时注册的关键字"""
+        try:
+            for keyword_name in self._temp_registered_keywords:
+                # 从关键字管理器中移除临时注册的关键字
+                if keyword_name in keyword_manager._keywords:
+                    del keyword_manager._keywords[keyword_name]
+        except Exception as e:
+            # 清理失败不影响验证结果，只记录警告
+            pass
 
     def _validate_basic_format(self, content: str) -> None:
         """基础格式验证"""
