@@ -14,7 +14,6 @@ from typing import Dict, Any, Union
 
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.core.http_request import HTTPRequest
-from pytest_dsl.core.yaml_vars import yaml_vars
 from pytest_dsl.core.context import TestContext
 
 # 配置日志
@@ -293,8 +292,8 @@ def http_request(context, **kwargs):
     # 添加调试信息，检查客户端配置是否可用
     print(f"🌐 HTTP请求 - 客户端: {client_name}")
 
-    # 检查YAML变量中的http_clients配置（现在包含同步的变量）
-    http_clients_config = yaml_vars.get_variable("http_clients")
+    # 从context获取http_clients配置（统一的变量获取方式）
+    http_clients_config = context.get("http_clients")
     if http_clients_config:
         print(f"✓ 找到http_clients配置，包含 {len(http_clients_config)} 个客户端")
         if client_name in http_clients_config:
@@ -310,10 +309,15 @@ def http_request(context, **kwargs):
 
     with allure.step(f"发送HTTP请求 (客户端: {client_name}"
                      f"{', 会话: ' + session_name if session_name else ''})"):
+
+        # 确保http_client_manager有正确的context引用
+        from pytest_dsl.core.http_client import http_client_manager
+        http_client_manager.set_context(context)
+
         # 处理模板
         if template_name:
-            # 从YAML变量中获取模板
-            http_templates = yaml_vars.get_variable("http_templates") or {}
+            # 从context获取模板配置（统一的变量获取方式）
+            http_templates = context.get("http_templates") or {}
             template = http_templates.get(template_name)
 
             if not template:

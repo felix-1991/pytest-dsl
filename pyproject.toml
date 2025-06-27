@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytest-dsl"
-version = "0.15.3"
+version = "0.15.5"
 description = "A DSL testing framework based on pytest"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -48,7 +48,3 @@ pytest-dsl-list = "pytest_dsl.cli:main_list_keywords"
 "Homepage" = "https://github.com/felix-1991/pytest-dsl"
 "Bug Tracker" = "https://github.com/felix-1991/pytest-dsl/issues"
 
-
-[[tool.uv.index]]
-name = "tuna"
-url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"

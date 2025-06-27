@@ -1,50 +1,54 @@
+"""变量替换工具模块
+
+该模块提供了高级的变量替换功能，支持复杂的变量访问语法。
+"""
+
 import re
 import json
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List
 from pytest_dsl.core.global_context import global_context
 from pytest_dsl.core.context import TestContext
-from pytest_dsl.core.yaml_vars import yaml_vars
 
 
 class VariableReplacer:
-    """统一的变量替换工具类
-
-    提供统一的变量替换功能，支持字符串、字典和列表中的变量替换。
-    变量查找优先级：本地变量 > 测试上下文 > YAML变量 > 全局上下文
-    """
+    """变量替换器，支持高级变量访问语法"""
 
     def __init__(self, local_variables: Dict[str, Any] = None, test_context: TestContext = None):
         """初始化变量替换器
 
         Args:
             local_variables: 本地变量字典
-            test_context: 测试上下文对象
+            test_context: 测试上下文
         """
         self.local_variables = local_variables or {}
-        self._test_context = test_context or TestContext()
+        self._test_context = test_context
 
     @property
     def test_context(self) -> TestContext:
-        """获取测试上下文，确保始终使用最新的上下文对象
+        """获取测试上下文，如果没有提供则尝试从关键字管理器获取"""
+        if self._test_context:
+            return self._test_context
 
-        如果上下文对象中包含executor属性，则使用executor的上下文
-        （这确保即使上下文被替换也能获取正确的引用）
-
-        Returns:
-            测试上下文对象
-        """
-        if hasattr(self._test_context, 'executor') and self._test_context.executor is not None:
-            return self._test_context.executor.test_context
-        return self._test_context
+        # 尝试从关键字管理器获取当前上下文
+        try:
+            from pytest_dsl.core.keyword_manager import keyword_manager
+            return getattr(keyword_manager, 'current_context', None)
+        except ImportError:
+            return None
 
     def get_variable(self, var_name: str) -> Any:
-        """获取变量值，按照优先级查找
+        """获取变量值，按优先级顺序查找
+
+        查找顺序：
+        1. 本地变量
+        2. 测试上下文
+        3. 全局上下文（包含YAML变量的访问）
 
         Args:
             var_name: 变量名
 
         Returns:
-            变量值，如果变量不存在则抛出 KeyError
+            变量值
 
         Raises:
             KeyError: 当变量不存在时
@@ -54,17 +58,13 @@ class VariableReplacer:
             value = self.local_variables[var_name]
             return self._convert_value(value)
 
-        # 从测试上下文中获取
-        if self.test_context.has(var_name):
-            value = self.test_context.get(var_name)
+        # 从测试上下文中获取（优先级高于YAML变量）
+        context = self.test_context
+        if context and context.has(var_name):
+            value = context.get(var_name)
             return self._convert_value(value)
 
-        # 从YAML变量中获取
-        yaml_value = yaml_vars.get_variable(var_name)
-        if yaml_value is not None:
-            return self._convert_value(yaml_value)
-
-        # 从全局上下文获取
+        # 从全局上下文获取（包含对YAML变量的统一访问）
         if global_context.has_variable(var_name):
             value = global_context.get_variable(var_name)
             return self._convert_value(value)
@@ -130,7 +130,8 @@ class VariableReplacer:
             try:
                 var_value = self._parse_variable_path(var_ref)
                 # 替换变量引用
-                result = result[:match.start()] + str(var_value) + result[match.end():]
+                result = result[:match.start()] + str(var_value) + \
+                    result[match.end():]
             except (KeyError, IndexError, TypeError) as e:
                 raise KeyError(f"无法解析变量引用 '${{{var_ref}}}': {str(e)}")
 
@@ -170,7 +171,8 @@ class VariableReplacer:
 
         # 逐步访问路径
         for part in path_parts[1:]:
-            current_value = self._access_value(current_value, part, root_var_name)
+            current_value = self._access_value(
+                current_value, part, root_var_name)
 
         return current_value
 
@@ -258,14 +260,16 @@ class VariableReplacer:
                         raise KeyError(f"字典中不存在键 '{key}'")
                     return current_value[key]
                 else:
-                    raise TypeError(f"无法在 {type(current_value).__name__} 类型上使用字符串键访问")
+                    raise TypeError(
+                        f"无法在 {type(current_value).__name__} 类型上使用字符串键访问")
 
             # 处理数字索引
             try:
                 index = int(key_content)
                 if isinstance(current_value, (list, tuple)):
                     if index >= len(current_value) or index < -len(current_value):
-                        raise IndexError(f"数组索引 {index} 超出范围，数组长度为 {len(current_value)}")
+                        raise IndexError(
+                            f"数组索引 {index} 超出范围，数组长度为 {len(current_value)}")
                     return current_value[index]
                 elif isinstance(current_value, dict):
                     # 字典也可以用数字键
@@ -274,7 +278,8 @@ class VariableReplacer:
                         raise KeyError(f"字典中不存在键 '{index}' 或 '{str_key}'")
                     return current_value.get(index, current_value.get(str_key))
                 else:
-                    raise TypeError(f"无法在 {type(current_value).__name__} 类型上使用索引访问")
+                    raise TypeError(
+                        f"无法在 {type(current_value).__name__} 类型上使用索引访问")
             except ValueError:
                 raise ValueError(f"无效的索引格式: '{key_content}'")
 
@@ -283,7 +288,8 @@ class VariableReplacer:
             if isinstance(current_value, dict) and access_token in current_value:
                 return current_value[access_token]
             else:
-                raise KeyError(f"无法访问属性 '{access_token}'，当前值类型是 {type(current_value).__name__}")
+                raise KeyError(
+                    f"无法访问属性 '{access_token}'，当前值类型是 {type(current_value).__name__}")
 
     def replace_in_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """递归替换字典中的变量引用
@@ -303,7 +309,8 @@ class VariableReplacer:
         result = {}
         for key, value in data.items():
             # 替换键中的变量
-            new_key = self.replace_in_string(key) if isinstance(key, str) else key
+            new_key = self.replace_in_string(
+                key) if isinstance(key, str) else key
             # 替换值中的变量
             new_value = self.replace_in_value(value)
             result[new_key] = new_value

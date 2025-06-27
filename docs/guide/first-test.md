@@ -375,20 +375,6 @@ else
 end
 ```
 
-### 3. 错误处理
-
-```python
-# 使用try-catch处理可能的错误
-try do
-    [HTTP请求], 客户端: "default", 配置: '''
-        method: GET
-        url: /users/invalid
-    '''
-catch error do
-    [打印], 内容: "预期的错误: ${error}"
-end
-```
-
 ## 常见问题
 
 ### 1. 网络连接问题

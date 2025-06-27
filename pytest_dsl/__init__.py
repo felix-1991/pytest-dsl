@@ -12,7 +12,7 @@ pytest-dsl - 基于pytest的DSL测试框架
 - 自定义关键字支持
 """
 
-__version__ = "0.1.0"
+__version__ = "0.15.5"
 
 # 核心执行器
 from pytest_dsl.core.dsl_executor import DSLExecutor
@@ -47,6 +47,20 @@ from pytest_dsl.core.variable_utils import VariableReplacer
 # 自定义关键字管理器
 from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
 
+# 远程服务器注册器
+from pytest_dsl.core.remote_server_registry import (
+    remote_server_registry, RemoteServerRegistry,
+    register_remote_server_with_variables,
+    create_database_variable_provider,
+    create_config_file_variable_provider
+)
+
+# 远程服务器配置加载器
+from pytest_dsl.core.yaml_loader import (
+    load_remote_servers_from_yaml,
+    register_remote_servers_from_config
+)
+
 # 关键字加载器
 from pytest_dsl.core.keyword_loader import (
     keyword_loader, KeywordLoader,
@@ -60,6 +74,22 @@ from pytest_dsl.core.keyword_utils import (
     keyword_lister, list_keywords, get_keyword_info, search_keywords,
     generate_html_report
 )
+
+# 远程关键字功能
+try:
+    from pytest_dsl.remote import (
+        remote_keyword_manager, RemoteKeywordManager, RemoteKeywordClient,
+        register_remote_server, register_multiple_servers
+    )
+    _REMOTE_AVAILABLE = True
+except ImportError:
+    # 如果远程功能依赖不可用，设置为None
+    remote_keyword_manager = None
+    RemoteKeywordManager = None
+    RemoteKeywordClient = None
+    register_remote_server = None
+    register_multiple_servers = None
+    _REMOTE_AVAILABLE = False
 
 # 便捷导入的别名
 Executor = DSLExecutor
@@ -106,6 +136,17 @@ __all__ = [
     'Node', 'get_parser', 'get_lexer',
     'TestContext', 'global_context',
     'VariableReplacer',
+
+    # 远程关键字功能（如果可用）
+    'remote_keyword_manager', 'RemoteKeywordManager', 'RemoteKeywordClient',
+    'register_remote_server', 'register_multiple_servers',
+
+    # 远程服务器注册器
+    'remote_server_registry', 'RemoteServerRegistry',
+    'register_remote_server_with_variables',
+    'create_database_variable_provider', 
+    'create_config_file_variable_provider',
+    'load_remote_servers_from_yaml', 'register_remote_servers_from_config',
 ]
 
 # 快捷函数
@@ -137,7 +178,8 @@ def parse_dsl(content: str) -> Node:
     return parser.parse(content, lexer=lexer)
 
 
-def execute_dsl(content: str, context: dict = None, enable_hooks: bool = True) -> any:
+def execute_dsl(content: str, context: dict = None,
+                enable_hooks: bool = True) -> any:
     """执行DSL内容的便捷函数
 
     Args:
@@ -158,7 +200,8 @@ def execute_dsl(content: str, context: dict = None, enable_hooks: bool = True) -
     return executor.execute(ast)
 
 
-def register_keyword(name: str, parameters: list = None, source_type: str = "external",
+def register_keyword(name: str, parameters: list = None,
+                     source_type: str = "external",
                      source_name: str = "user_defined"):
     """注册关键字的装饰器
 
@@ -196,6 +239,12 @@ def check_version_compatibility():
             )
     except Exception:
         pass
+
+
+# 远程功能检查
+def is_remote_available() -> bool:
+    """检查远程功能是否可用"""
+    return _REMOTE_AVAILABLE
 
 
 # 初始化时进行版本检查

@@ -69,7 +69,8 @@ def _legacy_replace_variables_in_string(value: str) -> str:
                     break
 
             # 替换变量引用
-            value = value[:match.start()] + str(var_value) + value[match.end():]
+            value = value[:match.start()] + str(var_value) + \
+                value[match.end():]
 
     # 再处理基本引用
     matches = list(re.finditer(basic_pattern, value))
@@ -77,7 +78,8 @@ def _legacy_replace_variables_in_string(value: str) -> str:
         var_name = match.group(1)
         if context_has_variable(var_name):
             var_value = get_variable(var_name)
-            value = value[:match.start()] + str(var_value) + value[match.end():]
+            value = value[:match.start()] + str(var_value) + \
+                value[match.end():]
 
     return value
 
@@ -102,37 +104,42 @@ def replace_variables_in_dict(data: Union[Dict, List, str]) -> Union[Dict, List,
 
 
 def context_has_variable(var_name: str) -> bool:
-    """检查变量是否存在于全局上下文"""
-    # 先检查YAML变量
-    from pytest_dsl.core.yaml_vars import yaml_vars
-    if yaml_vars.get_variable(var_name) is not None:
-        return True
+    """检查变量是否存在于上下文中
 
+    检查顺序：
+    1. 测试上下文
+    2. 全局上下文（包含YAML变量）
+    """
     # 检查测试上下文
-    from pytest_dsl.core.keyword_manager import keyword_manager
-    current_context = getattr(keyword_manager, 'current_context', None)
-    if current_context and current_context.has(var_name):
-        return True
+    try:
+        from pytest_dsl.core.keyword_manager import keyword_manager
+        current_context = getattr(keyword_manager, 'current_context', None)
+        if current_context and current_context.has(var_name):
+            return True
+    except ImportError:
+        pass
 
-    # 再检查全局上下文
+    # 检查全局上下文（包含YAML变量的统一访问）
     return global_context.has_variable(var_name)
 
 
 def get_variable(var_name: str) -> Any:
-    """获取变量值，先从YAML变量中获取，再从全局上下文获取"""
-    # 先从YAML变量中获取
-    from pytest_dsl.core.yaml_vars import yaml_vars
-    yaml_value = yaml_vars.get_variable(var_name)
-    if yaml_value is not None:
-        return yaml_value
+    """获取变量值
 
-    # 检查测试上下文
-    from pytest_dsl.core.keyword_manager import keyword_manager
-    current_context = getattr(keyword_manager, 'current_context', None)
-    if current_context and current_context.has(var_name):
-        return current_context.get(var_name)
+    获取顺序：
+    1. 测试上下文
+    2. 全局上下文（包含YAML变量）
+    """
+    # 先从测试上下文获取
+    try:
+        from pytest_dsl.core.keyword_manager import keyword_manager
+        current_context = getattr(keyword_manager, 'current_context', None)
+        if current_context and current_context.has(var_name):
+            return current_context.get(var_name)
+    except ImportError:
+        pass
 
-    # 再从全局上下文获取
+    # 再从全局上下文获取（包含对YAML变量的统一访问）
     if global_context.has_variable(var_name):
         return global_context.get_variable(var_name)
 

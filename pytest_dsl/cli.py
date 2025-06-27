@@ -165,11 +165,18 @@ def load_yaml_variables(args):
         environment = (os.environ.get('PYTEST_DSL_ENVIRONMENT') or
                        os.environ.get('ENVIRONMENT'))
 
+        # 智能判断是否应该加载默认配置
+        # 如果用户指定了YAML文件或目录，则不自动加载默认配置
+        user_specified_files = bool(args.yaml_vars)
+        user_specified_dir = bool(args.yaml_vars_dir)
+        auto_load_default = not (user_specified_files or user_specified_dir)
+
         load_yaml_variables_from_args(
             yaml_files=args.yaml_vars,
             yaml_vars_dir=args.yaml_vars_dir,
             project_root=os.getcwd(),  # CLI模式下使用当前工作目录作为项目根目录
-            environment=environment
+            environment=environment,
+            auto_load_default=auto_load_default  # 使用智能判断的结果
         )
     except Exception as e:
         print(f"加载YAML变量失败: {str(e)}")

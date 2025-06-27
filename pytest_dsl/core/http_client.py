@@ -3,7 +3,6 @@ import logging
 from typing import Dict, Any
 import requests
 from urllib.parse import urljoin
-from pytest_dsl.core.yaml_vars import yaml_vars
 from pytest_dsl.core.auth_provider import create_auth_provider
 
 logger = logging.getLogger(__name__)
@@ -289,6 +288,31 @@ class HTTPClientManager:
         """初始化客户端管理器"""
         self._clients: Dict[str, HTTPClient] = {}
         self._sessions: Dict[str, HTTPClient] = {}
+        self._context = None  # 添加context引用
+
+    def set_context(self, context):
+        """设置测试上下文，用于获取HTTP客户端配置
+
+        Args:
+            context: TestContext实例
+        """
+        self._context = context
+
+    def _get_http_clients_config(self) -> Dict[str, Any]:
+        """从context获取HTTP客户端配置
+
+        Returns:
+            HTTP客户端配置字典
+        """
+        if self._context:
+            return self._context.get("http_clients") or {}
+
+        # 如果没有context，尝试从yaml_vars获取（兼容性）
+        try:
+            from pytest_dsl.core.yaml_vars import yaml_vars
+            return yaml_vars.get_variable("http_clients") or {}
+        except ImportError:
+            return {}
 
     def create_client(self, config: Dict[str, Any]) -> HTTPClient:
         """从配置创建客户端
@@ -326,8 +350,8 @@ class HTTPClientManager:
         if name in self._clients:
             return self._clients[name]
 
-        # 从YAML变量中读取客户端配置
-        http_clients = yaml_vars.get_variable("http_clients") or {}
+        # 从context获取HTTP客户端配置（统一的变量获取方式）
+        http_clients = self._get_http_clients_config()
         client_config = http_clients.get(name)
 
         if not client_config:
@@ -377,7 +401,7 @@ class HTTPClientManager:
         return session
 
     def _get_client_config(self, name: str) -> Dict[str, Any]:
-        """从YAML变量获取客户端配置
+        """从context获取客户端配置
 
         Args:
             name: 客户端名称
@@ -385,7 +409,7 @@ class HTTPClientManager:
         Returns:
             客户端配置
         """
-        http_clients = yaml_vars.get_variable("http_clients") or {}
+        http_clients = self._get_http_clients_config()
         client_config = http_clients.get(name)
 
         if not client_config and name == "default":

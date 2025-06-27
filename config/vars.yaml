@@ -27,3 +27,19 @@ http_clients:
       User-Agent: "pytest-dsl-test/1.0"
       Accept: "application/json"
     verify_ssl: false
+
+  decoupled_client:  # 架构解耦演示客户端
+    base_url: https://httpbin.org
+    timeout: 30
+    headers:
+      User-Agent: pytest-dsl-decoupled/1.0
+      X-Architecture: decoupled
+
+# HTTP模板配置
+http_templates:
+  decoupled_template:
+    method: GET
+    request:
+      headers:
+        Accept: application/json
+        X-Template-Source: decoupled

@@ -4,7 +4,6 @@ import tempfile
 import allure
 from typing import Dict, Any, Optional
 from filelock import FileLock
-from .yaml_vars import yaml_vars
 
 
 class GlobalContext:
@@ -18,6 +17,20 @@ class GlobalContext:
         self._storage_file = os.path.join(
             self._storage_dir, "global_vars.json")
         self._lock_file = os.path.join(self._storage_dir, "global_vars.lock")
+
+        # 初始化变量提供者（延迟加载，避免循环导入）
+        self._yaml_provider = None
+
+    def _get_yaml_provider(self):
+        """延迟获取YAML变量提供者，避免循环导入"""
+        if self._yaml_provider is None:
+            try:
+                from .variable_providers import YAMLVariableProvider
+                self._yaml_provider = YAMLVariableProvider()
+            except ImportError:
+                # 如果变量提供者不可用，创建一个空的提供者
+                self._yaml_provider = _EmptyProvider()
+        return self._yaml_provider
 
     def set_variable(self, name: str, value: Any) -> None:
         """设置全局变量"""
@@ -34,8 +47,9 @@ class GlobalContext:
 
     def get_variable(self, name: str) -> Any:
         """获取全局变量，优先从YAML变量中获取"""
-        # 首先尝试从YAML变量中获取
-        yaml_value = yaml_vars.get_variable(name)
+        # 首先尝试从YAML变量中获取（通过变量提供者）
+        yaml_provider = self._get_yaml_provider()
+        yaml_value = yaml_provider.get_variable(name)
         if yaml_value is not None:
             return yaml_value
 
@@ -46,8 +60,9 @@ class GlobalContext:
 
     def has_variable(self, name: str) -> bool:
         """检查全局变量是否存在（包括YAML变量）"""
-        # 首先检查YAML变量
-        if yaml_vars.get_variable(name) is not None:
+        # 首先检查YAML变量（通过变量提供者）
+        yaml_provider = self._get_yaml_provider()
+        if yaml_provider.has_variable(name):
             return True
 
         # 然后检查全局变量存储
@@ -73,9 +88,11 @@ class GlobalContext:
         """清除所有全局变量（包括YAML变量）"""
         with FileLock(self._lock_file):
             self._save_variables({})
-        
-        # 清除YAML变量
-        yaml_vars.clear()
+
+        # 清除YAML变量（通过变量提供者）
+        yaml_provider = self._get_yaml_provider()
+        if hasattr(yaml_provider, 'clear'):
+            yaml_provider.clear()
 
         allure.attach(
             "清除所有全局变量",
@@ -97,6 +114,19 @@ class GlobalContext:
         """保存变量到文件"""
         with open(self._storage_file, 'w', encoding='utf-8') as f:
             json.dump(variables, f, ensure_ascii=False, indent=2)
+
+
+class _EmptyProvider:
+    """空的变量提供者，用作后备方案"""
+
+    def get_variable(self, key: str) -> Optional[Any]:
+        return None
+
+    def has_variable(self, key: str) -> bool:
+        return False
+
+    def clear(self):
+        pass
 
 
 # 创建全局上下文管理器实例

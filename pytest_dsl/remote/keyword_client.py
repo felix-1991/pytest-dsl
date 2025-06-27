@@ -59,7 +59,7 @@ class RemoteKeywordClient:
         try:
             param_names = self.server.get_keyword_arguments(name)
             doc = self.server.get_keyword_documentation(name)
-            
+
             # 尝试获取参数详细信息（包括默认值）
             param_details = []
             try:
@@ -87,7 +87,7 @@ class RemoteKeywordClient:
                 param_desc = param_detail.get('description',
                                               f'远程关键字参数: {param_name}')
                 param_default = param_detail.get('default')
-                
+
                 # 确保参数名称正确映射
                 parameters.append({
                     'name': param_name,
@@ -118,8 +118,10 @@ class RemoteKeywordClient:
                 'func': remote_func,
                 'mapping': {p['name']: p['mapping'] for p in parameters},
                 'parameters': [Parameter(**p) for p in parameters],
-                'defaults': {p['mapping']: p['default'] for p in parameters
-                           if p['default'] is not None},  # 添加默认值支持
+                'defaults': {
+                    p['mapping']: p['default'] for p in parameters
+                    if p['default'] is not None
+                },  # 添加默认值支持
                 'remote': True,  # 标记为远程关键字
                 'alias': self.alias,
                 'original_name': name
@@ -131,7 +133,6 @@ class RemoteKeywordClient:
                 'doc': doc,
                 'param_details': param_details  # 缓存详细参数信息
             }
-
             # 保存参数映射
             self.param_mappings[name] = param_mapping
 
@@ -142,6 +143,9 @@ class RemoteKeywordClient:
     def _execute_remote_keyword(self, **kwargs):
         """执行远程关键字"""
         name = kwargs.pop('name')
+
+        # 在执行前同步最新的上下文变量
+        self._sync_context_variables_before_execution(kwargs.get('context'))
 
         # 移除context参数，因为它不能被序列化
         if 'context' in kwargs:
@@ -186,7 +190,6 @@ class RemoteKeywordClient:
         if name in self.keyword_cache:
             param_names = self.keyword_cache[name]['parameters']
             print(f"远程关键字 {name} 的参数列表: {param_names}")
-
             # 不再显示警告信息，因为参数已经在服务器端正确处理
             # 服务器端会使用默认值或者报错，客户端不需要重复警告
 
@@ -209,7 +212,8 @@ class RemoteKeywordClient:
                     print(f"远程关键字捕获的变量: {return_data['captures']}")
 
                 # 处理会话状态
-                if 'session_state' in return_data and return_data['session_state']:
+                if ('session_state' in return_data and
+                        return_data['session_state']):
                     print(f"远程关键字会话状态: {return_data['session_state']}")
 
                 # 处理响应数据
@@ -217,7 +221,8 @@ class RemoteKeywordClient:
                     print("远程关键字响应数据: 已接收")
 
                 # 检查是否为新的统一返回格式（包含captures等字段）
-                if ('captures' in return_data or 'session_state' in return_data or
+                if ('captures' in return_data or
+                        'session_state' in return_data or
                         'metadata' in return_data):
                     # 返回完整的新格式，让DSL执行器处理变量捕获
                     return return_data
@@ -232,6 +237,93 @@ class RemoteKeywordClient:
             error_msg = result.get('error', '未知错误')
             traceback = '\n'.join(result.get('traceback', []))
             raise Exception(f"远程关键字执行失败: {error_msg}\n{traceback}")
+
+    def _sync_context_variables_before_execution(self, context):
+        """在执行远程关键字前同步最新的上下文变量
+
+        Args:
+            context: TestContext实例，如果为None则跳过同步
+        """
+        if context is None:
+            return
+
+        try:
+            # 获取所有上下文变量
+            context_variables = context.get_all_context_variables()
+
+            if not context_variables:
+                print("没有上下文变量需要同步")
+                return
+
+            # 收集需要同步的变量
+            variables_to_sync = {}
+
+            # 应用排除模式
+            exclude_patterns = self.sync_config.get('yaml_exclude_patterns', [
+                'password', 'secret', 'token', 'credential', 'auth',
+                'private', 'remote_servers'
+            ])
+
+            for var_name, var_value in context_variables.items():
+                # 检查是否需要排除
+                should_exclude = False
+                var_name_lower = var_name.lower()
+
+                for pattern in exclude_patterns:
+                    if pattern.lower() in var_name_lower:
+                        should_exclude = True
+                        break
+
+                # 如果值是字符串，也检查是否包含敏感信息
+                if not should_exclude and isinstance(var_value, str):
+                    value_lower = var_value.lower()
+                    for pattern in exclude_patterns:
+                        if (pattern.lower() in value_lower and
+                                len(var_value) < 100):  # 只检查短字符串
+                            should_exclude = True
+                            break
+
+                if not should_exclude:
+                    variables_to_sync[var_name] = var_value
+                else:
+                    print(f"跳过敏感变量: {var_name}")
+
+            if variables_to_sync:
+                # 调用远程服务器的变量同步接口
+                try:
+                    result = self.server.sync_variables_from_client(
+                        variables_to_sync, self.api_key)
+                    if result.get('status') == 'success':
+                        print(f"✅ 实时同步 {len(variables_to_sync)} 个上下文变量到远程服务器")
+                    else:
+                        print(f"❌ 实时同步变量失败: {result.get('error', '未知错误')}")
+                except Exception as e:
+                    print(f"❌ 调用远程变量同步接口失败: {str(e)}")
+            else:
+                print("没有需要实时同步的变量")
+
+        except Exception as e:
+            logger.warning(f"实时变量同步失败: {str(e)}")
+            print(f"❌ 实时变量同步失败: {str(e)}")
+
+    def _collect_context_variables(self, context):
+        """从TestContext收集所有变量（包括外部提供者变量）
+
+        Args:
+            context: TestContext实例
+
+        Returns:
+            dict: 包含所有上下文变量的字典
+        """
+        if context is None:
+            return {}
+
+        try:
+            # 使用新的get_all_context_variables方法
+            return context.get_all_context_variables()
+        except Exception as e:
+            logger.warning(f"收集上下文变量失败: {str(e)}")
+            return {}
 
     def _send_initial_variables(self):
         """连接时发送初始变量到远程服务器"""
@@ -304,13 +396,15 @@ class RemoteKeywordClient:
             yaml_data = yaml_vars._variables
             if yaml_data:
                 print(f"客户端YAML变量总数: {len(yaml_data)}")
-                
+
                 # 检查同步配置中是否指定了特定的键
                 sync_keys = self.sync_config.get('yaml_sync_keys', None)
-                exclude_patterns = self.sync_config.get('yaml_exclude_patterns', [
-                    'password', 'secret', 'token', 'credential', 'auth',
-                    'private', 'remote_servers'  # 排除远程服务器配置避免循环
-                ])
+                exclude_patterns = self.sync_config.get(
+                    'yaml_exclude_patterns', [
+                        'password', 'secret', 'token', 'credential', 'auth',
+                        'private', 'remote_servers'  # 排除远程服务器配置避免循环
+                    ]
+                )
 
                 if sync_keys:
                     # 如果指定了特定键，只传递这些键，直接使用原始变量名

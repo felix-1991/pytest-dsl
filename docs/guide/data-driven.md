@@ -507,44 +507,6 @@ end
 [打印], 内容: "✓ 数据行验证通过: ${username}"
 ```
 
-### 4. 错误处理和跳过策略
-
-```python
-@name: "健壮的数据驱动测试"
-@data: "user_test_data.csv" using csv
-
-# 数据有效性检查
-if "${username}" == "" do
-    [打印], 内容: "跳过空用户名的数据行"
-    continue
-end
-
-if ${expected_status} not in [200, 201, 400, 401, 403, 404, 500] do
-    [打印], 内容: "跳过无效状态码的数据行: ${expected_status}"
-    continue
-end
-
-# 执行测试逻辑
-[打印], 内容: "测试用户: ${username}"
-
-try
-    [HTTP请求], 客户端: "default", 配置: '''
-        method: POST
-        url: /api/auth/login
-        request:
-            json:
-                username: "${username}"
-                password: "${password}"
-        asserts:
-            - ["status", "eq", ${expected_status}]
-    '''
-    [打印], 内容: "✓ 测试通过"
-except Exception as e
-    [打印], 内容: "✗ 测试失败: ${str(e)}"
-    # 根据需要决定是否继续
-end
-```
-
 ### 5. 性能优化
 
 ```python

@@ -433,33 +433,6 @@ function 创建订单 (订单数据) do
 end
 ```
 
-### 错误处理模式
-
-```python
-function 安全的HTTP请求 (请求配置, 重试次数=3) do
-    当前尝试 = 1
-    
-    for 尝试 in range(1, ${重试次数} + 1) do
-        当前尝试 = ${尝试}
-        
-        try
-            [HTTP请求], 客户端: "default", 配置: ${请求配置}
-            [打印], 内容: "第${当前尝试}次请求成功"
-            return {"success": True, "attempts": ${当前尝试}}
-        except Exception as e
-            [打印], 内容: "第${当前尝试}次请求失败: ${str(e)}"
-            
-            if ${当前尝试} < ${重试次数} do
-                [等待], 秒数: 2
-            else
-                [打印], 内容: "所有重试都失败，放弃请求"
-                return {"success": False, "attempts": ${重试次数}, "error": ${str(e)}}
-            end
-        end
-    end
-end
-```
-
 ## 资源文件管理
 
 ### 分层组织原则

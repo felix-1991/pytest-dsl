@@ -34,8 +34,8 @@ class ReturnException(Exception):
 class DSLExecutionError(Exception):
     """DSL执行异常，包含行号信息"""
 
-    def __init__(self, message: str, line_number: int = None, node_type: str = None,
-                 original_exception: Exception = None):
+    def __init__(self, message: str, line_number: int = None,
+                 node_type: str = None, original_exception: Exception = None):
         self.line_number = line_number
         self.node_type = node_type
         self.original_exception = original_exception
@@ -48,7 +48,9 @@ class DSLExecutionError(Exception):
             error_parts.append(f"节点类型: {node_type}")
         if original_exception:
             error_parts.append(
-                f"原始异常: {type(original_exception).__name__}: {str(original_exception)}")
+                f"原始异常: {type(original_exception).__name__}: "
+                f"{str(original_exception)}"
+            )
 
         super().__init__(" | ".join(error_parts))
 
@@ -72,6 +74,10 @@ class DSLExecutor:
         self.variables = {}
         self.test_context = TestContext()
         self.test_context.executor = self  # 让 test_context 能够访问到 executor
+
+        # 设置变量提供者，实现YAML变量等外部变量源的注入
+        self._setup_variable_providers()
+
         self.variable_replacer = VariableReplacer(
             self.variables, self.test_context)
         self.imported_files = set()  # 跟踪已导入的文件，避免循环导入
@@ -104,7 +110,8 @@ class DSLExecutor:
         target_node = node or self._current_node
 
         # 尝试从当前节点获取行号
-        if target_node and hasattr(target_node, 'line_number') and target_node.line_number:
+        if (target_node and hasattr(target_node, 'line_number') and
+                target_node.line_number):
             return f"\n行号: {target_node.line_number}"
 
         # 如果当前节点没有行号，从节点栈中查找最近的有行号的节点
@@ -113,12 +120,16 @@ class DSLExecutor:
                 return f"\n行号: {stack_node.line_number}"
 
         # 如果当前节点没有行号，尝试从当前执行的节点获取
-        if self._current_node and hasattr(self._current_node, 'line_number') and self._current_node.line_number:
+        if (self._current_node and
+                hasattr(self._current_node, 'line_number') and
+                self._current_node.line_number):
             return f"\n行号: {self._current_node.line_number}"
 
         return ""
 
-    def _handle_exception_with_line_info(self, e: Exception, node=None, context_info: str = "", skip_allure_logging: bool = False):
+    def _handle_exception_with_line_info(self, e: Exception, node=None,
+                                         context_info: str = "",
+                                         skip_allure_logging: bool = False):
         """统一处理异常并记录行号信息
 
         Args:
@@ -275,7 +286,8 @@ class DSLExecutor:
             elif expr_node.type == 'StringLiteral':
                 # 字符串字面量，如果包含变量占位符则进行替换，否则直接返回
                 if '${' in expr_node.value:
-                    return self.variable_replacer.replace_in_string(expr_node.value)
+                    return self.variable_replacer.replace_in_string(
+                        expr_node.value)
                 else:
                     return expr_node.value
             elif expr_node.type == 'NumberLiteral':
@@ -290,7 +302,8 @@ class DSLExecutor:
                     raise KeyError(f"变量 '{var_name}' 不存在")
             elif expr_node.type == 'PlaceholderRef':
                 # 变量占位符 ${var}，进行变量替换
-                return self.variable_replacer.replace_in_string(expr_node.value)
+                return self.variable_replacer.replace_in_string(
+                    expr_node.value)
             elif expr_node.type == 'KeywordCall':
                 return self.execute(expr_node)
             elif expr_node.type == 'ListExpr':
@@ -321,7 +334,8 @@ class DSLExecutor:
             else:
                 raise Exception(f"无法求值的表达式类型: {expr_node.type}")
 
-        return self._execute_with_error_handling(_eval_expression_impl, expr_node)
+        return self._execute_with_error_handling(
+            _eval_expression_impl, expr_node)
 
     def _eval_expression_value(self, value):
         """处理表达式值的具体逻辑"""
@@ -332,7 +346,8 @@ class DSLExecutor:
                 # 定义扩展的变量引用模式，支持数组索引和字典键访问
                 pattern = (
                     r'\$\{([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*'
-                    r'(?:(?:\.[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)'
+                    r'(?:(?:\.[a-zA-Z_\u4e00-\u9fa5]'
+                    r'[a-zA-Z0-9_\u4e00-\u9fa5]*)'
                     r'|(?:\[[^\]]+\]))*)\}'
                 )
                 # 检查整个字符串是否完全匹配单一变量引用模式
@@ -347,8 +362,9 @@ class DSLExecutor:
                 else:
                     # 对于不包含 ${} 的普通字符串，检查是否为单纯的变量名
                     # 只有当字符串是有效的变量名格式且确实存在该变量时，才当作变量处理
-                    if (re.match(r'^[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*$', value) and
-                        value in self.variable_replacer.local_variables):
+                    pattern = r'^[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*$'
+                    if (re.match(pattern, value) and
+                            value in self.variable_replacer.local_variables):
                         return self.variable_replacer.local_variables[value]
                     else:
                         # 否则当作字符串字面量处理
@@ -357,7 +373,8 @@ class DSLExecutor:
         except Exception as e:
             # 为变量解析异常添加更多上下文信息
             context_info = f"解析表达式值 '{value}'"
-            self._handle_exception_with_line_info(e, context_info=context_info)
+            self._handle_exception_with_line_info(
+                e, context_info=context_info)
 
     def _eval_comparison_expr(self, expr_node):
         """
@@ -366,6 +383,7 @@ class DSLExecutor:
         :param expr_node: 比较表达式节点
         :return: 比较结果（布尔值）
         """
+        operator = "未知"  # 设置默认值，避免UnboundLocalError
         try:
             left_value = self.eval_expression(expr_node.children[0])
             right_value = self.eval_expression(expr_node.children[1])
@@ -403,6 +421,7 @@ class DSLExecutor:
         :param expr_node: 算术表达式节点
         :return: 计算结果
         """
+        operator = "未知"  # 设置默认值，避免UnboundLocalError
         try:
             left_value = self.eval_expression(expr_node.children[0])
             right_value = self.eval_expression(expr_node.children[1])
@@ -746,9 +765,15 @@ class DSLExecutor:
                         name="赋值详情",
                         attachment_type=allure.attachment_type.TEXT
                     )
+
+                # 通知远程服务器变量已更新
+                self._notify_remote_servers_variable_changed(
+                    var_name, expr_value)
+
             except Exception as e:
                 # 在步骤内部记录异常详情
-                error_details = f"执行Assignment节点: {str(e)}{line_info}\n上下文: 执行Assignment节点"
+                error_details = (f"执行Assignment节点: {str(e)}{line_info}\n"
+                                 f"上下文: 执行Assignment节点")
                 allure.attach(
                     error_details,
                     name="DSL执行异常",
@@ -789,9 +814,14 @@ class DSLExecutor:
                         name="关键字赋值详情",
                         attachment_type=allure.attachment_type.TEXT
                     )
+
+                # 通知远程服务器变量已更新
+                self._notify_remote_servers_variable_changed(var_name, result)
+
             except Exception as e:
                 # 在步骤内部记录异常详情
-                error_details = f"执行AssignmentKeywordCall节点: {str(e)}{line_info}\n上下文: 执行AssignmentKeywordCall节点"
+                error_details = (f"执行AssignmentKeywordCall节点: {str(e)}"
+                                 f"{line_info}\n上下文: 执行AssignmentKeywordCall节点")
                 allure.attach(
                     error_details,
                     name="DSL执行异常",
@@ -799,6 +829,63 @@ class DSLExecutor:
                 )
                 # 重新抛出异常，让外层的统一异常处理机制处理
                 raise
+
+    def _notify_remote_servers_variable_changed(self, var_name, var_value):
+        """通知远程服务器变量已发生变化
+
+        Args:
+            var_name: 变量名
+            var_value: 变量值
+        """
+        try:
+            # 检查是否是敏感变量，如果是则跳过同步
+            exclude_patterns = [
+                'password', 'secret', 'token', 'credential', 'auth', 'private'
+            ]
+            var_name_lower = var_name.lower()
+
+            for pattern in exclude_patterns:
+                if pattern in var_name_lower:
+                    print(f"🔒 跳过敏感变量同步: {var_name}")
+                    return
+
+            # 如果值是字符串，也检查是否包含敏感信息
+            if isinstance(var_value, str):
+                value_lower = var_value.lower()
+                for pattern in exclude_patterns:
+                    if (pattern in value_lower and
+                            len(var_value) < 100):
+                        print(f"🔒 跳过包含敏感信息的变量同步: {var_name}")
+                        return
+
+            # 导入远程关键字管理器
+            from pytest_dsl.remote.keyword_client import remote_keyword_manager
+
+            # 获取所有已连接的远程服务器客户端
+            for alias, client in remote_keyword_manager.clients.items():
+                try:
+                    # 构建单个变量的同步数据
+                    variables_to_sync = {var_name: var_value}
+
+                    # 调用远程服务器的变量同步接口
+                    result = client.server.sync_variables_from_client(
+                        variables_to_sync, client.api_key)
+
+                    if result.get('status') == 'success':
+                        print(f"🔄 变量 {var_name} 已同步到远程服务器 {alias}")
+                    else:
+                        error_msg = result.get('error', '未知错误')
+                        print(f"❌ 变量 {var_name} 同步到远程服务器 {alias} "
+                              f"失败: {error_msg}")
+
+                except Exception as e:
+                    print(f"❌ 通知远程服务器 {alias} 变量变化失败: {str(e)}")
+
+        except ImportError:
+            # 如果没有导入远程模块，跳过通知
+            pass
+        except Exception as e:
+            print(f"❌ 通知远程服务器变量变化时发生错误: {str(e)}")
 
     def _handle_for_loop(self, node):
         """处理for循环"""
@@ -827,6 +914,9 @@ class DSLExecutor:
                     # 设置循环变量
                     self.variable_replacer.local_variables[var_name] = i
                     self.test_context.set(var_name, i)
+
+                    # 通知远程服务器循环变量已更新
+                    self._notify_remote_servers_variable_changed(var_name, i)
 
                     with allure.step(f"循环轮次: {var_name} = {i}"):
                         try:
@@ -857,7 +947,9 @@ class DSLExecutor:
                             raise e
                         except Exception as e:
                             # 在循环轮次内部记录异常详情
-                            error_details = f"循环执行异常 ({var_name} = {i}): {str(e)}{line_info}\n上下文: 执行ForLoop节点"
+                            error_details = (f"循环执行异常 ({var_name} = {i}): "
+                                             f"{str(e)}{line_info}\n"
+                                             f"上下文: 执行ForLoop节点")
                             allure.attach(
                                 error_details,
                                 name="DSL执行异常",
@@ -870,7 +962,8 @@ class DSLExecutor:
                 raise
             except Exception as e:
                 # 在步骤内部记录异常详情
-                error_details = f"执行ForLoop节点: {str(e)}{line_info}\n上下文: 执行ForLoop节点"
+                error_details = (f"执行ForLoop节点: {str(e)}{line_info}\n"
+                                 f"上下文: 执行ForLoop节点")
                 allure.attach(
                     error_details,
                     name="DSL执行异常",
@@ -891,7 +984,8 @@ class DSLExecutor:
             # 在步骤内部记录异常
             with allure.step(f"调用关键字: {keyword_name}"):
                 allure.attach(
-                    f"执行KeywordCall节点: 未注册的关键字: {keyword_name}{line_info}\n上下文: 执行KeywordCall节点",
+                    f"执行KeywordCall节点: 未注册的关键字: {keyword_name}"
+                    f"{line_info}\n上下文: 执行KeywordCall节点",
                     name="DSL执行异常",
                     attachment_type=allure.attachment_type.TEXT
                 )
@@ -903,7 +997,7 @@ class DSLExecutor:
             try:
                 # 准备参数（这里可能抛出参数解析异常）
                 kwargs = self._prepare_keyword_params(node, keyword_info)
-                
+
                 # 传递自定义步骤名称给KeywordManager，避免重复的allure步骤嵌套
                 kwargs['step_name'] = keyword_name  # 内层步骤只显示关键字名称
                 # 避免KeywordManager重复记录，由DSL执行器统一记录
@@ -927,18 +1021,24 @@ class DSLExecutor:
                     if "参数解析异常" in core_error:
                         # 提取参数名和具体错误
                         import re
-                        match = re.search(r'参数解析异常 \(([^)]+)\): (.+)', core_error)
+                        match = re.search(
+                            r'参数解析异常 \(([^)]+)\): (.+)', core_error)
                         if match:
                             param_name, detailed_error = match.groups()
-                            error_details = f"参数解析失败 ({param_name}): {detailed_error}{line_info}\n上下文: 执行KeywordCall节点"
+                            error_details = (f"参数解析失败 ({param_name}): "
+                                             f"{detailed_error}{line_info}\n"
+                                             f"上下文: 执行KeywordCall节点")
                         else:
-                            error_details = f"参数解析失败: {core_error}{line_info}\n上下文: 执行KeywordCall节点"
+                            error_details = (f"参数解析失败: {core_error}"
+                                             f"{line_info}\n上下文: 执行KeywordCall节点")
                     else:
-                        error_details = f"参数解析失败: {core_error}{line_info}\n上下文: 执行KeywordCall节点"
+                        error_details = (f"参数解析失败: {core_error}{line_info}\n"
+                                         f"上下文: 执行KeywordCall节点")
                 else:
                     # 其他异常
-                    error_details = f"执行KeywordCall节点: {str(e)}{line_info}\n上下文: 执行KeywordCall节点"
-                
+                    error_details = (f"执行KeywordCall节点: {str(e)}{line_info}\n"
+                                     f"上下文: 执行KeywordCall节点")
+
                 allure.attach(
                     error_details,
                     name="DSL执行异常",
@@ -951,21 +1051,20 @@ class DSLExecutor:
         """准备关键字调用参数"""
         mapping = keyword_info.get('mapping', {})
         kwargs = {'context': self.test_context}  # 默认传入context参数
-        line_info = self._get_line_info(node)
 
         # 检查是否有参数列表
         if node.children[0]:
             for param in node.children[0]:
                 param_name = param.value
                 english_param_name = mapping.get(param_name, param_name)
-                
+
                 # 在子步骤中处理参数值解析，但不记录异常详情
                 with allure.step(f"解析参数: {param_name}"):
                     try:
                         # 对参数值进行变量替换
                         param_value = self.eval_expression(param.children[0])
                         kwargs[english_param_name] = param_value
-                        
+
                         # 只记录参数解析成功的简要信息
                         allure.attach(
                             f"参数名: {param_name}\n"
@@ -975,7 +1074,8 @@ class DSLExecutor:
                         )
                     except Exception as e:
                         # 将异常重新包装，添加参数名信息，但不在这里记录到allure
-                        raise Exception(f"参数解析异常 ({param_name}): {str(e)}")
+                        raise Exception(
+                             f"参数解析异常 ({param_name}): {str(e)}")
 
         return kwargs
 
@@ -1104,7 +1204,8 @@ class DSLExecutor:
                 return result
             except Exception as e:
                 # 在步骤内部记录异常详情
-                error_details = f"执行RemoteKeywordCall节点: {str(e)}{line_info}\n上下文: 执行RemoteKeywordCall节点"
+                error_details = (f"执行RemoteKeywordCall节点: {str(e)}"
+                                 f"{line_info}\n上下文: 执行RemoteKeywordCall节点")
                 allure.attach(
                     error_details,
                     name="DSL执行异常",
@@ -1144,7 +1245,8 @@ class DSLExecutor:
                             else:
                                 self.variable_replacer.local_variables[
                                     capture_var] = capture_value
-                                self.test_context.set(capture_var, capture_value)
+                                self.test_context.set(
+                                    capture_var, capture_value)
 
                         # 将主要结果赋值给指定变量
                         actual_result = main_result
@@ -1170,12 +1272,26 @@ class DSLExecutor:
                             name="远程关键字赋值",
                             attachment_type=allure.attachment_type.TEXT
                         )
+
+                    # 通知远程服务器变量已更新
+                    self._notify_remote_servers_variable_changed(
+                        var_name, actual_result)
+
+                    # 同时处理captures中的变量同步
+                    if isinstance(result, dict) and 'captures' in result:
+                        captures = result.get('captures', {})
+                        for capture_var, capture_value in captures.items():
+                            # 通知远程服务器捕获的变量也已更新
+                            self._notify_remote_servers_variable_changed(
+                                capture_var, capture_value)
                 else:
                     error_msg = "远程关键字没有返回结果"
                     raise Exception(error_msg)
             except Exception as e:
                 # 在步骤内部记录异常详情
-                error_details = f"执行AssignmentRemoteKeywordCall节点: {str(e)}{line_info}\n上下文: 执行AssignmentRemoteKeywordCall节点"
+                error_details = (f"执行AssignmentRemoteKeywordCall节点: {str(e)}"
+                                 f"{line_info}\n"
+                                 f"上下文: 执行AssignmentRemoteKeywordCall节点")
                 allure.attach(
                     error_details,
                     name="DSL执行异常",
@@ -1249,7 +1365,8 @@ class DSLExecutor:
                 self.execution_tracker.finish_current_step(error=error_msg)
 
             # 如果是控制流异常或已经是DSLExecutionError，直接重抛
-            if isinstance(e, (BreakException, ContinueException, ReturnException, DSLExecutionError)):
+            if isinstance(e, (BreakException, ContinueException,
+                              ReturnException, DSLExecutionError)):
                 raise
 
             # 如果是断言异常，保持原样但可能添加行号信息
@@ -1265,7 +1382,7 @@ class DSLExecutor:
             # 其他异常使用统一处理机制
             # 对于这些节点类型，异常已经在步骤中记录过了，跳过重复记录
             step_handled_nodes = {
-                'KeywordCall', 'Assignment', 'AssignmentKeywordCall', 
+                'KeywordCall', 'Assignment', 'AssignmentKeywordCall',
                 'ForLoop', 'RemoteKeywordCall', 'AssignmentRemoteKeywordCall'
             }
             skip_logging = node.type in step_handled_nodes
@@ -1311,6 +1428,20 @@ class DSLExecutor:
         return (f"DSLExecutor(variables={len(self.variables)}, "
                 f"hooks_enabled={self.enable_hooks}, "
                 f"tracking_enabled={self.enable_tracking})")
+
+    def _setup_variable_providers(self):
+        """设置变量提供者，将外部变量源注入到TestContext中"""
+        try:
+            from .variable_providers import (
+                setup_context_with_default_providers
+            )
+            setup_context_with_default_providers(self.test_context)
+
+            # 同步常用变量到context中，提高访问性能
+            self.test_context.sync_variables_from_external_sources()
+        except ImportError as e:
+            # 如果导入失败，记录警告但不影响正常功能
+            print(f"警告：无法设置变量提供者: {e}")
 
     def _init_hooks(self):
         """初始化hook机制"""

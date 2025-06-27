@@ -351,20 +351,6 @@ node3|[HTTP请求], 客户端: "default", 配置: '''
 @remote: "http://server2:8270/" as s2
 ```
 
-### 2. 错误处理
-
-```python
-# 使用try-catch模式处理远程执行错误
-try:
-    result = remote_server|[HTTP请求], 客户端: "default", 配置: '''
-        method: GET
-        url: https://api.example.com/test
-    '''
-    [打印], 内容: "远程请求成功: ${result}"
-except Exception as e:
-    [打印], 内容: "远程请求失败: ${e}"
-```
-
 ### 3. 合理使用远程执行
 
 ```python

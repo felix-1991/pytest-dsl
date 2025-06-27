@@ -212,7 +212,7 @@ class CustomKeywordManager:
             print(f"资源文件 {file_path} 加载失败: {str(e)}")
             raise
 
-    def _process_resource_file_content(self, content: str, 
+    def _process_resource_file_content(self, content: str,
                                        file_path: str) -> None:
         """处理资源文件内容
 
@@ -258,7 +258,7 @@ class CustomKeywordManager:
                 # 递归加载导入的资源文件
                 self.load_resource_file(imported_file)
 
-    def _register_keywords_from_ast(self, ast: Node, 
+    def _register_keywords_from_ast(self, ast: Node,
                                     source_name: str) -> None:
         """从AST中注册关键字（重构后的版本）
 
@@ -341,6 +341,12 @@ class CustomKeywordManager:
                     executor.test_context.set(
                         param_name, kwargs[param_mapping_name])
 
+            # 重要：创建变量替换器，使变量解析正常工作
+            from pytest_dsl.core.variable_utils import VariableReplacer
+            executor.variable_replacer = VariableReplacer(
+                executor.variables, executor.test_context
+            )
+
             # 执行关键字体中的语句
             result = None
             try:
@@ -357,7 +363,7 @@ class CustomKeywordManager:
 
         print(f"已注册自定义关键字: {keyword_name} 来自文件: {file_path}")
 
-    def register_keyword_from_dsl_content(self, dsl_content: str, 
+    def register_keyword_from_dsl_content(self, dsl_content: str,
                                           source_name: str = "DSL内容") -> list:
         """从DSL内容注册关键字（公共方法）
 
@@ -379,8 +385,8 @@ class CustomKeywordManager:
 
             # 收集注册前的关键字列表
             existing_keywords = (
-                set(keyword_manager._keywords.keys()) 
-                if hasattr(keyword_manager, '_keywords') 
+                set(keyword_manager._keywords.keys())
+                if hasattr(keyword_manager, '_keywords')
                 else set()
             )
 
@@ -389,8 +395,8 @@ class CustomKeywordManager:
 
             # 计算新注册的关键字
             new_keywords = (
-                set(keyword_manager._keywords.keys()) 
-                if hasattr(keyword_manager, '_keywords') 
+                set(keyword_manager._keywords.keys())
+                if hasattr(keyword_manager, '_keywords')
                 else set()
             )
             registered_keywords = list(new_keywords - existing_keywords)
@@ -405,7 +411,7 @@ class CustomKeywordManager:
             raise
 
     def register_specific_keyword_from_dsl_content(
-            self, keyword_name: str, dsl_content: str, 
+            self, keyword_name: str, dsl_content: str,
             source_name: str = "DSL内容") -> bool:
         """从DSL内容注册指定的关键字（公共方法）
 

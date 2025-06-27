@@ -116,3 +116,5 @@ $RECYCLE.BIN/
 
 # 性能监控报告
 performance_report.json
+# Playwright认证状态文件
+playwright/.auth

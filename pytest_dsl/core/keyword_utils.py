@@ -210,6 +210,13 @@ class KeywordFormatter:
             'parameters': keyword_info.parameters
         }
 
+        # 添加来源字段，优先显示项目自定义关键字的文件位置
+        if keyword_info.file_location:
+            keyword_data['source'] = keyword_info.file_location
+        else:
+            keyword_data['source'] = keyword_info.source_info.get(
+                'display_name', keyword_info.source_info.get('name', '未知'))
+
         # 远程关键字特殊信息
         if keyword_info.remote_info:
             keyword_data['remote'] = keyword_info.remote_info
