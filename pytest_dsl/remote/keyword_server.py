@@ -1,5 +1,4 @@
 import xmlrpc.server
-from functools import partial
 import inspect
 import json
 import sys
@@ -8,12 +7,10 @@ import signal
 import atexit
 import threading
 import time
-from typing import Dict, Any, Callable, List
 
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.remote.hook_manager import hook_manager, HookType
-# 导入变量桥接模块，确保hook被注册
-from pytest_dsl.remote import variable_bridge
+
 
 class RemoteKeywordServer:
     """远程关键字服务器，提供关键字的远程调用能力"""
@@ -35,7 +32,9 @@ class RemoteKeywordServer:
 
     def _register_builtin_keywords(self):
         """注册所有内置关键字，复用本地模式的加载逻辑"""
-        from pytest_dsl.core.plugin_discovery import load_all_plugins, scan_local_keywords
+        from pytest_dsl.core.plugin_discovery import (
+            load_all_plugins, scan_local_keywords
+        )
 
         # 0. 首先加载内置关键字模块（确保内置关键字被注册）
         print("正在加载内置关键字...")
@@ -63,7 +62,8 @@ class RemoteKeywordServer:
             print(f"接收到信号 {signum}，正在关闭服务器...")
 
             # 在新线程中执行关闭逻辑，避免阻塞信号处理器
-            shutdown_thread = threading.Thread(target=self._shutdown_in_thread, daemon=True)
+            shutdown_thread = threading.Thread(
+                target=self._shutdown_in_thread, daemon=True)
             shutdown_thread.start()
 
         # 保存信号处理器引用
@@ -119,7 +119,8 @@ class RemoteKeywordServer:
     def start(self):
         """启动远程关键字服务器"""
         try:
-            self.server = xmlrpc.server.SimpleXMLRPCServer((self.host, self.port), allow_none=True)
+            self.server = xmlrpc.server.SimpleXMLRPCServer(
+                (self.host, self.port), allow_none=True)
         except OSError as e:
             if "Address already in use" in str(e):
                 print(f"端口 {self.port} 已被占用，请使用其他端口或关闭占用该端口的进程")
@@ -207,7 +208,8 @@ class RemoteKeywordServer:
         try:
             # 确保参数是字典格式
             if not isinstance(args_dict, dict):
-                args_dict = json.loads(args_dict) if isinstance(args_dict, str) else {}
+                args_dict = json.loads(args_dict) if isinstance(
+                    args_dict, str) else {}
 
             # 获取关键字信息
             keyword_info = keyword_manager.get_keyword_info(name)
@@ -226,6 +228,15 @@ class RemoteKeywordServer:
             # 创建测试上下文（所有关键字都需要）
             from pytest_dsl.core.context import TestContext
             test_context = TestContext()
+
+            # 设置变量提供者，确保可以访问YAML变量和全局变量
+            try:
+                from pytest_dsl.core.variable_providers import setup_context_with_default_providers
+                setup_context_with_default_providers(test_context)
+            except ImportError:
+                # 如果导入失败，记录警告但继续执行
+                print("警告：无法设置变量提供者")
+
             exec_kwargs['context'] = test_context
 
             # 映射参数（通用逻辑）
@@ -292,10 +303,10 @@ class RemoteKeywordServer:
 
     def get_keyword_parameter_details(self, name):
         """获取关键字的参数详细信息，包括默认值
-        
+
         Args:
             name: 关键字名称
-            
+
         Returns:
             list: 参数详细信息列表，每个元素包含name, mapping, description, default
         """
@@ -311,7 +322,7 @@ class RemoteKeywordServer:
                 'description': param.description,
                 'default': param.default
             })
-        
+
         return param_details
 
     def get_keyword_documentation(self, name):
@@ -405,7 +416,7 @@ class RemoteKeywordServer:
 
             # 将所有同步的变量直接注入到yaml_vars中，实现无缝访问
             from pytest_dsl.core.yaml_vars import yaml_vars
-            
+
             for name, value in variables.items():
                 # 直接设置到yaml_vars中，确保所有关键字都能无缝访问
                 yaml_vars._variables[name] = value
@@ -419,7 +430,7 @@ class RemoteKeywordServer:
                     print(f"✓ 全局变量 {name} 已注入到global_context")
 
             print(f"✅ 总共同步了 {len(variables)} 个变量，全部实现无缝访问")
-            
+
             return {
                 'status': 'success',
                 'message': f'成功同步 {len(variables)} 个变量，全部实现无缝访问'
@@ -550,6 +561,7 @@ class RemoteKeywordServer:
                 'error': f'列出变量失败: {str(e)}'
             }
 
+
 def main():
     """启动远程关键字服务器的主函数"""
     import argparse
@@ -572,7 +584,8 @@ def main():
     _auto_load_extensions()
 
     # 创建并启动服务器（服务器初始化时会自动加载标准关键字）
-    server = RemoteKeywordServer(host=args.host, port=args.port, api_key=args.api_key)
+    server = RemoteKeywordServer(
+        host=args.host, port=args.port, api_key=args.api_key)
     server.start()
 
 
@@ -591,7 +604,8 @@ def _load_extensions(extensions_arg):
             if os.path.isfile(ext_path) and ext_path.endswith('.py'):
                 # 加载单个Python文件
                 module_name = os.path.splitext(os.path.basename(ext_path))[0]
-                spec = importlib.util.spec_from_file_location(module_name, ext_path)
+                spec = importlib.util.spec_from_file_location(
+                    module_name, ext_path)
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
                 print(f"已加载扩展模块: {ext_path}")
@@ -601,7 +615,8 @@ def _load_extensions(extensions_arg):
                     if filename.endswith('.py') and not filename.startswith('_'):
                         file_path = os.path.join(ext_path, filename)
                         module_name = os.path.splitext(filename)[0]
-                        spec = importlib.util.spec_from_file_location(module_name, file_path)
+                        spec = importlib.util.spec_from_file_location(
+                            module_name, file_path)
                         module = importlib.util.module_from_spec(spec)
                         spec.loader.exec_module(module)
                         print(f"已加载扩展模块: {file_path}")
@@ -630,6 +645,7 @@ def _auto_load_extensions():
     if os.path.isfile(remote_ext_file):
         print(f"发现扩展文件: {remote_ext_file}")
         _load_extensions(remote_ext_file)
+
 
 if __name__ == '__main__':
     main()

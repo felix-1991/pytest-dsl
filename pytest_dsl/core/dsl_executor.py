@@ -345,7 +345,8 @@ class DSLExecutor:
             elif isinstance(value, str):
                 # 定义扩展的变量引用模式，支持数组索引和字典键访问
                 pattern = (
-                    r'\$\{([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*'
+                    r'\$\{([a-zA-Z_\u4e00-\u9fa5]'
+                    r'[a-zA-Z0-9_\u4e00-\u9fa5]*'
                     r'(?:(?:\.[a-zA-Z_\u4e00-\u9fa5]'
                     r'[a-zA-Z0-9_\u4e00-\u9fa5]*)'
                     r'|(?:\[[^\]]+\]))*)\}'
@@ -362,8 +363,9 @@ class DSLExecutor:
                 else:
                     # 对于不包含 ${} 的普通字符串，检查是否为单纯的变量名
                     # 只有当字符串是有效的变量名格式且确实存在该变量时，才当作变量处理
-                    pattern = r'^[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*$'
-                    if (re.match(pattern, value) and
+                    var_pattern = (r'^[a-zA-Z_\u4e00-\u9fa5]'
+                                   r'[a-zA-Z0-9_\u4e00-\u9fa5]*$')
+                    if (re.match(var_pattern, value) and
                             value in self.variable_replacer.local_variables):
                         return self.variable_replacer.local_variables[value]
                     else:
@@ -821,7 +823,8 @@ class DSLExecutor:
             except Exception as e:
                 # 在步骤内部记录异常详情
                 error_details = (f"执行AssignmentKeywordCall节点: {str(e)}"
-                                 f"{line_info}\n上下文: 执行AssignmentKeywordCall节点")
+                                 f"{line_info}\n"
+                                 f"上下文: 执行AssignmentKeywordCall节点")
                 allure.attach(
                     error_details,
                     name="DSL执行异常",
@@ -838,25 +841,16 @@ class DSLExecutor:
             var_value: 变量值
         """
         try:
-            # 检查是否是敏感变量，如果是则跳过同步
-            exclude_patterns = [
-                'password', 'secret', 'token', 'credential', 'auth', 'private'
-            ]
-            var_name_lower = var_name.lower()
-
-            for pattern in exclude_patterns:
-                if pattern in var_name_lower:
-                    print(f"🔒 跳过敏感变量同步: {var_name}")
-                    return
-
-            # 如果值是字符串，也检查是否包含敏感信息
-            if isinstance(var_value, str):
-                value_lower = var_value.lower()
-                for pattern in exclude_patterns:
-                    if (pattern in value_lower and
-                            len(var_value) < 100):
-                        print(f"🔒 跳过包含敏感信息的变量同步: {var_name}")
-                        return
+            # 使用统一的序列化工具进行变量过滤
+            from .serialization_utils import XMLRPCSerializer
+            
+            variables_to_filter = {var_name: var_value}
+            filtered_variables = XMLRPCSerializer.filter_variables(
+                variables_to_filter)
+            
+            if not filtered_variables:
+                # 变量被过滤掉了（敏感变量或不可序列化）
+                return
 
             # 导入远程关键字管理器
             from pytest_dsl.remote.keyword_client import remote_keyword_manager
@@ -864,12 +858,9 @@ class DSLExecutor:
             # 获取所有已连接的远程服务器客户端
             for alias, client in remote_keyword_manager.clients.items():
                 try:
-                    # 构建单个变量的同步数据
-                    variables_to_sync = {var_name: var_value}
-
                     # 调用远程服务器的变量同步接口
                     result = client.server.sync_variables_from_client(
-                        variables_to_sync, client.api_key)
+                        filtered_variables, client.api_key)
 
                     if result.get('status') == 'success':
                         print(f"🔄 变量 {var_name} 已同步到远程服务器 {alias}")
@@ -1030,9 +1021,11 @@ class DSLExecutor:
                                              f"上下文: 执行KeywordCall节点")
                         else:
                             error_details = (f"参数解析失败: {core_error}"
-                                             f"{line_info}\n上下文: 执行KeywordCall节点")
+                                             f"{line_info}\n"
+                                             f"上下文: 执行KeywordCall节点")
                     else:
-                        error_details = (f"参数解析失败: {core_error}{line_info}\n"
+                        error_details = (f"参数解析失败: {core_error}"
+                                         f"{line_info}\n"
                                          f"上下文: 执行KeywordCall节点")
                 else:
                     # 其他异常

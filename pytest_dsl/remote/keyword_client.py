@@ -255,38 +255,17 @@ class RemoteKeywordClient:
                 print("没有上下文变量需要同步")
                 return
 
-            # 收集需要同步的变量
-            variables_to_sync = {}
-
-            # 应用排除模式
+            # 使用统一的序列化工具进行变量过滤
+            from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+            
+            # 扩展排除模式
             exclude_patterns = self.sync_config.get('yaml_exclude_patterns', [
                 'password', 'secret', 'token', 'credential', 'auth',
                 'private', 'remote_servers'
             ])
-
-            for var_name, var_value in context_variables.items():
-                # 检查是否需要排除
-                should_exclude = False
-                var_name_lower = var_name.lower()
-
-                for pattern in exclude_patterns:
-                    if pattern.lower() in var_name_lower:
-                        should_exclude = True
-                        break
-
-                # 如果值是字符串，也检查是否包含敏感信息
-                if not should_exclude and isinstance(var_value, str):
-                    value_lower = var_value.lower()
-                    for pattern in exclude_patterns:
-                        if (pattern.lower() in value_lower and
-                                len(var_value) < 100):  # 只检查短字符串
-                            should_exclude = True
-                            break
-
-                if not should_exclude:
-                    variables_to_sync[var_name] = var_value
-                else:
-                    print(f"跳过敏感变量: {var_name}")
+            
+            variables_to_sync = XMLRPCSerializer.filter_variables(
+                context_variables, exclude_patterns)
 
             if variables_to_sync:
                 # 调用远程服务器的变量同步接口
@@ -339,17 +318,28 @@ class RemoteKeywordClient:
                 variables_to_send.update(self._collect_yaml_variables())
 
             if variables_to_send:
-                try:
-                    # 调用远程服务器的变量接收接口
-                    result = self.server.sync_variables_from_client(
-                        variables_to_send, self.api_key)
-                    if result.get('status') == 'success':
-                        print(f"成功传递 {len(variables_to_send)} 个变量到远程服务器")
-                    else:
-                        print(f"传递变量到远程服务器失败: "
-                              f"{result.get('error', '未知错误')}")
-                except Exception as e:
-                    print(f"调用远程变量接口失败: {str(e)}")
+                # 使用统一的序列化工具进行变量过滤和转换
+                from pytest_dsl.core.serialization_utils import (
+                    XMLRPCSerializer
+                )
+                serializable_variables = XMLRPCSerializer.filter_variables(
+                    variables_to_send)
+                
+                if serializable_variables:
+                    try:
+                        # 调用远程服务器的变量接收接口
+                        result = self.server.sync_variables_from_client(
+                            serializable_variables, self.api_key)
+                        if result.get('status') == 'success':
+                            print(f"成功传递 {len(serializable_variables)} "
+                                  f"个变量到远程服务器")
+                        else:
+                            print(f"传递变量到远程服务器失败: "
+                                  f"{result.get('error', '未知错误')}")
+                    except Exception as e:
+                        print(f"调用远程变量接口失败: {str(e)}")
+                else:
+                    print("没有可序列化的变量需要传递")
             else:
                 print("没有需要传递的变量")
 
@@ -378,9 +368,17 @@ class RemoteKeywordClient:
                     with open(storage_file, 'r', encoding='utf-8') as f:
                         stored_vars = json.load(f)
                         # 只同步g_开头的全局变量
-                        for name, value in stored_vars.items():
-                            if name.startswith('g_'):
-                                variables[name] = value
+                        global_vars = {
+                            name: value for name, value in stored_vars.items() 
+                            if name.startswith('g_')
+                        }
+                        if global_vars:
+                            from pytest_dsl.core.serialization_utils import (
+                                XMLRPCSerializer
+                            )
+                            filtered_global_vars = XMLRPCSerializer.filter_variables(
+                                global_vars)
+                            variables.update(filtered_global_vars)
         except Exception as e:
             logger.warning(f"收集全局变量失败: {str(e)}")
 
@@ -408,37 +406,29 @@ class RemoteKeywordClient:
 
                 if sync_keys:
                     # 如果指定了特定键，只传递这些键，直接使用原始变量名
-                    for key in sync_keys:
-                        if key in yaml_data:
-                            variables[key] = yaml_data[key]
+                    specific_vars = {
+                        key: yaml_data[key] for key in sync_keys 
+                        if key in yaml_data
+                    }
+                    if specific_vars:
+                        from pytest_dsl.core.serialization_utils import (
+                            XMLRPCSerializer
+                        )
+                        filtered_specific_vars = XMLRPCSerializer.filter_variables(
+                            specific_vars)
+                        variables.update(filtered_specific_vars)
+                        for key in filtered_specific_vars:
                             print(f"传递指定YAML变量: {key}")
                 else:
                     # 传递所有YAML变量，但排除敏感信息
-                    for key, value in yaml_data.items():
-                        # 检查是否包含敏感信息
-                        key_lower = key.lower()
-                        should_exclude = False
-
-                        for pattern in exclude_patterns:
-                            if pattern.lower() in key_lower:
-                                should_exclude = True
-                                break
-
-                        # 如果值是字符串，也检查是否包含敏感信息
-                        if not should_exclude and isinstance(value, str):
-                            value_lower = value.lower()
-                            for pattern in exclude_patterns:
-                                if (pattern.lower() in value_lower and
-                                        len(value) < 100):  # 只检查短字符串
-                                    should_exclude = True
-                                    break
-
-                        if not should_exclude:
-                            # 直接使用原始变量名，不添加yaml_前缀，实现无缝传递
-                            variables[key] = value
-                            print(f"传递YAML变量: {key}")
-                        else:
-                            print(f"跳过敏感YAML变量: {key}")
+                    from pytest_dsl.core.serialization_utils import (
+                        XMLRPCSerializer
+                    )
+                    filtered_yaml_vars = XMLRPCSerializer.filter_variables(
+                        yaml_data, exclude_patterns)
+                    variables.update(filtered_yaml_vars)
+                    for key in filtered_yaml_vars:
+                        print(f"传递YAML变量: {key}")
 
         except Exception as e:
             logger.warning(f"收集YAML变量失败: {str(e)}")
