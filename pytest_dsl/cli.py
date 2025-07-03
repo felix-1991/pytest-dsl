@@ -32,7 +32,7 @@ def parse_args():
     argv = sys.argv[1:]  # 去掉脚本名
 
     # 检查是否使用了子命令格式
-    if argv and argv[0] in ['run', 'list-keywords']:
+    if argv and argv[0] in ['run', 'list-keywords', 'list']:
         # 使用新的子命令格式
         parser = argparse.ArgumentParser(description='执行DSL测试文件')
         subparsers = parser.add_subparsers(dest='command', help='可用命令')
@@ -60,33 +60,41 @@ def parse_args():
             'list-keywords',
             help='罗列所有可用关键字和参数信息'
         )
-        list_parser.add_argument(
-            '--format', choices=['text', 'json', 'html'],
-            default='json',
-            help='输出格式：json(默认)、text 或 html'
+        
+        # 简化的list命令（同list-keywords）
+        list_simple_parser = subparsers.add_parser(
+            'list',
+            help='罗列所有可用关键字和参数信息'
         )
-        list_parser.add_argument(
-            '--output', '-o', type=str, default=None,
-            help='输出文件路径（json格式默认为keywords.json，html格式默认为keywords.html）'
-        )
-        list_parser.add_argument(
-            '--filter', type=str, default=None,
-            help='过滤关键字名称（支持部分匹配）'
-        )
-        list_parser.add_argument(
-            '--category',
-            choices=[
-                'builtin', 'plugin', 'custom',
-                'project_custom', 'remote', 'all'
-            ],
-            default='all',
-            help='关键字类别：builtin(内置)、plugin(插件)、custom(自定义)、'
-                 'project_custom(项目自定义)、remote(远程)、all(全部，默认)'
-        )
-        list_parser.add_argument(
-            '--include-remote', action='store_true',
-            help='是否包含远程关键字（默认不包含）'
-        )
+        # 为list-keywords添加参数
+        for parser_obj in [list_parser, list_simple_parser]:
+            parser_obj.add_argument(
+                '--format', choices=['text', 'json', 'html'],
+                default='text',
+                help='输出格式：text(默认)、json 或 html'
+            )
+            parser_obj.add_argument(
+                '--output', '-o', type=str, default=None,
+                help='输出文件路径（json格式默认为keywords.json，html格式默认为keywords.html）'
+            )
+            parser_obj.add_argument(
+                '--filter', type=str, default=None,
+                help='过滤关键字名称（支持部分匹配）'
+            )
+            parser_obj.add_argument(
+                '--category',
+                choices=[
+                    'builtin', 'plugin', 'custom',
+                    'project_custom', 'remote', 'all'
+                ],
+                default='all',
+                help='关键字类别：builtin(内置)、plugin(插件)、custom(自定义)、'
+                     'project_custom(项目自定义)、remote(远程)、all(全部，默认)'
+            )
+            parser_obj.add_argument(
+                '--include-remote', action='store_true',
+                help='是否包含远程关键字（默认不包含）'
+            )
 
         return parser.parse_args(argv)
     else:
@@ -137,8 +145,9 @@ def parse_args():
 
 
 def list_keywords(output_format='json', name_filter=None,
-                  category_filter='all', output_file=None,
-                  include_remote=False):
+                  category_filter='all', category_name_filter='all', 
+                  tags_filter=None, output_file=None,
+                  include_remote=False, group_by='source'):
     """罗列所有关键字信息（简化版，调用统一的工具函数）"""
     print("正在加载关键字...")
 
@@ -148,9 +157,12 @@ def list_keywords(output_format='json', name_filter=None,
             output_format=output_format,
             name_filter=name_filter,
             category_filter=category_filter,
+            category_name_filter=category_name_filter,
+            tags_filter=tags_filter,
             include_remote=include_remote,
             output_file=output_file,
-            print_summary=True
+            print_summary=True,
+            group_by=group_by
         )
     except Exception as e:
         print(f"列出关键字失败: {e}")
@@ -303,7 +315,7 @@ def main():
     args = parse_args()
 
     # 处理子命令
-    if args.command == 'list-keywords':
+    if args.command in ['list-keywords', 'list']:
         list_keywords(
             output_format=args.format,
             name_filter=args.filter,
@@ -355,8 +367,32 @@ def main_list_keywords():
             'builtin', 'plugin', 'custom', 'project_custom', 'remote', 'all'
         ],
         default='all',
-        help='关键字类别：builtin(内置)、plugin(插件)、custom(自定义)、'
+        help='关键字来源类别：builtin(内置)、plugin(插件)、custom(自定义)、'
              'project_custom(项目自定义)、remote(远程)、all(全部，默认)'
+    )
+    parser.add_argument(
+        '--functional-category',
+        choices=[
+            'http', 'assertion', 'data', 'system', 'variable', 'utility', 
+            'control', 'file', 'database', 'ui', 'performance', 'security', 'other', 'all'
+        ],
+        default='all',
+        help='功能分类：http(HTTP请求)、assertion(断言验证)、data(数据操作)、'
+             'system(系统操作)、variable(变量管理)、utility(实用工具)、'
+             'control(控制流程)、file(文件操作)、database(数据库)、'
+             'ui(UI操作)、performance(性能测试)、security(安全测试)、'
+             'other(其他)、all(全部，默认)'
+    )
+    parser.add_argument(
+        '--tags', nargs='*', default=None,
+        help='按标签过滤关键字（可指定多个标签，关键字需包含所有指定标签）'
+    )
+    parser.add_argument(
+        '--group-by',
+        choices=['source', 'functional', 'tags', 'flat'],
+        default='source',
+        help='分组方式：source(按来源分组，默认)、functional(按功能分类分组)、'
+             'tags(按标签分组)、flat(平铺显示)'
     )
     parser.add_argument(
         '--include-remote', action='store_true',
@@ -369,8 +405,11 @@ def main_list_keywords():
         output_format=args.format,
         name_filter=args.filter,
         category_filter=args.category,
+        category_name_filter=args.functional_category,
+        tags_filter=args.tags,
         output_file=args.output,
-        include_remote=args.include_remote
+        include_remote=args.include_remote,
+        group_by=args.group_by
     )
 
 

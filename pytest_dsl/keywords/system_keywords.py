@@ -10,7 +10,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
 
 @keyword_manager.register('打印', [
     {'name': '内容', 'mapping': 'content', 'description': '要打印的文本内容'}
-])
+], category='系统/调试', tags=['输出', '调试'])
 def print_content(**kwargs):
     content = kwargs.get('content')
     print(f"内容: {content}")
@@ -18,15 +18,15 @@ def print_content(**kwargs):
 
 @keyword_manager.register('返回结果', [
     {'name': '结果', 'mapping': 'result', 'description': '要返回的结果值'}
-])
+], category='系统/调试', tags=['返回'])
 def return_result(**kwargs):
     return kwargs.get('result')
 
 
 @keyword_manager.register('等待', [
-    {'name': '秒数', 'mapping': 'seconds', 
+    {'name': '秒数', 'mapping': 'seconds',
      'description': '等待的秒数，可以是小数', 'default': 1}
-])
+], category='系统/通用', tags=['等待', '延迟'])
 def wait_seconds(**kwargs):
     """等待指定的时间
 
@@ -34,7 +34,7 @@ def wait_seconds(**kwargs):
         seconds: 等待的秒数，默认为1秒
     """
     seconds = float(kwargs.get('seconds', 1))
-    
+
     with allure.step(f"等待 {seconds} 秒"):
         time.sleep(seconds)
         allure.attach(
@@ -45,11 +45,11 @@ def wait_seconds(**kwargs):
 
 
 @keyword_manager.register('获取当前时间', [
-    {'name': '格式', 'mapping': 'format', 
+    {'name': '格式', 'mapping': 'format',
      'description': '时间格式，例如 "%Y-%m-%d %H:%M:%S"', 'default': 'timestamp'},
-    {'name': '时区', 'mapping': 'timezone', 
+    {'name': '时区', 'mapping': 'timezone',
      'description': '时区，例如 "Asia/Shanghai"', 'default': 'Asia/Shanghai'}
-])
+], category='系统/通用', tags=['时间', '获取'])
 def get_current_time(**kwargs):
     """获取当前时间
 
@@ -98,12 +98,12 @@ def get_current_time(**kwargs):
 
 
 @keyword_manager.register('生成随机字符串', [
-    {'name': '长度', 'mapping': 'length', 
+    {'name': '长度', 'mapping': 'length',
      'description': '随机字符串的长度', 'default': 8},
     {'name': '类型', 'mapping': 'type',
-     'description': '字符类型：字母(letters)、数字(digits)、字母数字(alphanumeric)、全部(all)', 
+     'description': '字符类型：字母(letters)、数字(digits)、字母数字(alphanumeric)、全部(all)',
      'default': 'alphanumeric'}
-])
+], category='系统/通用', tags=['随机', '字符串'])
 def generate_random_string(**kwargs):
     """生成指定长度和类型的随机字符串
 
@@ -144,13 +144,13 @@ def generate_random_string(**kwargs):
 
 
 @keyword_manager.register('生成随机数', [
-    {'name': '最小值', 'mapping': 'min', 
+    {'name': '最小值', 'mapping': 'min',
      'description': '随机数的最小值', 'default': 0},
-    {'name': '最大值', 'mapping': 'max', 
+    {'name': '最大值', 'mapping': 'max',
      'description': '随机数的最大值', 'default': 100},
-    {'name': '小数位数', 'mapping': 'decimals', 
+    {'name': '小数位数', 'mapping': 'decimals',
      'description': '小数位数，0表示整数', 'default': 0}
-])
+], category='系统/通用', tags=['随机', '数字'])
 def generate_random_number(**kwargs):
     """生成指定范围内的随机数
 
@@ -186,14 +186,14 @@ def generate_random_number(**kwargs):
 @keyword_manager.register('字符串操作', [
     {'name': '操作', 'mapping': 'operation',
      'description': '操作类型：拼接(concat)、替换(replace)、分割(split)、'
-                   '大写(upper)、小写(lower)、去空格(strip)', 
+                   '大写(upper)、小写(lower)、去空格(strip)',
      'default': 'strip'},
     {'name': '字符串', 'mapping': 'string', 'description': '要操作的字符串'},
-    {'name': '参数1', 'mapping': 'param1', 
+    {'name': '参数1', 'mapping': 'param1',
      'description': '操作参数1，根据操作类型不同而不同', 'default': ''},
-    {'name': '参数2', 'mapping': 'param2', 
+    {'name': '参数2', 'mapping': 'param2',
      'description': '操作参数2，根据操作类型不同而不同', 'default': ''}
-])
+], category='系统/通用', tags=['字符串', '操作'])
 def string_operation(**kwargs):
     """字符串操作
 
@@ -262,10 +262,10 @@ def string_operation(**kwargs):
 
 @keyword_manager.register('日志', [
     {'name': '级别', 'mapping': 'level',
-     'description': '日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL', 
+     'description': '日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL',
      'default': 'INFO'},
     {'name': '消息', 'mapping': 'message', 'description': '日志消息内容'}
-])
+], category='系统/调试', tags=['日志'])
 def log_message(**kwargs):
     """记录日志
 
@@ -294,11 +294,11 @@ def log_message(**kwargs):
 
 @keyword_manager.register('执行命令', [
     {'name': '命令', 'mapping': 'command', 'description': '要执行的系统命令'},
-    {'name': '超时', 'mapping': 'timeout', 
+    {'name': '超时', 'mapping': 'timeout',
      'description': '命令执行超时时间（秒）', 'default': 60},
-    {'name': '捕获输出', 'mapping': 'capture_output', 
+    {'name': '捕获输出', 'mapping': 'capture_output',
      'description': '是否捕获命令输出', 'default': True}
-])
+], category='系统/通用', tags=['命令', '执行'])
 def execute_command(**kwargs):
     """执行系统命令
 
@@ -372,7 +372,7 @@ def execute_command(**kwargs):
 @keyword_manager.register('求和', [
     {'name': '数据', 'mapping': 'data', 'description': '要求和的数字列表或可迭代对象'},
     {'name': '起始值', 'mapping': 'start', 'description': '求和的起始值', 'default': 0}
-])
+], category='系统/通用', tags=['数学', '求和'])
 def sum_values(**kwargs):
     """计算数字列表的总和
 
@@ -392,14 +392,14 @@ def sum_values(**kwargs):
 
     try:
         result = sum(data, start)
-        
+
         with allure.step(f"求和计算: 数据长度={len(data)}, 起始值={start}"):
             allure.attach(
                 f"输入数据: {data}\n起始值: {start}\n结果: {result}",
                 name="求和结果",
                 attachment_type=allure.attachment_type.TEXT
             )
-        
+
         return result
     except Exception as e:
         allure.attach(
@@ -412,7 +412,7 @@ def sum_values(**kwargs):
 
 @keyword_manager.register('获取长度', [
     {'name': '对象', 'mapping': 'obj', 'description': '要获取长度的对象（字符串、列表、字典等）'}
-])
+], category='系统/通用', tags=['数学', '长度'])
 def get_length(**kwargs):
     """获取对象的长度
 
@@ -423,20 +423,20 @@ def get_length(**kwargs):
         int: 对象的长度
     """
     obj = kwargs.get('obj')
-    
+
     if obj is None:
         return 0
 
     try:
         result = len(obj)
-        
+
         with allure.step(f"获取长度: 对象类型={type(obj).__name__}"):
             allure.attach(
                 f"对象: {obj}\n类型: {type(obj).__name__}\n长度: {result}",
                 name="长度计算结果",
                 attachment_type=allure.attachment_type.TEXT
             )
-        
+
         return result
     except Exception as e:
         allure.attach(
@@ -449,9 +449,9 @@ def get_length(**kwargs):
 
 @keyword_manager.register('获取最大值', [
     {'name': '数据', 'mapping': 'data', 'description': '要比较的数据列表或多个参数'},
-    {'name': '默认值', 'mapping': 'default', 
+    {'name': '默认值', 'mapping': 'default',
      'description': '当数据为空时的默认值', 'default': None}
-])
+], category='系统/通用', tags=['数学', '最大值'])
 def get_max_value(**kwargs):
     """获取最大值
 
@@ -464,7 +464,7 @@ def get_max_value(**kwargs):
     """
     data = kwargs.get('data')
     default = kwargs.get('default')
-    
+
     if data is None:
         if default is not None:
             return default
@@ -474,21 +474,21 @@ def get_max_value(**kwargs):
         # 如果data不是可迭代的，将其转换为列表
         if not hasattr(data, '__iter__') or isinstance(data, str):
             data = [data]
-        
+
         if len(data) == 0:
             if default is not None:
                 return default
             raise ValueError("数据列表为空")
-        
+
         result = max(data)
-        
+
         with allure.step(f"获取最大值: 数据长度={len(data)}"):
             allure.attach(
                 f"输入数据: {data}\n最大值: {result}",
                 name="最大值计算结果",
                 attachment_type=allure.attachment_type.TEXT
             )
-        
+
         return result
     except Exception as e:
         allure.attach(
@@ -501,9 +501,9 @@ def get_max_value(**kwargs):
 
 @keyword_manager.register('获取最小值', [
     {'name': '数据', 'mapping': 'data', 'description': '要比较的数据列表或多个参数'},
-    {'name': '默认值', 'mapping': 'default', 
+    {'name': '默认值', 'mapping': 'default',
      'description': '当数据为空时的默认值', 'default': None}
-])
+], category='系统/通用', tags=['数学', '最小值'])
 def get_min_value(**kwargs):
     """获取最小值
 
@@ -516,7 +516,7 @@ def get_min_value(**kwargs):
     """
     data = kwargs.get('data')
     default = kwargs.get('default')
-    
+
     if data is None:
         if default is not None:
             return default
@@ -526,21 +526,21 @@ def get_min_value(**kwargs):
         # 如果data不是可迭代的，将其转换为列表
         if not hasattr(data, '__iter__') or isinstance(data, str):
             data = [data]
-        
+
         if len(data) == 0:
             if default is not None:
                 return default
             raise ValueError("数据列表为空")
-        
+
         result = min(data)
-        
+
         with allure.step(f"获取最小值: 数据长度={len(data)}"):
             allure.attach(
                 f"输入数据: {data}\n最小值: {result}",
                 name="最小值计算结果",
                 attachment_type=allure.attachment_type.TEXT
             )
-        
+
         return result
     except Exception as e:
         allure.attach(
@@ -553,7 +553,7 @@ def get_min_value(**kwargs):
 
 @keyword_manager.register('绝对值', [
     {'name': '数值', 'mapping': 'number', 'description': '要计算绝对值的数字'}
-])
+], category='系统/通用', tags=['数学', '绝对值'])
 def get_absolute_value(**kwargs):
     """计算数字的绝对值
 
@@ -564,20 +564,20 @@ def get_absolute_value(**kwargs):
         数字的绝对值
     """
     number = kwargs.get('number')
-    
+
     if number is None:
         raise ValueError("数值不能为空")
 
     try:
         result = abs(number)
-        
+
         with allure.step(f"计算绝对值: {number}"):
             allure.attach(
                 f"输入数值: {number}\n绝对值: {result}",
                 name="绝对值计算结果",
                 attachment_type=allure.attachment_type.TEXT
             )
-        
+
         return result
     except Exception as e:
         allure.attach(
@@ -590,9 +590,9 @@ def get_absolute_value(**kwargs):
 
 @keyword_manager.register('四舍五入', [
     {'name': '数值', 'mapping': 'number', 'description': '要四舍五入的数字'},
-    {'name': '小数位数', 'mapping': 'ndigits', 
+    {'name': '小数位数', 'mapping': 'ndigits',
      'description': '保留的小数位数', 'default': 0}
-])
+], category='系统/通用', tags=['数学', '四舍五入'])
 def round_number(**kwargs):
     """对数字进行四舍五入
 
@@ -605,7 +605,7 @@ def round_number(**kwargs):
     """
     number = kwargs.get('number')
     ndigits = kwargs.get('ndigits', 0)
-    
+
     if number is None:
         raise ValueError("数值不能为空")
 
@@ -614,14 +614,14 @@ def round_number(**kwargs):
             result = round(number)
         else:
             result = round(number, int(ndigits))
-        
+
         with allure.step(f"四舍五入: {number} -> {ndigits}位小数"):
             allure.attach(
                 f"输入数值: {number}\n小数位数: {ndigits}\n结果: {result}",
                 name="四舍五入结果",
                 attachment_type=allure.attachment_type.TEXT
             )
-        
+
         return result
     except Exception as e:
         allure.attach(
@@ -634,7 +634,7 @@ def round_number(**kwargs):
 
 @keyword_manager.register('转换为字符串', [
     {'name': '值', 'mapping': 'value', 'description': '要转换为字符串的值'}
-])
+], category='系统/通用', tags=['转换', '字符串'])
 def convert_to_string(**kwargs):
     """将值转换为字符串
 
@@ -645,10 +645,10 @@ def convert_to_string(**kwargs):
         str: 转换后的字符串
     """
     value = kwargs.get('value')
-    
+
     try:
         result = str(value)
-        
+
         with allure.step(f"转换为字符串: {type(value).__name__} -> str"):
             allure.attach(
                 f"原始值: {value}\n原始类型: {type(value).__name__}\n"
@@ -656,7 +656,7 @@ def convert_to_string(**kwargs):
                 name="字符串转换结果",
                 attachment_type=allure.attachment_type.TEXT
             )
-        
+
         return result
     except Exception as e:
         allure.attach(
@@ -669,9 +669,9 @@ def convert_to_string(**kwargs):
 
 @keyword_manager.register('转换为整数', [
     {'name': '值', 'mapping': 'value', 'description': '要转换为整数的值'},
-    {'name': '进制', 'mapping': 'base', 
+    {'name': '进制', 'mapping': 'base',
      'description': '数字进制（当值为字符串时）', 'default': 10}
-])
+], category='系统/通用', tags=['转换', '整数'])
 def convert_to_integer(**kwargs):
     """将值转换为整数
 
@@ -684,7 +684,7 @@ def convert_to_integer(**kwargs):
     """
     value = kwargs.get('value')
     base = kwargs.get('base', 10)
-    
+
     if value is None:
         raise ValueError("值不能为空")
 
@@ -695,7 +695,7 @@ def convert_to_integer(**kwargs):
             result = int(value_str, int(base))
         else:
             result = int(value)
-        
+
         with allure.step(f"转换为整数: {type(value).__name__} -> int"):
             allure.attach(
                 f"原始值: {value}\n原始类型: {type(value).__name__}\n"
@@ -703,7 +703,7 @@ def convert_to_integer(**kwargs):
                 name="整数转换结果",
                 attachment_type=allure.attachment_type.TEXT
             )
-        
+
         return result
     except Exception as e:
         allure.attach(
@@ -716,7 +716,7 @@ def convert_to_integer(**kwargs):
 
 @keyword_manager.register('转换为浮点数', [
     {'name': '值', 'mapping': 'value', 'description': '要转换为浮点数的值'}
-])
+], category='系统/通用', tags=['转换', '浮点数'])
 def convert_to_float(**kwargs):
     """将值转换为浮点数
 
@@ -727,13 +727,13 @@ def convert_to_float(**kwargs):
         float: 转换后的浮点数
     """
     value = kwargs.get('value')
-    
+
     if value is None:
         raise ValueError("值不能为空")
 
     try:
         result = float(value)
-        
+
         with allure.step(f"转换为浮点数: {type(value).__name__} -> float"):
             allure.attach(
                 f"原始值: {value}\n原始类型: {type(value).__name__}\n"
@@ -741,7 +741,7 @@ def convert_to_float(**kwargs):
                 name="浮点数转换结果",
                 attachment_type=allure.attachment_type.TEXT
             )
-        
+
         return result
     except Exception as e:
         allure.attach(
@@ -754,7 +754,7 @@ def convert_to_float(**kwargs):
 
 @keyword_manager.register('转换为布尔值', [
     {'name': '值', 'mapping': 'value', 'description': '要转换为布尔值的值'}
-])
+], category='系统/通用', tags=['转换', '布尔'])
 def convert_to_boolean(**kwargs):
     """将值转换为布尔值
 
@@ -765,10 +765,10 @@ def convert_to_boolean(**kwargs):
         bool: 转换后的布尔值
     """
     value = kwargs.get('value')
-    
+
     try:
         result = bool(value)
-        
+
         with allure.step(f"转换为布尔值: {type(value).__name__} -> bool"):
             allure.attach(
                 f"原始值: {value}\n原始类型: {type(value).__name__}\n"
@@ -776,7 +776,7 @@ def convert_to_boolean(**kwargs):
                 name="布尔值转换结果",
                 attachment_type=allure.attachment_type.TEXT
             )
-        
+
         return result
     except Exception as e:
         allure.attach(

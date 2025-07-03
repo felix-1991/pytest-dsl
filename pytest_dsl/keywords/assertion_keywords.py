@@ -100,7 +100,7 @@ def _compare_values(actual: Any, expected: Any, operator: str = "==") -> bool:
     {'name': '条件', 'mapping': 'condition', 
      'description': '断言条件表达式，例如: "${value} == 100" 或 "1 + 1 == 2"'},
     {'name': '消息', 'mapping': 'message', 'description': '断言失败时的错误消息', 'default': '断言失败'},
-])
+], category='系统/断言', tags=['验证', '条件'])
 def assert_condition(**kwargs):
     """执行表达式断言
 
@@ -359,7 +359,7 @@ def assert_condition(**kwargs):
     {'name': '预期值', 'mapping': 'expected_value', 'description': '预期的值'},
     {'name': '操作符', 'mapping': 'operator', 'description': '比较操作符', 'default': '=='},
     {'name': '消息', 'mapping': 'message', 'description': '断言失败时的错误消息', 'default': 'JSON断言失败'},
-])
+], category='系统/断言', tags=['验证', 'JSON'])
 def assert_json(**kwargs):
     """执行JSON断言
 
@@ -425,7 +425,7 @@ def assert_json(**kwargs):
     {'name': 'JSON数据', 'mapping': 'json_data', 'description': 'JSON数据（字符串或对象）'},
     {'name': 'JSONPath', 'mapping': 'jsonpath', 'description': 'JSONPath表达式'},
     {'name': '变量名', 'mapping': 'variable', 'description': '存储提取值的变量名'},
-])
+], category='系统/数据提取', tags=['JSON', '提取'])
 def extract_json(**kwargs):
     """从JSON数据中提取值并保存到变量
 
@@ -483,7 +483,7 @@ def extract_json(**kwargs):
     {'name': '值', 'mapping': 'value', 'description': '要检查的值'},
     {'name': '类型', 'mapping': 'type', 'description': '预期的类型 (string, number, boolean, list, object, null)'},
     {'name': '消息', 'mapping': 'message', 'description': '断言失败时的错误消息', 'default': '类型断言失败'},
-])
+], category='系统/断言', tags=['类型', '验证'])
 def assert_type(**kwargs):
     """断言值的类型
 
@@ -553,7 +553,7 @@ def assert_type(**kwargs):
     {'name': '预期值', 'mapping': 'expected', 'description': '预期值'},
     {'name': '操作符', 'mapping': 'operator', 'description': '比较操作符', 'default': '=='},
     {'name': '消息', 'mapping': 'message', 'description': '断言失败时的错误消息', 'default': '数据比较失败'},
-])
+], category='系统/断言', tags=['比较', '验证'])
 def compare_values(**kwargs):
     """比较两个值
 

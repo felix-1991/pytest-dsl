@@ -11,6 +11,7 @@ Python代码自定义关键字是通过`@keyword_manager.register`装饰器在Py
 - 🌐 **远程支持** - 支持分布式执行和远程调用
 - 📦 **易于分发** - 可以打包成Python模块分享
 - 🛡️ **类型安全** - 支持参数验证和类型检查
+- 📋 **多级分类** - 支持层次化的功能分类组织
 
 ## 基本语法
 
@@ -22,7 +23,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
 @keyword_manager.register('关键字名称', [
     {'name': '参数显示名', 'mapping': 'param_name', 'description': '参数描述'},
     {'name': '可选参数', 'mapping': 'optional_param', 'description': '可选参数', 'default': '默认值'}
-])
+], category='功能分类', tags=['标签1', '标签2'])
 def keyword_function(**kwargs):
     """关键字功能描述"""
     # 获取参数
@@ -43,6 +44,15 @@ def keyword_function(**kwargs):
 - `mapping`: Python函数中的参数名（英文）
 - `description`: 参数描述
 - `default`: 默认值（可选）
+
+### 多级分类配置
+
+注册关键字时支持以下额外参数：
+
+- `category`: 功能分类（支持多级分类，如：`'数据/JSON'`、`'UI/浏览器'`、`'系统/调试'`等）
+- `tags`: 标签列表（可选，用于更细粒度的关键字标记）
+
+您也可以创建自定义分类，如：`'业务逻辑/用户管理'`、`'测试工具/报告生成'` 等。
 
 ## 快速入门示例
 
@@ -77,7 +87,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
     {'name': '文本内容', 'mapping': 'text', 'description': '要处理的文本'},
     {'name': '操作类型', 'mapping': 'operation', 'description': '处理类型：upper/lower/title'},
     {'name': '去除空格', 'mapping': 'strip_spaces', 'description': '是否去除首尾空格', 'default': True}
-])
+], category='数据/文本', tags=['文本处理', '字符串'])
 def text_processor(**kwargs):
     """文本处理关键字"""
     text = kwargs.get('text', '')
@@ -103,7 +113,7 @@ def text_processor(**kwargs):
 @keyword_manager.register('生成随机字符串', [
     {'name': '长度', 'mapping': 'length', 'description': '字符串长度', 'default': 8},
     {'name': '类型', 'mapping': 'char_type', 'description': '字符类型：letters/digits/mixed', 'default': 'mixed'}
-])
+], category='数据/生成', tags=['随机', '字符串', '生成'])
 def generate_random_string(**kwargs):
     """生成随机字符串"""
     import random
@@ -159,7 +169,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
     {'name': '超时', 'mapping': 'timeout', 'description': '超时时间（秒）', 'default': 30},
     {'name': '重试次数', 'mapping': 'retries', 'description': '重试次数', 'default': 3},
     {'name': '验证SSL', 'mapping': 'verify_ssl', 'description': '是否验证SSL证书', 'default': True}
-])
+], category='HTTP', tags=['HTTP', '请求', 'API'])
 def http_request(**kwargs):
     """HTTP请求关键字，支持重试和错误处理"""
     url = kwargs.get('url')
@@ -220,7 +230,7 @@ def http_request(**kwargs):
     {'name': '期望状态码', 'mapping': 'expected_status', 'description': '期望的状态码', 'default': 200},
     {'name': 'JSON路径', 'mapping': 'json_path', 'description': 'JSONPath表达式', 'default': None},
     {'name': '期望值', 'mapping': 'expected_value', 'description': '期望的值', 'default': None}
-])
+], category='HTTP', tags=['断言', 'API', '验证'])
 def api_assert(**kwargs):
     """API响应断言"""
     response = kwargs.get('response')
@@ -265,7 +275,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
     {'name': 'SQL语句', 'mapping': 'sql', 'description': 'SQL查询语句'},
     {'name': '参数', 'mapping': 'params', 'description': 'SQL参数', 'default': []},
     {'name': '返回格式', 'mapping': 'format', 'description': '返回格式：dict/list', 'default': 'dict'}
-])
+], category='数据/数据库', tags=['数据库', 'SQL', '查询'])
 def database_query(**kwargs):
     """数据库查询关键字"""
     db_path = kwargs.get('db_path')
@@ -305,7 +315,7 @@ def database_query(**kwargs):
     {'name': '表名', 'mapping': 'table_name', 'description': '表名'},
     {'name': '数据', 'mapping': 'data', 'description': '要插入的数据（字典或字典列表）'},
     {'name': '清空表', 'mapping': 'clear_table', 'description': '插入前是否清空表', 'default': False}
-])
+], category='数据/数据库', tags=['数据库', '测试数据', '创建'])
 def create_test_data(**kwargs):
     """创建测试数据"""
     db_path = kwargs.get('db_path')
@@ -362,7 +372,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
     {'name': '文件路径', 'mapping': 'file_path', 'description': '文件路径'},
     {'name': '内容', 'mapping': 'content', 'description': '文件内容（写入时使用）', 'default': ''},
     {'name': '编码', 'mapping': 'encoding', 'description': '文件编码', 'default': 'utf-8'}
-])
+], category='数据/文件', tags=['文件', '读写', 'IO'])
 def file_operation(**kwargs):
     """文件操作关键字"""
     operation = kwargs.get('operation')
@@ -405,7 +415,7 @@ def file_operation(**kwargs):
     {'name': '文件路径', 'mapping': 'file_path', 'description': 'JSON文件路径'},
     {'name': '数据', 'mapping': 'data', 'description': 'JSON数据（保存时使用）', 'default': None},
     {'name': '格式化', 'mapping': 'indent', 'description': '格式化缩进', 'default': 2}
-])
+], category='数据/JSON', tags=['JSON', '文件', '序列化'])
 def json_file_handler(**kwargs):
     """JSON文件处理"""
     operation = kwargs.get('operation')
@@ -438,7 +448,7 @@ def json_file_handler(**kwargs):
     {'name': '文件路径', 'mapping': 'file_path', 'description': 'CSV文件路径'},
     {'name': '数据', 'mapping': 'data', 'description': 'CSV数据（写入时使用）', 'default': []},
     {'name': '表头', 'mapping': 'headers', 'description': 'CSV表头', 'default': None}
-])
+], category='数据/文件', tags=['CSV', '文件', '表格'])
 def csv_file_handler(**kwargs):
     """CSV文件处理"""
     operation = kwargs.get('operation')
@@ -492,7 +502,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
     {'name': '操作类型', 'mapping': 'operation', 'description': '操作类型：upload/download/delete'},
     {'name': '本地路径', 'mapping': 'local_path', 'description': '本地文件路径'},
     {'name': '远程路径', 'mapping': 'remote_path', 'description': '远程文件路径'}
-])
+], category='数据/文件', tags=['远程', '文件', '传输'])
 def remote_file_operation(**kwargs):
     """远程文件操作关键字"""
     server = kwargs.get('server')
@@ -518,7 +528,7 @@ def remote_file_operation(**kwargs):
     {'name': '数据库连接', 'mapping': 'db_config', 'description': '数据库连接配置'},
     {'name': 'SQL语句', 'mapping': 'sql', 'description': 'SQL语句'},
     {'name': '参数', 'mapping': 'params', 'description': 'SQL参数', 'default': []}
-])
+], category='数据/数据库', tags=['远程', '数据库', 'SQL'])
 def remote_database_operation(**kwargs):
     """远程数据库操作关键字"""
     db_config = kwargs.get('db_config')
@@ -548,7 +558,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
 @keyword_manager.register('设置全局变量', [
     {'name': '变量名', 'mapping': 'var_name', 'description': '变量名称'},
     {'name': '变量值', 'mapping': 'var_value', 'description': '变量值'}
-])
+], category='数据/变量', tags=['变量', '设置', '全局'])
 def set_global_variable(**kwargs):
     """设置全局变量"""
     var_name = kwargs.get('var_name')

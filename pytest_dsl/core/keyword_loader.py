@@ -213,7 +213,7 @@ class KeywordLoader:
 
     def categorize_keyword(self, keyword_name: str, keyword_info: Dict[str, Any],
                           project_custom_keywords: Optional[Dict[str, Any]] = None) -> str:
-        """判断关键字的类别
+        """判断关键字的来源类别
 
         Args:
             keyword_name: 关键字名称
@@ -221,7 +221,7 @@ class KeywordLoader:
             project_custom_keywords: 项目自定义关键字信息
 
         Returns:
-            关键字类别：'builtin', 'plugin', 'custom', 'project_custom', 'remote'
+            关键字来源类别：'builtin', 'plugin', 'custom', 'project_custom', 'remote'
         """
         # 优先使用存储的来源信息
         source_type = keyword_info.get('source_type')
@@ -251,6 +251,14 @@ class KeywordLoader:
                 return 'builtin'
 
         return 'custom'
+
+    def get_functional_category(self, keyword_info: Dict[str, Any]) -> str:
+        """获取关键字的功能分类"""
+        return keyword_info.get('functional_category', 'other')
+
+    def get_keyword_tags(self, keyword_info: Dict[str, Any]) -> set:
+        """获取关键字的标签"""
+        return keyword_info.get('tags', set())
 
     def get_keyword_source_info(self, keyword_info: Dict[str, Any]) -> Dict[str, Any]:
         """获取关键字的详细来源信息
@@ -314,6 +322,105 @@ class KeywordLoader:
             })
 
         return groups
+
+    def group_keywords_by_functional_category(self, keywords_dict: Dict[str, Any]) -> Dict[str, List]:
+        """按功能分类分组关键字
+
+        Args:
+            keywords_dict: 关键字字典
+
+        Returns:
+            按功能分类分组的关键字字典
+        """
+        groups = {}
+
+        for keyword_name, keyword_info in keywords_dict.items():
+            functional_category = self.get_functional_category(keyword_info)
+            
+            if functional_category not in groups:
+                groups[functional_category] = []
+            
+            groups[functional_category].append({
+                'name': keyword_name,
+                'info': keyword_info,
+                'tags': list(self.get_keyword_tags(keyword_info))
+            })
+
+        return groups
+
+    def group_keywords_by_tags(self, keywords_dict: Dict[str, Any]) -> Dict[str, List]:
+        """按标签分组关键字
+
+        Args:
+            keywords_dict: 关键字字典
+
+        Returns:
+            按标签分组的关键字字典
+        """
+        groups = {}
+
+        for keyword_name, keyword_info in keywords_dict.items():
+            tags = self.get_keyword_tags(keyword_info)
+            
+            for tag in tags:
+                if tag not in groups:
+                    groups[tag] = []
+                
+                groups[tag].append({
+                    'name': keyword_name,
+                    'info': keyword_info,
+                    'functional_category': self.get_functional_category(keyword_info)
+                })
+
+        return groups
+
+    def get_keyword_statistics(self, keywords_dict: Dict[str, Any],
+                              project_custom_keywords: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """获取关键字统计信息
+
+        Args:
+            keywords_dict: 关键字字典
+            project_custom_keywords: 项目自定义关键字信息
+
+        Returns:
+            统计信息字典
+        """
+        stats = {
+            'total_count': len(keywords_dict),
+            'source_counts': {},
+            'category_name_counts': {},
+            'tag_counts': {},
+            'combined_stats': {}
+        }
+
+        # 按来源统计
+        for keyword_name, keyword_info in keywords_dict.items():
+            source_category = self.categorize_keyword(
+                keyword_name, keyword_info, project_custom_keywords
+            )
+            stats['source_counts'][source_category] = stats['source_counts'].get(source_category, 0) + 1
+
+        # 按功能分类统计
+        for keyword_name, keyword_info in keywords_dict.items():
+            category_name = keyword_info.get('category', '其他')
+            stats['category_name_counts'][category_name] = stats['category_name_counts'].get(category_name, 0) + 1
+
+        # 按标签统计
+        for keyword_name, keyword_info in keywords_dict.items():
+            tags = self.get_keyword_tags(keyword_info)
+            for tag in tags:
+                stats['tag_counts'][tag] = stats['tag_counts'].get(tag, 0) + 1
+
+        # 组合统计（来源+功能分类）
+        for keyword_name, keyword_info in keywords_dict.items():
+            source_category = self.categorize_keyword(
+                keyword_name, keyword_info, project_custom_keywords
+            )
+            functional_category = self.get_functional_category(keyword_info)
+            combined_key = f"{source_category}:{functional_category}"
+            stats['combined_stats'][combined_key] = stats['combined_stats'].get(combined_key, 0) + 1
+
+        return stats
 
     def get_all_keywords(self) -> Dict[str, Any]:
         """获取所有已注册的关键字

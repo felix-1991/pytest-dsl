@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional, Union, List
 
 from pytest_dsl.core.keyword_loader import (
     load_all_keywords, categorize_keyword, get_keyword_source_info,
-    group_keywords_by_source
+    group_keywords_by_source, keyword_loader
 )
 from pytest_dsl.core.keyword_manager import keyword_manager
 
@@ -25,15 +25,31 @@ class KeywordInfo:
         self.project_custom_keywords = project_custom_keywords
         self._category = None
         self._source_info = None
+        self._functional_category = None
+        self._tags = None
 
     @property
     def category(self) -> str:
-        """获取关键字类别"""
+        """获取关键字来源类别"""
         if self._category is None:
             self._category = categorize_keyword(
                 self.name, self.info, self.project_custom_keywords
             )
         return self._category
+
+    @property
+    def category_name(self) -> str:
+        """获取关键字功能分类"""
+        if self._functional_category is None:
+            self._functional_category = self.info.get('category', '其他')
+        return self._functional_category
+
+    @property
+    def tags(self) -> set:
+        """获取关键字标签"""
+        if self._tags is None:
+            self._tags = self.info.get('tags', set())
+        return self._tags
 
     @property
     def source_info(self) -> Dict[str, Any]:
@@ -104,13 +120,19 @@ class KeywordListOptions:
                  output_format: str = 'json',
                  name_filter: Optional[str] = None,
                  category_filter: str = 'all',
+                 category_name_filter: str = 'all',
+                 tags_filter: Optional[List[str]] = None,
                  include_remote: bool = False,
-                 output_file: Optional[str] = None):
+                 output_file: Optional[str] = None,
+                 group_by: str = 'source'):
         self.output_format = output_format
         self.name_filter = name_filter
         self.category_filter = category_filter
+        self.category_name_filter = category_name_filter
+        self.tags_filter = tags_filter or []
         self.include_remote = include_remote
         self.output_file = output_file
+        self.group_by = group_by  # 'source', 'category', 'tags', 'flat'
 
     def should_include_keyword(self, keyword_info: KeywordInfo) -> bool:
         """判断是否应该包含此关键字"""
@@ -124,10 +146,25 @@ class KeywordListOptions:
                 keyword_info.info.get('remote', False)):
             return False
 
-        # 类别过滤
+        # 来源类别过滤
         if (self.category_filter != 'all' and
                 keyword_info.category != self.category_filter):
             return False
+
+        # 功能分类过滤
+        if (self.category_name_filter != 'all' and
+                keyword_info.category_name != self.category_name_filter):
+            return False
+
+        # 标签过滤
+        if self.tags_filter:
+            keyword_tags = keyword_info.tags
+            tags_filter_set = set(tag.lower() for tag in self.tags_filter)
+            keyword_tags_lower = set(tag.lower() for tag in keyword_tags)
+            
+            # 要求包含所有指定的标签
+            if not tags_filter_set.issubset(keyword_tags_lower):
+                return False
 
         return True
 
@@ -144,19 +181,39 @@ class KeywordFormatter:
             'remote': '远程'
         }
 
+        # 获取功能分类名称
+        self.category_display_names = {}
+        categories = keyword_manager.get_categories()
+        for key, info in categories.items():
+            self.category_display_names[key] = info['name']
+
     def format_text(self, keyword_info: KeywordInfo,
-                    show_category: bool = True) -> str:
+                    show_category: bool = True, show_category_name: bool = True,
+                    show_tags: bool = True) -> str:
         """格式化为文本格式"""
         lines = []
 
         # 关键字名称和类别
+        title_parts = [f"关键字: {keyword_info.name}"]
+        
         if show_category:
             category_display = self.category_names.get(
                 keyword_info.category, '未知'
             )
-            lines.append(f"关键字: {keyword_info.name} [{category_display}]")
-        else:
-            lines.append(f"关键字: {keyword_info.name}")
+            title_parts.append(f"[{category_display}]")
+        
+        if show_category_name:
+            category_display = self.category_display_names.get(
+                keyword_info.category_name, keyword_info.category_name
+            )
+            title_parts.append(f"({category_display})")
+        
+        lines.append(" ".join(title_parts))
+
+        # 标签信息
+        if show_tags and keyword_info.tags:
+            tags_display = ", ".join(sorted(keyword_info.tags))
+            lines.append(f"  标签: {tags_display}")
 
         # 远程关键字特殊信息
         if keyword_info.remote_info:
@@ -172,32 +229,25 @@ class KeywordFormatter:
         parameters = keyword_info.parameters
         if parameters:
             lines.append("  参数:")
-            for param_info in parameters:
-                param_name = param_info['name']
-                param_mapping = param_info.get('mapping', '')
-                param_desc = param_info.get('description', '')
-                param_default = param_info.get('default', None)
+            for param in parameters:
+                param_desc = f"    - {param['name']}"
+                if param.get('default') is not None:
+                    param_desc += f" (默认: {param['default']})"
+                param_desc += f": {param['description']}"
+                lines.append(param_desc)
 
-                # 构建参数描述
-                param_parts = []
-                if param_mapping and param_mapping != param_name:
-                    param_parts.append(f"{param_name} ({param_mapping})")
-                else:
-                    param_parts.append(param_name)
-
-                param_parts.append(f": {param_desc}")
-
-                # 添加默认值信息
-                if param_default is not None:
-                    param_parts.append(f" (默认值: {param_default})")
-
-                lines.append(f"    {''.join(param_parts)}")
-        else:
-            lines.append("  参数: 无")
-
-        # 函数文档
+        # 文档字符串
         if keyword_info.documentation:
-            lines.append(f"  说明: {keyword_info.documentation}")
+            doc_lines = keyword_info.documentation.split('\n')
+            if doc_lines:
+                lines.append(f"  说明: {doc_lines[0]}")
+
+        # 来源信息
+        source_info = keyword_info.source_info
+        if source_info.get('module'):
+            lines.append(f"  来源: {source_info['name']} ({source_info['module']})")
+        else:
+            lines.append(f"  来源: {source_info['name']}")
 
         return '\n'.join(lines)
 
@@ -206,6 +256,8 @@ class KeywordFormatter:
         keyword_data = {
             'name': keyword_info.name,
             'category': keyword_info.category,
+            'category_name': keyword_info.category_name,
+            'tags': list(keyword_info.tags),
             'source_info': keyword_info.source_info,
             'parameters': keyword_info.parameters
         }
@@ -281,28 +333,36 @@ class KeywordLister:
         Returns:
             统计摘要信息
         """
-        total_count = len(keywords)
-        category_counts = {}
-        source_counts = {}
+        # 使用新的统计功能
+        keywords_dict = {kw.name: kw.info for kw in keywords}
+        stats = keyword_loader.get_keyword_statistics(
+            keywords_dict, self._project_custom_keywords
+        )
 
-        for keyword_info in keywords:
-            # 类别统计
-            cat = keyword_info.category
-            category_counts[cat] = category_counts.get(cat, 0) + 1
-
-            # 来源统计
-            source_name = keyword_info.source_info['name']
-            if keyword_info.file_location:
-                source_name = keyword_info.file_location
-
-            source_key = f"{cat}:{source_name}"
-            source_counts[source_key] = source_counts.get(source_key, 0) + 1
-
-        return {
-            'total_count': total_count,
-            'category_counts': category_counts,
-            'source_counts': source_counts
+        # 添加传统格式以保持兼容性
+        legacy_stats = {
+            'total_count': stats['total_count'],
+            'category_counts': stats['source_counts'],  # 保持原有的命名
+            'source_counts': {}
         }
+
+        # 生成传统的source_counts格式
+        for keyword in keywords:
+            source_name = keyword.source_info['name']
+            if keyword.file_location:
+                source_name = keyword.file_location
+
+            source_key = f"{keyword.category}:{source_name}"
+            legacy_stats['source_counts'][source_key] = legacy_stats['source_counts'].get(source_key, 0) + 1
+
+        # 添加新的统计信息
+        legacy_stats.update({
+            'category_name_counts': stats['category_name_counts'],
+            'tag_counts': stats['tag_counts'],
+            'combined_stats': stats['combined_stats']
+        })
+
+        return legacy_stats
 
     def list_keywords_text(self, options: KeywordListOptions) -> str:
         """以文本格式列出关键字"""
@@ -313,18 +373,51 @@ class KeywordLister:
             if options.name_filter:
                 return f"未找到包含 '{options.name_filter}' 的关键字"
             else:
-                return f"未找到 {options.category_filter} 类别的关键字"
+                filters = []
+                if options.category_filter != 'all':
+                    filters.append(f"来源类别:{options.category_filter}")
+                if options.category_name_filter != 'all':
+                    filters.append(f"功能分类:{options.category_name_filter}")
+                if options.tags_filter:
+                    filters.append(f"标签:{','.join(options.tags_filter)}")
+                
+                filter_text = "、".join(filters) if filters else "all"
+                return f"未找到符合条件的关键字 ({filter_text})"
 
         lines = []
 
         # 统计信息
         lines.append(f"找到 {summary['total_count']} 个关键字:")
+        
+        # 按来源统计
+        lines.append("按来源分类:")
         for cat, count in summary['category_counts'].items():
             cat_display = self.formatter.category_names.get(cat, cat)
             lines.append(f"  {cat_display}: {count} 个")
+        
+        # 按功能分类统计
+        if summary.get('category_name_counts'):
+            lines.append("按功能分类:")
+            for cat, count in summary['category_name_counts'].items():
+                cat_display = self.formatter.category_display_names.get(cat, cat)
+                lines.append(f"  {cat_display}: {count} 个")
+        
         lines.append("-" * 60)
 
-        # 按类别和来源分组显示
+        # 根据group_by选项分组显示
+        if options.group_by == 'category':
+            self._add_category_groups(lines, keywords)
+        elif options.group_by == 'tags':
+            self._add_tag_groups(lines, keywords)
+        elif options.group_by == 'flat':
+            self._add_flat_list(lines, keywords)
+        else:  # 默认按来源分组
+            self._add_source_groups(lines, keywords)
+
+        return '\n'.join(lines)
+
+    def _add_source_groups(self, lines: List[str], keywords: List[KeywordInfo]):
+        """添加按来源分组的关键字列表"""
         all_keywords_dict = {kw.name: kw.info for kw in keywords}
         grouped = group_keywords_by_source(
             all_keywords_dict, self._project_custom_keywords
@@ -356,7 +449,108 @@ class KeywordLister:
                         keyword_info, show_category=False
                     ))
 
-        return '\n'.join(lines)
+    def _add_category_groups(self, lines: List[str], keywords: List[KeywordInfo]):
+        """添加按功能分类分组的关键字列表（支持多级分类）"""
+        # 使用keyword_manager的层次化分类方法
+        all_keywords_dict = {kw.name: kw for kw in keywords}
+        hierarchical_groups = {}
+        
+        # 按多级分类分组
+        for keyword_info in keywords:
+            category = keyword_info.category_name
+            if '/' in category:
+                level1, level2 = category.split('/', 1)
+            else:
+                level1, level2 = category, '基础'
+            
+            if level1 not in hierarchical_groups:
+                hierarchical_groups[level1] = {}
+            if level2 not in hierarchical_groups[level1]:
+                hierarchical_groups[level1][level2] = []
+            
+            hierarchical_groups[level1][level2].append(keyword_info)
+
+        # 按预定义的顺序显示一级分类
+        level1_order = ['HTTP', 'UI', '数据', '系统', '其他']
+        
+        for level1 in level1_order:
+            if level1 not in hierarchical_groups or not hierarchical_groups[level1]:
+                continue
+
+            # 显示一级分类标题
+            lines.append(f"\n=== {level1} ===")
+            
+            # 按二级分类排序并显示
+            level2_categories = hierarchical_groups[level1]
+            for level2 in sorted(level2_categories.keys()):
+                if not level2_categories[level2]:
+                    continue
+                
+                # 如果只有一个二级分类且名为"基础"，不显示二级标题
+                if len(level2_categories) == 1 and level2 == '基础':
+                    # 直接显示关键字
+                    for keyword_info in level2_categories[level2]:
+                        lines.append("")
+                        lines.append(self.formatter.format_text(
+                            keyword_info, show_category=True, show_category_name=False
+                        ))
+                else:
+                    # 显示二级分类标题
+                    lines.append(f"\n  -- {level2} --")
+                    for keyword_info in level2_categories[level2]:
+                        lines.append("")
+                        lines.append(self.formatter.format_text(
+                            keyword_info, show_category=True, show_category_name=False
+                        ))
+
+        # 处理其他未在预定义顺序中的一级分类
+        for level1 in hierarchical_groups:
+            if level1 not in level1_order:
+                lines.append(f"\n=== {level1} ===")
+                level2_categories = hierarchical_groups[level1]
+                for level2 in sorted(level2_categories.keys()):
+                    if not level2_categories[level2]:
+                        continue
+                    
+                    if len(level2_categories) == 1 and level2 == '基础':
+                        for keyword_info in level2_categories[level2]:
+                            lines.append("")
+                            lines.append(self.formatter.format_text(
+                                keyword_info, show_category=True, show_category_name=False
+                            ))
+                    else:
+                        lines.append(f"\n  -- {level2} --")
+                        for keyword_info in level2_categories[level2]:
+                            lines.append("")
+                            lines.append(self.formatter.format_text(
+                                keyword_info, show_category=True, show_category_name=False
+                            ))
+
+    def _add_tag_groups(self, lines: List[str], keywords: List[KeywordInfo]):
+        """添加按标签分组的关键字列表"""
+        all_keywords_dict = {kw.name: kw.info for kw in keywords}
+        grouped = keyword_loader.group_keywords_by_tags(all_keywords_dict)
+
+        # 按标签名称排序
+        for tag in sorted(grouped.keys()):
+            lines.append(f"\n=== 标签: {tag} ===")
+
+            for keyword_data in grouped[tag]:
+                name = keyword_data['name']
+                keyword_info = next(kw for kw in keywords if kw.name == name)
+                lines.append("")
+                lines.append(self.formatter.format_text(
+                    keyword_info, show_tags=False
+                ))
+
+    def _add_flat_list(self, lines: List[str], keywords: List[KeywordInfo]):
+        """添加平铺的关键字列表"""
+        # 按名称排序
+        keywords.sort(key=lambda x: x.name)
+
+        for keyword_info in keywords:
+            lines.append("")
+            lines.append(self.formatter.format_text(keyword_info))
 
     def list_keywords_json(self, options: KeywordListOptions) -> Dict[str, Any]:
         """以JSON格式列出关键字"""
@@ -365,6 +559,7 @@ class KeywordLister:
 
         keywords_data = {
             'summary': summary,
+            'categories': keyword_manager.get_categories(),
             'keywords': []
         }
 
@@ -406,6 +601,7 @@ def generate_html_report(keywords_data: Dict[str, Any], output_file: str):
     # 准备数据
     summary = keywords_data['summary']
     keywords = keywords_data['keywords']
+    functional_categories = keywords_data.get('functional_categories', {})
 
     # 按类别分组
     categories = {}
@@ -414,6 +610,14 @@ def generate_html_report(keywords_data: Dict[str, Any], output_file: str):
         if category not in categories:
             categories[category] = []
         categories[category].append(keyword)
+
+    # 按功能分类分组
+    functional_groups = {}
+    for keyword in keywords:
+        functional_category = keyword.get('functional_category', 'other')
+        if functional_category not in functional_groups:
+            functional_groups[functional_category] = []
+        functional_groups[functional_category].append(keyword)
 
     # 按来源分组
     source_groups = {}
@@ -463,8 +667,11 @@ def generate_html_report(keywords_data: Dict[str, Any], output_file: str):
         summary=summary,
         keywords=keywords,
         categories=categories,
+        functional_groups=functional_groups,
+        functional_categories=functional_categories,
         source_groups=source_groups,
-        category_names=category_names
+        category_names=category_names,
+        title="pytest-dsl 关键字报告"
     )
 
     # 写入文件
@@ -480,18 +687,24 @@ keyword_lister = KeywordLister()
 def list_keywords(output_format: str = 'json',
                   name_filter: Optional[str] = None,
                   category_filter: str = 'all',
+                  category_name_filter: str = 'all',
+                  tags_filter: Optional[List[str]] = None,
                   include_remote: bool = False,
                   output_file: Optional[str] = None,
-                  print_summary: bool = True) -> Union[str, Dict[str, Any], None]:
+                  print_summary: bool = True,
+                  group_by: str = 'source') -> Union[str, Dict[str, Any], None]:
     """列出关键字的便捷函数
 
     Args:
         output_format: 输出格式 ('text', 'json', 'html')
         name_filter: 名称过滤器（支持部分匹配）
-        category_filter: 类别过滤器
+        category_filter: 来源类别过滤器
+        category_name_filter: 功能分类过滤器
+        tags_filter: 标签过滤器列表
         include_remote: 是否包含远程关键字
         output_file: 输出文件路径（可选）
         print_summary: 是否打印摘要信息
+        group_by: 分组方式 ('source', 'functional', 'tags', 'flat')
 
     Returns:
         根据输出格式返回相应的数据，如果输出到文件则返回None
@@ -500,8 +713,11 @@ def list_keywords(output_format: str = 'json',
         output_format=output_format,
         name_filter=name_filter,
         category_filter=category_filter,
+        category_name_filter=category_name_filter,
+        tags_filter=tags_filter,
         include_remote=include_remote,
-        output_file=output_file
+        output_file=output_file,
+        group_by=group_by
     )
 
     # 获取数据
@@ -555,6 +771,7 @@ def _print_json_summary(keywords_data: Dict[str, Any],
     summary = keywords_data['summary']
     total_count = summary['total_count']
     category_counts = summary['category_counts']
+    category_name_counts = summary.get('category_name_counts', {})
 
     if is_html:
         print(f"HTML报告已生成: {output_file}")
@@ -571,46 +788,117 @@ def _print_json_summary(keywords_data: Dict[str, Any],
         'remote': '远程'
     }
 
+    print("按来源分类:")
     for cat, count in category_counts.items():
         cat_display = category_names.get(cat, cat)
         print(f"  {cat_display}: {count} 个")
 
-
-def get_keyword_info(keyword_name: str,
-                     include_remote: bool = False) -> Optional[KeywordInfo]:
-    """获取单个关键字的详细信息
-
-    Args:
-        keyword_name: 关键字名称
-        include_remote: 是否包含远程关键字
-
-    Returns:
-        关键字信息对象，如果未找到则返回None
-    """
-    # 加载关键字
-    project_custom_keywords = load_all_keywords(include_remote=include_remote)
-
-    # 获取关键字信息
-    keyword_info = keyword_manager.get_keyword_info(keyword_name)
-    if not keyword_info:
-        return None
-
-    return KeywordInfo(keyword_name, keyword_info, project_custom_keywords)
+    if category_name_counts:
+        print("按功能分类:")
+        categories = keyword_manager.get_categories()
+        for cat, count in category_name_counts.items():
+            cat_display = categories.get(cat, {}).get('name', cat)
+            print(f"  {cat_display}: {count} 个")
 
 
 def search_keywords(pattern: str,
-                    include_remote: bool = False) -> List[KeywordInfo]:
+                    include_remote: bool = False,
+                    category_name: Optional[str] = None,
+                    tags: Optional[List[str]] = None) -> List[KeywordInfo]:
     """搜索匹配模式的关键字
 
     Args:
         pattern: 搜索模式（支持部分匹配）
         include_remote: 是否包含远程关键字
+        category_name: 功能分类过滤
+        tags: 标签过滤列表
 
     Returns:
         匹配的关键字信息列表
     """
     options = KeywordListOptions(
         name_filter=pattern,
+        category_name_filter=category_name or 'all',
+        tags_filter=tags,
         include_remote=include_remote
     )
     return keyword_lister.get_keywords(options)
+
+
+def get_keywords_by_category(category_name: str,
+                             include_remote: bool = False) -> List[KeywordInfo]:
+    """按功能分类获取关键字
+
+    Args:
+        category_name: 功能分类
+        include_remote: 是否包含远程关键字
+
+    Returns:
+        关键字信息列表
+    """
+    options = KeywordListOptions(
+        category_name_filter=category_name,
+        include_remote=include_remote
+    )
+    return keyword_lister.get_keywords(options)
+
+
+def get_keywords_by_tags(tags: List[str],
+                        include_remote: bool = False) -> List[KeywordInfo]:
+    """按标签获取关键字
+
+    Args:
+        tags: 标签列表
+        include_remote: 是否包含远程关键字
+
+    Returns:
+        关键字信息列表
+    """
+    options = KeywordListOptions(
+        tags_filter=tags,
+        include_remote=include_remote
+    )
+    return keyword_lister.get_keywords(options)
+
+
+def get_available_categories() -> Dict[str, Dict[str, str]]:
+    """获取可用的功能分类
+
+    Returns:
+        功能分类字典
+    """
+    return keyword_manager.get_categories()
+
+
+def get_available_tags() -> List[str]:
+    """获取所有可用的标签
+
+    Returns:
+        标签列表
+    """
+    return sorted(list(keyword_manager.get_all_tags()))
+
+
+# 为了向后兼容，保留原有的函数名
+def get_keyword_info(keyword_name: str, include_remote: bool = False) -> Optional[KeywordInfo]:
+    """获取单个关键字信息
+
+    Args:
+        keyword_name: 关键字名称
+        include_remote: 是否包含远程关键字
+
+    Returns:
+        关键字信息或None
+    """
+    options = KeywordListOptions(
+        name_filter=keyword_name,
+        include_remote=include_remote
+    )
+    keywords = keyword_lister.get_keywords(options)
+    
+    # 寻找精确匹配
+    for kw in keywords:
+        if kw.name == keyword_name:
+            return kw
+    
+    return None
