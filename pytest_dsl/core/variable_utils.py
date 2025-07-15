@@ -94,7 +94,7 @@ class VariableReplacer:
                 pass
         return value
 
-    def replace_in_string(self, value: str) -> str:
+    def replace_in_string(self, value: str) -> Any:
         """替换字符串中的变量引用
 
         支持多种访问语法：
@@ -108,7 +108,7 @@ class VariableReplacer:
             value: 包含变量引用的字符串
 
         Returns:
-            替换后的字符串
+            替换后的字符串或原始对象（如果整个值是单一变量引用）
 
         Raises:
             KeyError: 当变量不存在时
@@ -120,6 +120,17 @@ class VariableReplacer:
         # 匹配: ${variable}, ${obj.prop}, ${arr[0]}, ${dict["key"]}, ${obj[0].prop} 等
         pattern = r'\$\{([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*(?:(?:\.[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)|(?:\[[^\]]+\]))*)\}'
 
+        # 检查是否整个字符串就是一个变量引用
+        full_match = re.fullmatch(pattern, value)
+        if full_match:
+            # 如果整个字符串就是一个变量引用，直接返回变量值（保持原始类型）
+            var_ref = full_match.group(1)
+            try:
+                return self._parse_variable_path(var_ref)
+            except (KeyError, IndexError, TypeError) as e:
+                raise KeyError(f"无法解析变量引用 '${{{var_ref}}}': {str(e)}")
+
+        # 如果字符串中包含多个变量引用或混合了字面量，进行字符串替换
         result = value
         matches = list(re.finditer(pattern, result))
 
@@ -129,7 +140,7 @@ class VariableReplacer:
 
             try:
                 var_value = self._parse_variable_path(var_ref)
-                # 替换变量引用
+                # 替换变量引用，转换为字符串
                 result = result[:match.start()] + str(var_value) + \
                     result[match.end():]
             except (KeyError, IndexError, TypeError) as e:

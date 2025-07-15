@@ -1,0 +1,3 @@
+[flake8]
+ignore = S116
+max-line-length = 120
