@@ -200,7 +200,7 @@ def p_expr_atom(p):
     else:
         # 为基本表达式设置行号信息和类型信息
         expr_line = getattr(p.slice[1], 'lineno', None)
-        
+
         # 根据token类型创建不同的节点类型
         token_type = p.slice[1].type
         if token_type == 'STRING':
@@ -218,7 +218,7 @@ def p_expr_atom(p):
         else:
             # 其他类型，保持原来的行为
             expr_node = Node('Expression', value=p[1])
-        
+
         if expr_line is not None:
             expr_node.set_position(expr_line)
         p[0] = expr_node
@@ -277,9 +277,20 @@ def p_dict_item(p):
 
 
 def p_loop(p):
-    '''loop : FOR ID IN RANGE LPAREN expression COMMA expression RPAREN DO statements END'''  # noqa: E501
+    '''loop : FOR ID IN RANGE LPAREN expression COMMA expression RPAREN DO statements END
+            | FOR ID IN expression DO statements END
+            | FOR ID COMMA ID IN expression DO statements END'''  # noqa: E501
     line_number = getattr(p.slice[1], 'lineno', None)
-    p[0] = Node('ForLoop', [p[6], p[8], p[11]], p[2], line_number=line_number)
+
+    if len(p) == 13:
+        # 传统range语法: for i in range(0, 5) do ... end
+        p[0] = Node('ForRangeLoop', [p[6], p[8], p[11]], p[2], line_number=line_number)
+    elif len(p) == 8:
+        # 单变量遍历语法: for item in array do ... end
+        p[0] = Node('ForItemLoop', [p[4], p[6]], p[2], line_number=line_number)
+    else:
+        # 双变量遍历语法: for key, value in dict do ... end
+        p[0] = Node('ForKeyValueLoop', [p[6], p[8]], {'key_var': p[2], 'value_var': p[4]}, line_number=line_number)
 
 
 def p_keyword_call(p):

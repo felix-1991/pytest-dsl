@@ -843,11 +843,11 @@ class DSLExecutor:
         try:
             # 使用统一的序列化工具进行变量过滤
             from .serialization_utils import XMLRPCSerializer
-            
+
             variables_to_filter = {var_name: var_value}
             filtered_variables = XMLRPCSerializer.filter_variables(
                 variables_to_filter)
-            
+
             if not filtered_variables:
                 # 变量被过滤掉了（敏感变量或不可序列化）
                 return
@@ -879,27 +879,32 @@ class DSLExecutor:
             print(f"❌ 通知远程服务器变量变化时发生错误: {str(e)}")
 
     def _handle_for_loop(self, node):
-        """处理for循环"""
-        step_name = f"执行循环: {node.value}"
+        """处理传统for循环（向后兼容）"""
+        # 将传统的ForLoop转换为ForRangeLoop处理
+        return self._handle_for_range_loop(node)
+
+    def _handle_for_range_loop(self, node):
+        """处理range类型的for循环: for i in range(0, 5) do ... end"""
+        step_name = f"执行范围循环: {node.value}"
         line_info = self._get_line_info(node)
 
         with allure.step(step_name):
             try:
                 var_name = node.value
                 # 计算循环范围
-                loop_range = self.eval_expression(node.children[0])
+                start_range = self.eval_expression(node.children[0])
+                end_range = self.eval_expression(node.children[1])
 
-                # 如果是range对象，转换为列表
-                if hasattr(loop_range, '__iter__'):
-                    loop_items = list(loop_range)
-                else:
-                    loop_items = [loop_range]
+                # 构造range对象
+                loop_items = list(range(start_range, end_range))
 
                 allure.attach(
-                    f"循环变量: {var_name}\n循环范围: {loop_items}{line_info}",
-                    name="循环信息",
+                    f"循环变量: {var_name}\n循环范围: {start_range} 到 {end_range}\n循环项: {loop_items}{line_info}",
+                    name="范围循环信息",
                     attachment_type=allure.attachment_type.TEXT
                 )
+
+                statements_node = node.children[2]
 
                 for i in loop_items:
                     # 设置循环变量
@@ -911,7 +916,7 @@ class DSLExecutor:
 
                     with allure.step(f"循环轮次: {var_name} = {i}"):
                         try:
-                            self.execute(node.children[2])
+                            self.execute(statements_node)
                         except BreakException:
                             # 遇到break语句，退出循环
                             allure.attach(
@@ -940,7 +945,7 @@ class DSLExecutor:
                             # 在循环轮次内部记录异常详情
                             error_details = (f"循环执行异常 ({var_name} = {i}): "
                                              f"{str(e)}{line_info}\n"
-                                             f"上下文: 执行ForLoop节点")
+                                             f"上下文: 执行ForRangeLoop节点")
                             allure.attach(
                                 error_details,
                                 name="DSL执行异常",
@@ -953,8 +958,186 @@ class DSLExecutor:
                 raise
             except Exception as e:
                 # 在步骤内部记录异常详情
-                error_details = (f"执行ForLoop节点: {str(e)}{line_info}\n"
-                                 f"上下文: 执行ForLoop节点")
+                error_details = (f"执行ForRangeLoop节点: {str(e)}{line_info}\n"
+                                 f"上下文: 执行ForRangeLoop节点")
+                allure.attach(
+                    error_details,
+                    name="DSL执行异常",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+                # 重新抛出异常，让外层的统一异常处理机制处理
+                raise
+
+    def _handle_for_item_loop(self, node):
+        """处理单变量遍历循环: for item in array do ... end"""
+        step_name = f"执行遍历循环: {node.value}"
+        line_info = self._get_line_info(node)
+
+        with allure.step(step_name):
+            try:
+                var_name = node.value
+                # 获取要遍历的集合
+                collection = self.eval_expression(node.children[0])
+
+                # 确保collection是可迭代的
+                if not hasattr(collection, '__iter__'):
+                    raise TypeError(f"对象不可迭代: {type(collection).__name__}")
+
+                # 将collection转换为列表以便记录
+                loop_items = list(collection) if not isinstance(collection, list) else collection
+
+                allure.attach(
+                    f"循环变量: {var_name}\n遍历集合: {collection}\n集合类型: {type(collection).__name__}\n集合长度: {len(loop_items)}{line_info}",
+                    name="遍历循环信息",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+
+                statements_node = node.children[1]
+
+                for item in collection:
+                    # 设置循环变量
+                    self.variable_replacer.local_variables[var_name] = item
+                    self.test_context.set(var_name, item)
+
+                    # 通知远程服务器循环变量已更新
+                    self._notify_remote_servers_variable_changed(var_name, item)
+
+                    with allure.step(f"循环轮次: {var_name} = {item}"):
+                        try:
+                            self.execute(statements_node)
+                        except BreakException:
+                            # 遇到break语句，退出循环
+                            allure.attach(
+                                f"在 {var_name} = {item} 时遇到break语句，退出循环",
+                                name="循环Break",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            break
+                        except ContinueException:
+                            # 遇到continue语句，跳过本次循环
+                            allure.attach(
+                                f"在 {var_name} = {item} 时遇到continue语句，跳过本次循环",
+                                name="循环Continue",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            continue
+                        except ReturnException as e:
+                            # 遇到return语句，将异常向上传递
+                            allure.attach(
+                                f"在 {var_name} = {item} 时遇到return语句，退出函数",
+                                name="循环Return",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            raise e
+                        except Exception as e:
+                            # 在循环轮次内部记录异常详情
+                            error_details = (f"循环执行异常 ({var_name} = {item}): "
+                                             f"{str(e)}{line_info}\n"
+                                             f"上下文: 执行ForItemLoop节点")
+                            allure.attach(
+                                error_details,
+                                name="DSL执行异常",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            # 重新抛出异常
+                            raise
+            except (BreakException, ContinueException, ReturnException):
+                # 这些控制流异常应该继续向上传递
+                raise
+            except Exception as e:
+                # 在步骤内部记录异常详情
+                error_details = (f"执行ForItemLoop节点: {str(e)}{line_info}\n"
+                                 f"上下文: 执行ForItemLoop节点")
+                allure.attach(
+                    error_details,
+                    name="DSL执行异常",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+                # 重新抛出异常，让外层的统一异常处理机制处理
+                raise
+
+    def _handle_for_key_value_loop(self, node):
+        """处理键值对遍历循环: for key, value in dict do ... end"""
+        variables = node.value  # 包含 key_var 和 value_var
+        key_var = variables['key_var']
+        value_var = variables['value_var']
+        step_name = f"执行键值对循环: {key_var}, {value_var}"
+        line_info = self._get_line_info(node)
+
+        with allure.step(step_name):
+            try:
+                # 获取要遍历的字典
+                collection = self.eval_expression(node.children[0])
+
+                # 确保collection是字典类型
+                if not isinstance(collection, dict):
+                    raise TypeError(f"键值对遍历要求字典类型，得到: {type(collection).__name__}")
+
+                allure.attach(
+                    f"键变量: {key_var}\n值变量: {value_var}\n遍历字典: {collection}\n字典长度: {len(collection)}{line_info}",
+                    name="键值对循环信息",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+
+                statements_node = node.children[1]
+
+                for key, value in collection.items():
+                    # 设置循环变量
+                    self.variable_replacer.local_variables[key_var] = key
+                    self.variable_replacer.local_variables[value_var] = value
+                    self.test_context.set(key_var, key)
+                    self.test_context.set(value_var, value)
+
+                    # 通知远程服务器循环变量已更新 [[memory:3307036]]
+                    self._notify_remote_servers_variable_changed(key_var, key)
+                    self._notify_remote_servers_variable_changed(value_var, value)
+
+                    with allure.step(f"循环轮次: {key_var} = {key}, {value_var} = {value}"):
+                        try:
+                            self.execute(statements_node)
+                        except BreakException:
+                            # 遇到break语句，退出循环
+                            allure.attach(
+                                f"在 {key_var} = {key}, {value_var} = {value} 时遇到break语句，退出循环",
+                                name="循环Break",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            break
+                        except ContinueException:
+                            # 遇到continue语句，跳过本次循环
+                            allure.attach(
+                                f"在 {key_var} = {key}, {value_var} = {value} 时遇到continue语句，跳过本次循环",
+                                name="循环Continue",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            continue
+                        except ReturnException as e:
+                            # 遇到return语句，将异常向上传递
+                            allure.attach(
+                                f"在 {key_var} = {key}, {value_var} = {value} 时遇到return语句，退出函数",
+                                name="循环Return",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            raise e
+                        except Exception as e:
+                            # 在循环轮次内部记录异常详情
+                            error_details = (f"循环执行异常 ({key_var} = {key}, {value_var} = {value}): "
+                                             f"{str(e)}{line_info}\n"
+                                             f"上下文: 执行ForKeyValueLoop节点")
+                            allure.attach(
+                                error_details,
+                                name="DSL执行异常",
+                                attachment_type=allure.attachment_type.TEXT
+                            )
+                            # 重新抛出异常
+                            raise
+            except (BreakException, ContinueException, ReturnException):
+                # 这些控制流异常应该继续向上传递
+                raise
+            except Exception as e:
+                # 在步骤内部记录异常详情
+                error_details = (f"执行ForKeyValueLoop节点: {str(e)}{line_info}\n"
+                                 f"上下文: 执行ForKeyValueLoop节点")
                 allure.attach(
                     error_details,
                     name="DSL执行异常",
@@ -1068,7 +1251,7 @@ class DSLExecutor:
                     except Exception as e:
                         # 将异常重新包装，添加参数名信息，但不在这里记录到allure
                         raise Exception(
-                             f"参数解析异常 ({param_name}): {str(e)}")
+                            f"参数解析异常 ({param_name}): {str(e)}")
 
         return kwargs
 
@@ -1139,7 +1322,7 @@ class DSLExecutor:
             if hasattr(child, 'type') and child.type == 'ElifClause':
                 elif_condition = self.eval_expression(child.children[0])
                 if elif_condition:
-                    with allure.step(f"执行elif分支 {i-1}"):
+                    with allure.step(f"执行elif分支 {i - 1}"):
                         self.execute(child.children[1])
                         return
 
@@ -1309,7 +1492,10 @@ class DSLExecutor:
             'Statements': self._handle_statements,
             'Assignment': self._handle_assignment,
             'AssignmentKeywordCall': self._handle_assignment_keyword_call,
-            'ForLoop': self._handle_for_loop,
+            'ForLoop': self._handle_for_loop,  # 向后兼容
+            'ForRangeLoop': self._handle_for_range_loop,
+            'ForItemLoop': self._handle_for_item_loop,
+            'ForKeyValueLoop': self._handle_for_key_value_loop,
             'KeywordCall': self._execute_keyword_call,
             'Teardown': self._handle_teardown,
             'Return': self._handle_return,

@@ -68,7 +68,8 @@ def main():
         "test_dict_support.dsl",
         "test_if_elif_else.dsl",
         "test_break_continue_final.dsl",
-        "boolean_demo.dsl"
+        "boolean_demo.dsl",
+        "../test_new_for_loops.dsl",  # 新增：for循环语法测试
     ]
 
     # 数据驱动测试需要用pytest运行，这里只做语法检查

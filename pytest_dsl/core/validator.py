@@ -187,7 +187,7 @@ class DSLValidator:
 
         if max_indent > 40:  # 假设每层缩进4个空格，最多10层
             self.warnings.append(DSLValidationError(
-                "格式警告", f"嵌套层级过深（{max_indent//4}层），建议简化结构"
+                "格式警告", f"嵌套层级过深（{max_indent // 4}层），建议简化结构"
             ))
 
     def _validate_syntax(self, content: str) -> Optional[Node]:
@@ -237,7 +237,7 @@ class DSLValidator:
                     suggestion="变量名应以字母或下划线开头，只包含字母、数字、下划线或中文字符"
                 ))
 
-        elif node.type == 'ForLoop':
+        elif node.type in ['ForLoop', 'ForRangeLoop']:
             # 检查循环变量名
             loop_var = node.value
             if not self._is_valid_variable_name(loop_var):
@@ -245,6 +245,44 @@ class DSLValidator:
                     "语义错误",
                     f"无效的循环变量名: {loop_var}",
                     suggestion="循环变量名应以字母或下划线开头，只包含字母、数字、下划线或中文字符"
+                ))
+
+        elif node.type == 'ForItemLoop':
+            # 检查循环变量名
+            loop_var = node.value
+            if not self._is_valid_variable_name(loop_var):
+                self.errors.append(DSLValidationError(
+                    "语义错误",
+                    f"无效的循环变量名: {loop_var}",
+                    suggestion="循环变量名应以字母或下划线开头，只包含字母、数字、下划线或中文字符"
+                ))
+
+        elif node.type == 'ForKeyValueLoop':
+            # 检查键和值变量名
+            variables = node.value
+            key_var = variables.get('key_var')
+            value_var = variables.get('value_var')
+
+            if key_var and not self._is_valid_variable_name(key_var):
+                self.errors.append(DSLValidationError(
+                    "语义错误",
+                    f"无效的键变量名: {key_var}",
+                    suggestion="键变量名应以字母或下划线开头，只包含字母、数字、下划线或中文字符"
+                ))
+
+            if value_var and not self._is_valid_variable_name(value_var):
+                self.errors.append(DSLValidationError(
+                    "语义错误",
+                    f"无效的值变量名: {value_var}",
+                    suggestion="值变量名应以字母或下划线开头，只包含字母、数字、下划线或中文字符"
+                ))
+
+            # 检查键和值变量名不能相同
+            if key_var and value_var and key_var == value_var:
+                self.errors.append(DSLValidationError(
+                    "语义错误",
+                    f"键变量和值变量不能使用相同的名称: {key_var}",
+                    suggestion="为键和值使用不同的变量名"
                 ))
 
         elif node.type == 'Expression':

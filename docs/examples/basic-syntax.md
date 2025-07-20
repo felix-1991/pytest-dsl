@@ -119,11 +119,24 @@ for i in range(0, ${numbers_length}) do
     [打印], 内容: 数字: ${numbers[i]}
 end
 
+# 新增支持的循环语法：
+
+# 数组遍历 - 现在支持直接遍历数组！
+[打印], 内容: 遍历颜色数组（新语法）:
+for color in colors do
+    [打印], 内容: 颜色（直接遍历）: ${color}
+end
+
 # 注意：当前版本暂不支持以下语法：
-# - for item in array (直接遍历数组)
 # - for i, item in enumerate(array) (带索引遍历)
 # - while 循环
 # 这些功能将在后续版本中添加
+
+# 字典遍历 - 新增支持！
+[打印], 内容: 遍历用户字典:
+for property, value in user do
+    [打印], 内容: 属性: ${property}, 值: ${value}
+end
 
 # ===== 数据操作 =====
 
