@@ -12,7 +12,7 @@ pytest-dsl - 基于pytest的DSL测试框架
 - 自定义关键字支持
 """
 
-__version__ = "0.16.0"
+__version__ = "0.16.1"
 
 # 核心执行器
 from pytest_dsl.core.dsl_executor import DSLExecutor
@@ -23,6 +23,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager, KeywordManager
 # Hook系统
 from pytest_dsl.core.hookspecs import hookimpl, hookspec, DSLHookSpecs
 from pytest_dsl.core.hook_manager import hook_manager, DSLHookManager
+from pytest_dsl.core.hookable_keyword_manager import hookable_keyword_manager
 
 # DSL格式校验
 from pytest_dsl.core.validator import (
@@ -121,7 +122,7 @@ __all__ = [
 
     # Hook系统
     'hookimpl', 'hookspec', 'DSLHookSpecs',
-    'hook_manager', 'DSLHookManager', 'HookManager',
+    'hook_manager', 'DSLHookManager', 'HookManager', 'hookable_keyword_manager',
 
     # DSL校验
     'DSLValidator', 'Validator',

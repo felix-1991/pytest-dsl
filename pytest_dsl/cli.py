@@ -233,11 +233,23 @@ def run_dsl_tests(args):
     # 加载YAML变量（包括远程服务器自动连接）
     load_yaml_variables(args)
 
-    # 支持hook机制的执行
-    from pytest_dsl.core.hookable_executor import hookable_executor
+    # 支持hook机制的执行 - 使用DSLExecutor原生Hook支持
+    # hookable_executor已被移除，DSLExecutor原生支持Hook机制
+
+    # 创建支持Hook的DSL执行器
+    executor = DSLExecutor(enable_hooks=True)
 
     # 检查是否有hook提供的用例列表
-    hook_cases = hookable_executor.list_dsl_cases()
+    hook_cases = []
+    if executor.enable_hooks and executor.hook_manager:
+        try:
+            case_results = executor.hook_manager.pm.hook.dsl_list_cases()
+            for result in case_results:
+                if result:
+                    hook_cases.extend(result)
+        except Exception as e:
+            print(f"获取Hook用例失败: {e}")
+
     if hook_cases:
         # 如果有hook提供的用例，优先执行这些用例
         print(f"通过Hook发现 {len(hook_cases)} 个DSL用例")
@@ -246,7 +258,8 @@ def run_dsl_tests(args):
             case_id = case.get('id') or case.get('name', 'unknown')
             try:
                 print(f"执行用例: {case.get('name', case_id)}")
-                hookable_executor.execute_dsl(str(case_id))
+                # 使用DSLExecutor执行，内容为空时会通过Hook加载
+                executor.execute_from_content("", str(case_id))
                 print(f"✓ 用例 {case.get('name', case_id)} 执行成功")
             except Exception as e:
                 print(f"✗ 用例 {case.get('name', case_id)} 执行失败: {e}")
@@ -262,7 +275,9 @@ def run_dsl_tests(args):
     # 如果没有hook用例，使用传统的文件执行方式
     lexer = get_lexer()
     parser = get_parser()
-    executor = DSLExecutor()
+    # 复用之前创建的executor，如果没有则创建新的
+    if 'executor' not in locals():
+        executor = DSLExecutor(enable_hooks=True)
 
     # 检查路径是文件还是目录
     if os.path.isfile(path):

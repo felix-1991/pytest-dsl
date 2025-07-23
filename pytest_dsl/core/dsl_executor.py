@@ -1626,14 +1626,25 @@ class DSLExecutor:
         """初始化hook机制"""
         try:
             from .hook_manager import hook_manager
+            from .hookable_keyword_manager import hookable_keyword_manager
+
+            # 初始化Hook管理器
             hook_manager.initialize()
+
+            # 初始化Hookable关键字管理器
+            hookable_keyword_manager.initialize()
+
             # 调用hook注册自定义关键字
             hook_manager.pm.hook.dsl_register_custom_keywords()
+
             self.hook_manager = hook_manager
+            self.hookable_keyword_manager = hookable_keyword_manager
+
         except ImportError:
             # 如果没有安装pluggy，禁用hook
             self.enable_hooks = False
             self.hook_manager = None
+            self.hookable_keyword_manager = None
 
     def execute_from_content(self, content: str, dsl_id: str = None,
                              context: Dict[str, Any] = None) -> Any:
