@@ -32,7 +32,7 @@ def keyword_function(**kwargs):
     
     # 实现逻辑
     result = f"处理结果: {param_value}"
-    
+
     return result
 ```
 
@@ -491,24 +491,703 @@ def csv_file_handler(**kwargs):
 
 ## 远程关键字支持
 
-Python代码自定义关键字完全支持远程执行，这是其相对于DSL内关键字的重要优势：
+Python代码自定义关键字完全支持远程执行，这是其相对于DSL内关键字的重要优势。
+
+### 远程与本地执行模式
+
+pytest-dsl支持两种关键字执行模式：
+
+1. **本地模式**：关键字在当前进程中直接执行
+2. **远程模式**：关键字通过XML-RPC协议在远程服务器上执行
+
+### 关键字适配原则
+
+为了让自定义Python关键字在两种模式下都能正常工作，需要遵循以下原则：
+
+#### 1. 参数序列化兼容性
 
 ```python
-# keywords/remote_utils.py
+# ✅ 推荐：使用可序列化的参数类型
+@keyword_manager.register('数据处理', [
+    {'name': '数据', 'mapping': 'data', 'description': '要处理的数据'},
+    {'name': '配置', 'mapping': 'config', 'description': '处理配置（字典格式）'}
+], category='数据/处理', tags=['数据处理', '序列化'])
+def process_data(**kwargs):
+    data = kwargs.get('data')  # 字符串、数字、列表、字典等可序列化类型
+    config = kwargs.get('config', {})  # 字典类型
+
+    # 处理逻辑
+    return {'result': data, 'status': 'success'}
+
+# ❌ 避免：使用不可序列化的参数
+def bad_example(**kwargs):
+    file_obj = kwargs.get('file_object')  # 文件对象无法序列化
+    func = kwargs.get('callback')  # 函数对象无法序列化
+```
+
+#### 2. 返回值序列化兼容性
+
+```python
+# ✅ 推荐：返回可序列化的数据
+def good_keyword(**kwargs):
+    return {
+        'status': 'success',
+        'data': [1, 2, 3],
+        'message': '处理完成'
+    }
+
+# ❌ 避免：返回不可序列化的对象
+def bad_keyword(**kwargs):
+    import io
+    return io.StringIO("some data")  # IO对象无法序列化
+```
+
+#### 3. 依赖库处理
+
+```python
+# ✅ 推荐：在函数内部导入依赖
+@keyword_manager.register('HTTP请求', [
+    {'name': '地址', 'mapping': 'url', 'description': '请求地址'},
+    {'name': '方法', 'mapping': 'method', 'description': 'HTTP方法', 'default': 'GET'}
+], category='网络/HTTP', tags=['HTTP', '网络请求'])
+def http_request(**kwargs):
+    # 在函数内部导入，确保远程服务器也能访问
+    import requests
+
+    url = kwargs.get('url')
+    method = kwargs.get('method', 'GET')
+
+    response = requests.request(method, url)
+    return {
+        'status_code': response.status_code,
+        'text': response.text,
+        'headers': dict(response.headers)
+    }
+
+# ❌ 避免：在模块顶层导入可能在远程服务器上不存在的库
+import some_local_only_library  # 远程服务器可能没有这个库
+```
+
+#### 4. 文件路径处理
+
+```python
+# ✅ 推荐：使用相对路径或配置化路径
+@keyword_manager.register('文件读取', [
+    {'name': '文件路径', 'mapping': 'file_path', 'description': '文件路径'},
+    {'name': '编码', 'mapping': 'encoding', 'description': '文件编码', 'default': 'utf-8'}
+], category='数据/文件', tags=['文件', '读取'])
+def read_file(**kwargs):
+    import os
+    from pathlib import Path
+
+    file_path = kwargs.get('file_path')
+    encoding = kwargs.get('encoding', 'utf-8')
+
+    # 处理相对路径，使其在远程服务器上也能正确解析
+    if not os.path.isabs(file_path):
+        # 相对于当前工作目录
+        file_path = Path.cwd() / file_path
+
+    with open(file_path, 'r', encoding=encoding) as f:
+        content = f.read()
+
+    return {'content': content, 'size': len(content)}
+```
+
+### 远程关键字示例
+
+```python
+# keywords/remote_compatible.py
 from pytest_dsl.core.keyword_manager import keyword_manager
 
 @keyword_manager.register('远程文件操作', [
-    {'name': '服务器', 'mapping': 'server', 'description': '远程服务器名称'},
-    {'name': '操作类型', 'mapping': 'operation', 'description': '操作类型：upload/download/delete'},
-    {'name': '本地路径', 'mapping': 'local_path', 'description': '本地文件路径'},
-    {'name': '远程路径', 'mapping': 'remote_path', 'description': '远程文件路径'}
-], category='数据/文件', tags=['远程', '文件', '传输'])
+    {'name': '操作类型', 'mapping': 'operation', 'description': '操作类型：read/write/delete'},
+    {'name': '文件路径', 'mapping': 'file_path', 'description': '文件路径'},
+    {'name': '内容', 'mapping': 'content', 'description': '文件内容（写入时使用）', 'default': None}
+], category='数据/文件', tags=['远程', '文件', '兼容'])
 def remote_file_operation(**kwargs):
-    """远程文件操作关键字"""
-    server = kwargs.get('server')
+    """远程兼容的文件操作关键字"""
+    import os
+    from pathlib import Path
+
     operation = kwargs.get('operation')
-    local_path = kwargs.get('local_path')
-    remote_path = kwargs.get('remote_path')
+    file_path = kwargs.get('file_path')
+    content = kwargs.get('content')
+
+    # 确保路径处理在远程环境中也能正常工作
+    path = Path(file_path)
+
+    if operation == 'read':
+        if not path.exists():
+            return {'success': False, 'error': f'文件不存在: {file_path}'}
+
+        with open(path, 'r', encoding='utf-8') as f:
+            file_content = f.read()
+
+        return {
+            'success': True,
+            'content': file_content,
+            'size': len(file_content)
+        }
+
+    elif operation == 'write':
+        if content is None:
+            return {'success': False, 'error': '写入操作需要提供内容'}
+
+        # 确保目录存在
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content)
+
+        return {
+            'success': True,
+            'message': f'文件写入成功: {file_path}',
+            'size': len(content)
+        }
+
+    elif operation == 'delete':
+        if not path.exists():
+            return {'success': False, 'error': f'文件不存在: {file_path}'}
+
+        path.unlink()
+        return {
+            'success': True,
+            'message': f'文件删除成功: {file_path}'
+        }
+
+    else:
+        return {'success': False, 'error': f'不支持的操作类型: {operation}'}
+
+@keyword_manager.register('数据库查询', [
+    {'name': 'SQL语句', 'mapping': 'sql', 'description': 'SQL查询语句'},
+    {'name': '参数', 'mapping': 'params', 'description': 'SQL参数列表', 'default': []},
+    {'name': '连接配置', 'mapping': 'db_config', 'description': '数据库连接配置'}
+], category='数据/数据库', tags=['远程', '数据库', '查询'])
+def database_query(**kwargs):
+    """远程兼容的数据库查询关键字"""
+    # 在函数内部导入，确保远程服务器也能访问
+    try:
+        import sqlite3  # 使用sqlite3作为示例，实际可以是其他数据库
+    except ImportError:
+        return {'success': False, 'error': '数据库驱动未安装'}
+
+    sql = kwargs.get('sql')
+    params = kwargs.get('params', [])
+    db_config = kwargs.get('db_config', {})
+
+    try:
+        # 简化的数据库连接示例
+        db_path = db_config.get('path', ':memory:')
+
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql, params)
+
+            if sql.strip().upper().startswith('SELECT'):
+                # 查询操作
+                columns = [desc[0] for desc in cursor.description]
+                rows = cursor.fetchall()
+                result = [dict(zip(columns, row)) for row in rows]
+
+                return {
+                    'success': True,
+                    'data': result,
+                    'count': len(result)
+                }
+            else:
+                # 修改操作
+                conn.commit()
+                return {
+                    'success': True,
+                    'affected_rows': cursor.rowcount
+                }
+
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+```
+
+### 在DSL中使用远程兼容关键字
+
+```python
+# test_remote_compatible.dsl
+@name: "远程兼容关键字测试"
+@remote: "http://remote-server:8270/" as remote_server
+
+# 本地执行
+本地结果 = [远程文件操作], 操作类型: "write", 文件路径: "test.txt", 内容: "本地测试内容"
+[打印], 内容: "本地执行结果: ${本地结果}"
+
+# 远程执行（相同的关键字，不同的执行环境）
+远程结果 = remote_server|[远程文件操作], 操作类型: "write", 文件路径: "test.txt", 内容: "远程测试内容"
+[打印], 内容: "远程执行结果: ${远程结果}"
+
+# 数据库查询示例
+数据库配置 = {"path": "test.db"}
+查询结果 = [数据库查询], SQL语句: "SELECT * FROM users WHERE id = ?", 参数: [1], 连接配置: ${数据库配置}
+[打印], 内容: "查询结果: ${查询结果}"
+```
+
+### 变量和上下文处理
+
+在远程模式下，变量传递需要特别注意：
+
+```python
+@keyword_manager.register('上下文感知操作', [
+    {'name': '操作类型', 'mapping': 'operation', 'description': '操作类型'},
+    {'name': '变量名', 'mapping': 'var_name', 'description': '变量名称'},
+    {'name': '变量值', 'mapping': 'var_value', 'description': '变量值', 'default': None}
+], category='系统/变量', tags=['远程', '变量', '上下文'])
+def context_aware_operation(**kwargs):
+    """上下文感知的操作关键字"""
+    operation = kwargs.get('operation')
+    var_name = kwargs.get('var_name')
+    var_value = kwargs.get('var_value')
+
+    if operation == 'set':
+        # 在远程模式下，变量设置会通过返回值传递回客户端
+        return {
+            'success': True,
+            'operation': 'set_variable',
+            'variable_name': var_name,
+            'variable_value': var_value,
+            'message': f'变量 {var_name} 设置为 {var_value}'
+        }
+
+    elif operation == 'get':
+        # 在远程模式下，需要通过参数传递变量值
+        # 客户端会自动处理变量解析
+        return {
+            'success': True,
+            'operation': 'get_variable',
+            'variable_name': var_name,
+            'variable_value': var_value,  # 这个值由客户端传递过来
+            'message': f'获取变量 {var_name} 的值: {var_value}'
+        }
+
+    else:
+        return {
+            'success': False,
+            'error': f'不支持的操作: {operation}'
+        }
+```
+
+### 错误处理最佳实践
+
+```python
+@keyword_manager.register('健壮的HTTP请求', [
+    {'name': '地址', 'mapping': 'url', 'description': '请求地址'},
+    {'name': '方法', 'mapping': 'method', 'description': 'HTTP方法', 'default': 'GET'},
+    {'name': '超时时间', 'mapping': 'timeout', 'description': '超时时间（秒）', 'default': 30},
+    {'name': '重试次数', 'mapping': 'retry_count', 'description': '重试次数', 'default': 3}
+], category='网络/HTTP', tags=['远程', 'HTTP', '健壮性'])
+def robust_http_request(**kwargs):
+    """健壮的HTTP请求关键字，适用于远程和本地环境"""
+    import time
+
+    url = kwargs.get('url')
+    method = kwargs.get('method', 'GET').upper()
+    timeout = kwargs.get('timeout', 30)
+    retry_count = kwargs.get('retry_count', 3)
+
+    # 在函数内部导入，确保远程服务器也能访问
+    try:
+        import requests
+    except ImportError:
+        return {
+            'success': False,
+            'error': 'requests库未安装',
+            'status_code': None
+        }
+
+    last_error = None
+
+    for attempt in range(retry_count + 1):
+        try:
+            response = requests.request(
+                method=method,
+                url=url,
+                timeout=timeout
+            )
+
+            # 成功响应
+            return {
+                'success': True,
+                'status_code': response.status_code,
+                'text': response.text,
+                'headers': dict(response.headers),
+                'attempt': attempt + 1,
+                'url': url
+            }
+
+        except requests.exceptions.Timeout as e:
+            last_error = f'请求超时: {str(e)}'
+        except requests.exceptions.ConnectionError as e:
+            last_error = f'连接错误: {str(e)}'
+        except requests.exceptions.RequestException as e:
+            last_error = f'请求异常: {str(e)}'
+        except Exception as e:
+            last_error = f'未知错误: {str(e)}'
+
+        # 如果不是最后一次尝试，等待后重试
+        if attempt < retry_count:
+            time.sleep(1)  # 等待1秒后重试
+
+    # 所有重试都失败
+    return {
+        'success': False,
+        'error': last_error,
+        'status_code': None,
+        'attempts': retry_count + 1,
+        'url': url
+    }
+```
+
+### 性能优化建议
+
+#### 1. 减少远程调用次数
+
+```python
+# ✅ 推荐：批量操作
+@keyword_manager.register('批量文件处理', [
+    {'name': '文件列表', 'mapping': 'file_list', 'description': '文件路径列表'},
+    {'name': '操作类型', 'mapping': 'operation', 'description': '操作类型'}
+], category='数据/文件', tags=['批量处理', '文件', '性能优化'])
+def batch_file_processing(**kwargs):
+    """批量处理多个文件，减少远程调用次数"""
+    file_list = kwargs.get('file_list', [])
+    operation = kwargs.get('operation')
+
+    results = []
+    for file_path in file_list:
+        # 在一次远程调用中处理多个文件
+        result = process_single_file(file_path, operation)
+        results.append(result)
+
+    return {
+        'success': True,
+        'results': results,
+        'processed_count': len(results)
+    }
+
+# ❌ 避免：多次单独调用
+# 这会导致多次远程调用，性能较差
+```
+
+#### 2. 缓存机制
+
+```python
+@keyword_manager.register('缓存配置读取', [
+    {'name': '配置键', 'mapping': 'config_key', 'description': '配置键名'},
+    {'name': '强制刷新', 'mapping': 'force_refresh', 'description': '是否强制刷新缓存', 'default': False}
+], category='数据/配置', tags=['缓存', '配置', '性能优化'])
+def cached_config_read(**kwargs):
+    """带缓存的配置读取，提高远程调用性能"""
+    config_key = kwargs.get('config_key')
+    force_refresh = kwargs.get('force_refresh', False)
+
+    # 使用模块级变量作为简单缓存
+    if not hasattr(cached_config_read, '_cache'):
+        cached_config_read._cache = {}
+
+    cache = cached_config_read._cache
+
+    if not force_refresh and config_key in cache:
+        return {
+            'success': True,
+            'value': cache[config_key],
+            'from_cache': True
+        }
+
+    # 模拟配置读取
+    config_value = f"config_value_for_{config_key}"
+    cache[config_key] = config_value
+
+    return {
+        'success': True,
+        'value': config_value,
+        'from_cache': False
+    }
+```
+
+### 调试和测试
+
+#### 1. 本地调试
+
+```python
+# keywords/debug_example.py
+from pytest_dsl.core.keyword_manager import keyword_manager
+
+@keyword_manager.register('调试友好关键字', [
+    {'name': '输入数据', 'mapping': 'input_data', 'description': '输入数据'},
+    {'name': '调试模式', 'mapping': 'debug_mode', 'description': '是否启用调试模式', 'default': False}
+], category='系统/调试', tags=['调试', '开发工具'])
+def debug_friendly_keyword(**kwargs):
+    """调试友好的关键字示例"""
+    input_data = kwargs.get('input_data')
+    debug_mode = kwargs.get('debug_mode', False)
+
+    if debug_mode:
+        print(f"[DEBUG] 输入数据: {input_data}")
+        print(f"[DEBUG] 参数: {kwargs}")
+
+    # 处理逻辑
+    result = f"处理结果: {input_data}"
+
+    if debug_mode:
+        print(f"[DEBUG] 处理结果: {result}")
+
+    return {
+        'success': True,
+        'result': result,
+        'debug_info': {
+            'input_data': input_data,
+            'debug_mode': debug_mode
+        } if debug_mode else None
+    }
+
+# 本地测试脚本
+if __name__ == "__main__":
+    # 直接测试关键字函数
+    result = debug_friendly_keyword(
+        input_data="测试数据",
+        debug_mode=True
+    )
+    print(f"测试结果: {result}")
+```
+
+#### 2. 远程调试
+
+```python
+@keyword_manager.register('远程调试关键字', [
+    {'name': '操作', 'mapping': 'operation', 'description': '要执行的操作'},
+    {'name': '参数', 'mapping': 'params', 'description': '操作参数', 'default': {}}
+], category='系统/调试', tags=['远程', '调试', '开发工具'])
+def remote_debug_keyword(**kwargs):
+    """支持远程调试的关键字"""
+    import os
+    import json
+    from datetime import datetime
+
+    operation = kwargs.get('operation')
+    params = kwargs.get('params', {})
+
+    # 创建调试日志
+    debug_info = {
+        'timestamp': datetime.now().isoformat(),
+        'operation': operation,
+        'params': params,
+        'environment': 'remote' if os.getenv('PYTEST_DSL_REMOTE_MODE') else 'local',
+        'working_directory': os.getcwd()
+    }
+
+    try:
+        # 模拟操作执行
+        if operation == 'test':
+            result = {'status': 'success', 'message': 'Test operation completed'}
+        else:
+            result = {'status': 'error', 'message': f'Unknown operation: {operation}'}
+
+        debug_info['result'] = result
+        debug_info['success'] = True
+
+    except Exception as e:
+        debug_info['error'] = str(e)
+        debug_info['success'] = False
+        result = {'status': 'error', 'message': str(e)}
+
+    # 在远程模式下，调试信息会随结果一起返回
+    return {
+        'operation_result': result,
+        'debug_info': debug_info
+    }
+```
+
+#### 3. 单元测试
+
+```python
+# tests/test_custom_keywords.py
+import pytest
+from keywords.debug_example import debug_friendly_keyword
+from keywords.remote_compatible import remote_file_operation
+
+class TestCustomKeywords:
+    """自定义关键字的单元测试"""
+
+    def test_debug_friendly_keyword_normal_mode(self):
+        """测试调试友好关键字的正常模式"""
+        result = debug_friendly_keyword(
+            input_data="测试输入",
+            debug_mode=False
+        )
+
+        assert result['success'] is True
+        assert result['result'] == "处理结果: 测试输入"
+        assert result['debug_info'] is None
+
+    def test_debug_friendly_keyword_debug_mode(self):
+        """测试调试友好关键字的调试模式"""
+        result = debug_friendly_keyword(
+            input_data="调试输入",
+            debug_mode=True
+        )
+
+        assert result['success'] is True
+        assert result['result'] == "处理结果: 调试输入"
+        assert result['debug_info'] is not None
+        assert result['debug_info']['input_data'] == "调试输入"
+
+    def test_remote_file_operation_read(self, tmp_path):
+        """测试远程文件操作的读取功能"""
+        # 创建测试文件
+        test_file = tmp_path / "test.txt"
+        test_content = "测试文件内容"
+        test_file.write_text(test_content, encoding='utf-8')
+
+        # 测试读取操作
+        result = remote_file_operation(
+            operation="read",
+            file_path=str(test_file)
+        )
+
+        assert result['success'] is True
+        assert result['content'] == test_content
+        assert result['size'] == len(test_content)
+
+    def test_remote_file_operation_write(self, tmp_path):
+        """测试远程文件操作的写入功能"""
+        test_file = tmp_path / "new_test.txt"
+        test_content = "新文件内容"
+
+        # 测试写入操作
+        result = remote_file_operation(
+            operation="write",
+            file_path=str(test_file),
+            content=test_content
+        )
+
+        assert result['success'] is True
+        assert result['size'] == len(test_content)
+
+        # 验证文件确实被创建
+        assert test_file.exists()
+        assert test_file.read_text(encoding='utf-8') == test_content
+
+    def test_remote_file_operation_invalid_operation(self):
+        """测试远程文件操作的无效操作"""
+        result = remote_file_operation(
+            operation="invalid",
+            file_path="test.txt"
+        )
+
+        assert result['success'] is False
+        assert "不支持的操作类型" in result['error']
+
+# 运行测试
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
+```
+
+### 部署和分发
+
+#### 1. 项目内使用
+
+```
+my-project/
+├── keywords/                    # 自定义关键字目录
+│   ├── __init__.py
+│   ├── web_keywords.py         # Web测试关键字
+│   ├── api_keywords.py         # API测试关键字
+│   └── utils/                  # 工具关键字子包
+│       ├── __init__.py
+│       ├── file_utils.py
+│       └── data_utils.py
+├── tests/                      # 测试用例
+│   ├── test_web.dsl
+│   ├── test_api.dsl
+│   └── test_keywords.py        # 关键字单元测试
+├── config/                     # 配置文件
+│   └── test_config.yaml
+└── requirements.txt            # 依赖管理
+```
+
+#### 2. 插件化分发
+
+```python
+# setup.py
+from setuptools import setup, find_packages
+
+setup(
+    name="my-pytest-dsl-keywords",
+    version="1.0.0",
+    packages=find_packages(),
+    install_requires=[
+        "pytest-dsl>=0.16.0",
+        "requests",
+        "pyyaml"
+    ],
+    entry_points={
+        'pytest_dsl.keywords': [
+            'my_keywords = my_keywords',
+        ],
+    },
+    author="Your Name",
+    author_email="your.email@example.com",
+    description="Custom keywords for pytest-dsl",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    url="https://github.com/yourusername/my-pytest-dsl-keywords",
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+    ],
+    python_requires='>=3.7',
+)
+```
+
+#### 3. 远程服务器部署
+
+```bash
+# 在远程服务器上安装相同的依赖
+pip install my-pytest-dsl-keywords
+
+# 启动远程关键字服务器
+pytest-dsl-server --host 0.0.0.0 --port 8270
+
+# 或者使用配置文件启动
+pytest-dsl-server --config server_config.yaml
+```
+
+### 最佳实践总结
+
+1. **设计原则**
+   - 保持关键字的纯函数特性
+   - 使用可序列化的参数和返回值
+   - 在函数内部导入依赖库
+
+2. **错误处理**
+   - 总是返回结构化的结果
+   - 包含成功/失败状态
+   - 提供详细的错误信息
+
+3. **性能优化**
+   - 减少远程调用次数
+   - 使用批量操作
+   - 实现适当的缓存机制
+
+4. **调试支持**
+   - 提供调试模式
+   - 记录详细的执行信息
+   - 支持本地和远程调试
+
+5. **测试覆盖**
+   - 编写单元测试
+   - 测试本地和远程执行
+   - 验证错误处理逻辑
     
     # 这个关键字可以在远程服务器上执行
     # 具体的远程文件操作逻辑
@@ -576,7 +1255,7 @@ def set_global_variable(**kwargs):
 @keyword_manager.register('获取全局变量', [
     {'name': '变量名', 'mapping': 'var_name', 'description': '变量名称'},
     {'name': '默认值', 'mapping': 'default_value', 'description': '默认值', 'default': None}
-])
+], category='数据/变量', tags=['变量', '获取', '全局'])
 def get_global_variable(**kwargs):
     """获取全局变量"""
     var_name = kwargs.get('var_name')
@@ -587,7 +1266,7 @@ def get_global_variable(**kwargs):
     
     return context.get_variable(var_name, default_value)
 
-@keyword_manager.register('获取测试信息', [])
+@keyword_manager.register('获取测试信息', [], category='系统/信息', tags=['测试', '信息', '上下文'])
 def get_test_info(**kwargs):
     """获取当前测试信息"""
     from pytest_dsl.core.context import get_current_context
@@ -616,7 +1295,7 @@ logger = logging.getLogger(__name__)
     {'name': '参数', 'mapping': 'args', 'description': '函数参数', 'default': []},
     {'name': '重试次数', 'mapping': 'max_retries', 'description': '最大重试次数', 'default': 3},
     {'name': '重试间隔', 'mapping': 'retry_delay', 'description': '重试间隔（秒）', 'default': 1}
-])
+], category='系统/安全', tags=['安全', '重试', '错误处理'])
 def safe_execute(**kwargs):
     """安全执行操作，支持重试和错误处理"""
     operation_func = kwargs.get('operation_func')
@@ -665,7 +1344,7 @@ def safe_execute(**kwargs):
     {'name': '日志级别', 'mapping': 'level', 'description': '日志级别：DEBUG/INFO/WARNING/ERROR', 'default': 'INFO'},
     {'name': '消息', 'mapping': 'message', 'description': '日志消息'},
     {'name': '额外数据', 'mapping': 'extra_data', 'description': '额外的日志数据', 'default': None}
-])
+], category='系统/日志', tags=['日志', '记录', '调试'])
 def log_message(**kwargs):
     """记录日志消息"""
     level = kwargs.get('level', 'INFO').upper()
@@ -799,7 +1478,7 @@ def get_config(section, key, default=None):
 @keyword_manager.register('示例关键字', [
     {'name': '必需参数', 'mapping': 'required_param', 'description': '必需参数'},
     {'name': '可选参数', 'mapping': 'optional_param', 'description': '可选参数', 'default': 'default_value'}
-])
+], category='示例/教程', tags=['示例', '教程', '最佳实践'])
 def example_keyword(**kwargs):
     """示例关键字，展示参数验证最佳实践"""
     # 获取参数
@@ -823,7 +1502,7 @@ def example_keyword(**kwargs):
 ```python
 @keyword_manager.register('健壮关键字', [
     {'name': '输入数据', 'mapping': 'input_data', 'description': '输入数据'}
-])
+], category='示例/教程', tags=['健壮性', '错误处理', '最佳实践'])
 def robust_keyword(**kwargs):
     """健壮的关键字，包含完整的错误处理"""
     try:
@@ -869,7 +1548,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
     {'name': '字符串参数', 'mapping': 'str_param', 'description': '字符串类型参数'},
     {'name': '数字参数', 'mapping': 'num_param', 'description': '数字类型参数', 'default': 0},
     {'name': '列表参数', 'mapping': 'list_param', 'description': '列表类型参数', 'default': []}
-])
+], category='示例/教程', tags=['类型安全', '类型检查', '最佳实践'])
 def type_safe_keyword(**kwargs) -> Dict[str, Union[str, int, List]]:
     """
     类型安全的关键字示例
@@ -947,7 +1626,7 @@ def cache_result(ttl_seconds=300):
 
 @keyword_manager.register('缓存关键字', [
     {'name': '计算参数', 'mapping': 'calc_param', 'description': '计算参数'}
-])
+], category='系统/缓存', tags=['缓存', '性能优化', '装饰器'])
 @cache_result(ttl_seconds=60)  # 缓存60秒
 def cached_keyword(**kwargs):
     """带缓存的关键字，避免重复计算"""

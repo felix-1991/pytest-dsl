@@ -59,7 +59,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
     {'name': '地址', 'mapping': 'url', 'description': '请求地址'},
     {'name': '方法', 'mapping': 'method', 'description': 'HTTP方法', 'default': 'GET'},
     {'name': '超时', 'mapping': 'timeout', 'description': '超时时间（秒）', 'default': 30}
-])
+], category='网络/HTTP', tags=['HTTP', '网络请求'])
 def http_request(**kwargs):
     """HTTP请求关键字，支持重试和错误处理"""
     import requests
@@ -275,12 +275,18 @@ resources/
 ```python
 # 1. 使用Python定义基础能力关键字
 # keywords/base_keywords.py
-@keyword_manager.register('数据库查询', [...])
+@keyword_manager.register('数据库查询', [
+    {'name': 'SQL语句', 'mapping': 'sql', 'description': 'SQL查询语句'},
+    {'name': '参数', 'mapping': 'params', 'description': 'SQL参数', 'default': []}
+], category='数据/数据库', tags=['数据库', 'SQL'])
 def database_query(**kwargs):
     # 复杂的数据库操作逻辑
     pass
 
-@keyword_manager.register('HTTP请求', [...])  
+@keyword_manager.register('HTTP请求', [
+    {'name': '地址', 'mapping': 'url', 'description': '请求地址'},
+    {'name': '方法', 'mapping': 'method', 'description': 'HTTP方法', 'default': 'GET'}
+], category='网络/HTTP', tags=['HTTP', '网络请求'])
 def http_request(**kwargs):
     # 完整的HTTP请求处理
     pass
@@ -389,7 +395,7 @@ import random
 @keyword_manager.register('生成测试数据', [
     {'name': '数据类型', 'mapping': 'data_type', 'description': '数据类型：user/order/product'},
     {'name': '数量', 'mapping': 'count', 'description': '生成数量', 'default': 1}
-])
+], category='数据/生成', tags=['测试数据', '数据生成'])
 def generate_test_data(**kwargs):
     """生成测试数据"""
     data_type = kwargs.get('data_type')
@@ -468,6 +474,7 @@ def generate_test_data(**kwargs):
 
 - 🎯 **测试人员/初学者** → [DSL内自定义关键字](./custom-keywords-dsl.md)
 - 🚀 **开发人员/进阶用户** → [Python代码自定义关键字](./custom-keywords-python.md)
+- 🔄 **远程与本地适配** → [关键字远程与本地适配指南](./keyword-remote-local-adaptation.md)
 - 📁 **了解组织方式** → [资源文件](./resource-files.md)
 - 🌐 **分布式测试** → [远程关键字](./remote-keywords.md)
-- 📖 **最佳实践** → [最佳实践指南](./best-practices.md) 
+- 📖 **最佳实践** → [最佳实践指南](./best-practices.md)

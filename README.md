@@ -1040,6 +1040,11 @@ CMD ["pytest-dsl", "tests/", "--yaml-vars", "config/prod.yaml"]
 - [断言关键字使用指南](./docs/assertion_keywords.md)
 - [HTTP断言重试机制](./docs/http_assertion_retry.md)
 
+### 自定义关键字文档
+- 🎯 [自定义关键字概览](./docs/guide/custom-keywords.md)
+- 🚀 [Python代码自定义关键字](./docs/guide/custom-keywords-python.md)
+- 🔄 [关键字远程与本地适配指南](./docs/guide/keyword-remote-local-adaptation.md)
+
 ### 远程关键字文档
 - 📖 [远程关键字使用指南](./docs/remote-keywords-usage.md)
 - 🛠️ [远程关键字开发指南](./docs/remote-keywords-development.md)
