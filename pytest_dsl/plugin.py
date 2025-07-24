@@ -51,6 +51,18 @@ def pytest_configure(config):
     # 加载本地关键字（向后兼容）
     scan_local_keywords()
 
+    # 在插件加载完成后，重新初始化hook系统以确保新插件的hook能被注册
+    try:
+        from pytest_dsl.core.hook_manager import hook_manager
+        from pytest_dsl.core.hookable_keyword_manager import hookable_keyword_manager
+
+        # 重新初始化hook管理器和hookable关键字管理器
+        hook_manager.reinitialize_after_plugin_load()
+        hookable_keyword_manager.reinitialize_after_plugin_load()
+
+    except Exception as e:
+        print(f"pytest环境：重新初始化Hook系统时出现警告: {str(e)}")
+
     # 自动导入项目中的resources目录
     try:
         from pytest_dsl.core.custom_keyword_manager import (

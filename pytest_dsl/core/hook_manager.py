@@ -67,11 +67,15 @@ class DSLHookManager:
         """获取hook调用器"""
         return self.pm.hook
     
-    def initialize(self) -> None:
-        """初始化hook管理器"""
-        if self._initialized:
+    def initialize(self, force_reload: bool = False) -> None:
+        """初始化hook管理器
+
+        Args:
+            force_reload: 是否强制重新加载，即使已经初始化过
+        """
+        if self._initialized and not force_reload:
             return
-        
+
         # 尝试加载setuptools入口点插件
         try:
             loaded = self.load_setuptools_entrypoints()
@@ -79,8 +83,30 @@ class DSLHookManager:
                 print(f"加载了 {loaded} 个插件")
         except Exception as e:
             print(f"加载插件时出现错误: {e}")
-        
+
         self._initialized = True
+
+    def reinitialize_after_plugin_load(self) -> None:
+        """在插件加载后重新初始化hook管理器
+
+        这个方法专门用于pytest环境下，在新插件加载后重新初始化hook系统
+        """
+        print("检测到新插件加载，重新初始化Hook管理器...")
+
+        # 重新加载setuptools入口点插件
+        try:
+            loaded = self.load_setuptools_entrypoints()
+            if loaded > 0:
+                print(f"重新加载了 {loaded} 个插件")
+
+                # 重新调用hook注册自定义关键字
+                try:
+                    self.pm.hook.dsl_register_custom_keywords()
+                    print("重新执行了hook关键字注册")
+                except Exception as e:
+                    print(f"重新执行hook关键字注册失败: {e}")
+        except Exception as e:
+            print(f"重新加载插件时出现错误: {e}")
 
 
 # 全局hook管理器实例

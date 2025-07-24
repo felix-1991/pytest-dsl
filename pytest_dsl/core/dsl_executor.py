@@ -1646,6 +1646,28 @@ class DSLExecutor:
             self.hook_manager = None
             self.hookable_keyword_manager = None
 
+    def ensure_hooks_updated(self):
+        """确保hook系统是最新的，用于在pytest环境下检测新插件"""
+        if not self.enable_hooks:
+            return
+
+        try:
+            from .hook_manager import hook_manager
+            from .hookable_keyword_manager import hookable_keyword_manager
+
+            # 检查是否需要重新初始化（比如在pytest环境下新插件被加载）
+            if (hasattr(self, 'hook_manager') and self.hook_manager and
+                hasattr(self, 'hookable_keyword_manager') and self.hookable_keyword_manager):
+
+                # 重新执行hook关键字注册，确保新插件的hook被调用
+                try:
+                    hook_manager.pm.hook.dsl_register_custom_keywords()
+                except Exception as e:
+                    print(f"重新执行hook关键字注册时出现警告: {e}")
+
+        except Exception as e:
+            print(f"确保hook系统更新时出现警告: {e}")
+
     def execute_from_content(self, content: str, dsl_id: str = None,
                              context: Dict[str, Any] = None) -> Any:
         """从内容执行DSL，支持hook扩展
@@ -1659,6 +1681,9 @@ class DSLExecutor:
             执行结果
         """
         self.current_dsl_id = dsl_id
+
+        # 确保hook系统是最新的（特别是在pytest环境下）
+        self.ensure_hooks_updated()
 
         # 初始化执行跟踪器
         if self.enable_tracking:

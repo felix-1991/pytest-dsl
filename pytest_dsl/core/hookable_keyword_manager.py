@@ -3,6 +3,7 @@
 
 支持通过hook机制注册自定义关键字
 """
+import threading
 from typing import Dict, List, Optional, Any
 from .keyword_manager import keyword_manager
 from .hook_manager import hook_manager
@@ -11,13 +12,31 @@ from .hook_manager import hook_manager
 class HookableKeywordManager:
     """支持Hook机制的关键字管理器"""
 
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self):
+        # 只初始化一次，避免重复初始化
+        if hasattr(self, '_initialized_instance'):
+            return
         self.hook_keywords = {}  # 存储通过hook注册的关键字
         self._initialized = False
+        self._initialized_instance = True
 
-    def initialize(self):
-        """初始化，调用hook注册关键字"""
-        if self._initialized:
+    def initialize(self, force_reload: bool = False):
+        """初始化，调用hook注册关键字
+
+        Args:
+            force_reload: 是否强制重新初始化，即使已经初始化过
+        """
+        if self._initialized and not force_reload:
             return
 
         if hook_manager and hook_manager._initialized:
@@ -29,6 +48,20 @@ class HookableKeywordManager:
                 print(f"Hook关键字注册失败: {e}")
 
         self._initialized = True
+
+    def reinitialize_after_plugin_load(self):
+        """在插件加载后重新初始化hookable关键字管理器
+
+        这个方法专门用于pytest环境下，在新插件加载后重新初始化
+        """
+        if hook_manager and hook_manager._initialized:
+            try:
+                print("重新执行Hook关键字注册...")
+                # 重新调用hook注册自定义关键字
+                hook_manager.pm.hook.dsl_register_custom_keywords()
+                print(f"重新注册完成，当前Hook关键字数量: {len(self.hook_keywords)}")
+            except Exception as e:
+                print(f"重新执行Hook关键字注册失败: {e}")
 
     def register_hook_keyword(self, keyword_name: str, dsl_content: str,
                               source_info: Optional[Dict[str, Any]] = None):

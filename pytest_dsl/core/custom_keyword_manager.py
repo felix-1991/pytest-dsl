@@ -430,7 +430,17 @@ class CustomKeywordManager:
             # 解析DSL内容
             lexer = get_lexer()
             parser = get_parser()
-            ast = parser.parse(dsl_content, lexer=lexer)
+
+            # 使用带错误处理的解析函数
+            from pytest_dsl.core.parser import parse_with_error_handling
+            ast, parse_errors = parse_with_error_handling(dsl_content, lexer)
+
+            if parse_errors:
+                error_msg = f"DSL解析错误: {'; '.join([err['message'] for err in parse_errors])}"
+                raise ValueError(error_msg)
+
+            if ast is None:
+                raise ValueError("DSL解析返回空结果")
 
             # 查找指定的关键字定义
             if ast.type == 'Start' and len(ast.children) >= 2:
@@ -446,6 +456,7 @@ class CustomKeywordManager:
 
         except Exception as e:
             print(f"从DSL内容注册关键字失败 {keyword_name}（来源：{source_name}）: {e}")
+            print(f"DSL内容: {repr(dsl_content)}")
             raise
 
 
