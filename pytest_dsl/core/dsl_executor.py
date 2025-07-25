@@ -98,6 +98,14 @@ class DSLExecutor:
         if self.enable_hooks:
             self._init_hooks()
 
+        # 设置线程本地的执行器引用，供远程关键字客户端使用
+        self._set_thread_local_executor()
+
+    def _set_thread_local_executor(self):
+        """设置线程本地的执行器引用"""
+        import threading
+        threading.current_thread().dsl_executor = self
+
     def _get_line_info(self, node=None):
         """获取行号信息字符串
 

@@ -427,19 +427,27 @@ def http_request(context, **kwargs):
                     "url": getattr(response, 'url', '')
                 }
 
-        # 统一返回格式 - 支持远程关键字模式
+        # 统一使用新的通用格式
         return {
-            "result": captured_values,  # 主要返回值保持兼容
-            "captures": captured_values,  # 明确的捕获变量
-            "session_state": ({session_name: session_state}
-                              if session_state else {}),
-            "response": response_data,  # 完整响应（如果需要）
+            "result": captured_values,   # 主要返回值
+            "side_effects": {
+                "variables": captured_values,  # 变量注入
+                "context_updates": {
+                    "session_state": ({session_name: session_state}
+                                      if session_state else {}),
+                    "response": response_data  # 响应数据
+                }
+            },
             "metadata": {
                 "response_time": getattr(response, 'elapsed', None),
                 "status_code": getattr(response, 'status_code', None),
-                "url": getattr(response, 'url', '')
+                "url": getattr(response, 'url', ''),
+                "keyword_type": "http_request"
             }
         }
+
+
+
 
 
 def _deep_merge(dict1, dict2):

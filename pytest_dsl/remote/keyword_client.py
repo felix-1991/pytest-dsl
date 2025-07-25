@@ -229,23 +229,145 @@ class RemoteKeywordClient:
                 if 'response' in return_data and return_data['response']:
                     print("远程关键字响应数据: 已接收")
 
-                # 检查是否为新的统一返回格式（包含captures等字段）
-                if ('captures' in return_data or
-                        'session_state' in return_data or
-                        'metadata' in return_data):
-                    # 返回完整的新格式，让DSL执行器处理变量捕获
-                    return return_data
-                elif 'result' in return_data:
-                    # 返回主要结果，保持向后兼容
-                    return return_data['result']
-                else:
-                    return return_data
+                # 使用通用的返回处理机制
+                # 检查是否有嵌套的新格式数据
+                if 'result' in return_data and isinstance(return_data['result'], dict):
+                    nested_data = return_data['result']
+                    if 'side_effects' in nested_data:
+                        # 处理嵌套的新格式数据
+                        return self._process_return_data(nested_data)
+
+                # 处理原始格式数据
+                return self._process_return_data(return_data)
 
             return return_data
         else:
             error_msg = result.get('error', '未知错误')
             traceback = '\n'.join(result.get('traceback', []))
             raise Exception(f"远程关键字执行失败: {error_msg}\n{traceback}")
+
+    def _process_return_data(self, return_data):
+        """通用的返回数据处理方法
+
+        Args:
+            return_data: 远程关键字返回的数据
+
+        Returns:
+            处理后的返回数据
+        """
+        # 使用返回处理器注册表处理数据
+        from .return_handlers import return_handler_registry
+
+        processed_data = return_handler_registry.process(return_data)
+
+        # 如果处理后的数据包含side_effects，直接处理副作用
+        if isinstance(processed_data, dict) and 'side_effects' in processed_data:
+            self._handle_side_effects(processed_data)
+            # 返回主要结果
+            return processed_data.get('result')
+        else:
+            return processed_data
+
+    def _handle_side_effects(self, processed_data):
+        """处理副作用
+
+        Args:
+            processed_data: 包含side_effects的处理后数据
+        """
+        side_effects = processed_data.get('side_effects', {})
+
+        # 处理变量注入
+        variables = side_effects.get('variables', {})
+        if variables:
+            print(f"远程关键字注入变量: {variables}")
+            self._inject_variables(variables)
+
+        # 处理上下文更新
+        context_updates = side_effects.get('context_updates', {})
+        if context_updates:
+            print(f"远程关键字上下文更新: {context_updates}")
+            self._update_context(context_updates)
+
+    def _inject_variables(self, variables):
+        """实际执行变量注入
+
+        Args:
+            variables: 要注入的变量字典
+        """
+        try:
+            # 导入必要的模块
+            from pytest_dsl.core.global_context import global_context
+
+            # 获取当前执行器实例（如果存在）
+            current_executor = self._get_current_executor()
+
+            for var_name, var_value in variables.items():
+                if var_name.startswith('g_'):
+                    # 全局变量
+                    global_context.set_variable(var_name, var_value)
+                    print(f"✅ 注入全局变量: {var_name} = {var_value}")
+                else:
+                    # 本地变量
+                    if current_executor:
+                        current_executor.variable_replacer.local_variables[var_name] = var_value
+                        current_executor.test_context.set(var_name, var_value)
+                        print(f"✅ 注入本地变量: {var_name} = {var_value}")
+                    else:
+                        # 如果没有执行器，至少设置为全局变量
+                        global_context.set_variable(var_name, var_value)
+                        print(f"⚠️  注入为全局变量（无执行器上下文）: {var_name} = {var_value}")
+
+        except Exception as e:
+            print(f"❌ 变量注入失败: {str(e)}")
+
+    def _update_context(self, context_updates):
+        """实际执行上下文更新
+
+        Args:
+            context_updates: 要更新的上下文信息
+        """
+        try:
+            current_executor = self._get_current_executor()
+
+            # 处理会话状态更新
+            if 'session_state' in context_updates:
+                session_state = context_updates['session_state']
+                print(f"✅ 更新会话状态: {session_state}")
+                # 这里可以根据需要更新会话管理器的状态
+
+            # 处理响应数据更新
+            if 'response' in context_updates:
+                response_data = context_updates['response']
+                print(f"✅ 更新响应数据: 已接收响应数据")
+                # 可以将响应数据存储到特定位置
+
+            # 处理其他上下文更新
+            for key, value in context_updates.items():
+                if key not in ['session_state', 'response']:
+                    print(f"✅ 更新上下文: {key} = {value}")
+                    # 可以根据需要处理其他类型的上下文更新
+
+        except Exception as e:
+            print(f"❌ 上下文更新失败: {str(e)}")
+
+    def _get_current_executor(self):
+        """获取当前的DSL执行器实例
+
+        Returns:
+            当前执行器实例或None
+        """
+        try:
+            # 通过线程本地存储获取当前执行器
+            import threading
+
+            # 检查是否有线程本地的执行器
+            if hasattr(threading.current_thread(), 'dsl_executor'):
+                return threading.current_thread().dsl_executor
+
+            return None
+
+        except Exception:
+            return None
 
     def _sync_context_variables_before_execution(self, context):
         """在执行远程关键字前同步最新的上下文变量

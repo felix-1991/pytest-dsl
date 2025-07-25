@@ -345,7 +345,6 @@ all_emails = [JSON提取], JSON数据: ${json_data}, JSONPath: "$.users[*].email
 **参数：**
 - `JSON数据` (必需): JSON数据（字符串格式）
 - `JSONPath` (必需): JSONPath表达式
-- `变量名` (可选): 存储提取值的变量名
 
 **返回值：** 提取的值或值列表
 

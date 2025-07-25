@@ -520,30 +520,25 @@ def assert_json(**kwargs):
 
 
 @keyword_manager.register('JSON提取', [
-    {'name': 'JSON数据', 'mapping': 'json_data', 
+    {'name': 'JSON数据', 'mapping': 'json_data',
      'description': 'JSON数据（字符串或对象）'},
     {'name': 'JSONPath', 'mapping': 'jsonpath', 'description': 'JSONPath表达式'},
-    {'name': '变量名', 'mapping': 'variable', 'description': '存储提取值的变量名'},
 ], category='系统/数据提取', tags=['JSON', '提取'])
 def extract_json(**kwargs):
-    """从JSON数据中提取值并保存到变量
+    """从JSON数据中提取值
 
     Args:
         json_data: JSON数据（字符串或对象）
         jsonpath: JSONPath表达式
-        variable: 存储提取值的变量名
-        context: 测试上下文
 
     Returns:
-        提取的值或包含提取值的字典（远程模式）
+        提取的值
 
     Raises:
         ValueError: 如果JSONPath无效或找不到匹配项
     """
     json_data = kwargs.get('json_data')
     path = kwargs.get('jsonpath')
-    variable = kwargs.get('variable')
-    context = kwargs.get('context')
 
     # 解析JSON（如果需要）
     if isinstance(json_data, str):
@@ -555,33 +550,14 @@ def extract_json(**kwargs):
     # 使用JSONPath提取值
     value = _extract_jsonpath(json_data, path)
 
-    # 将提取的值设置到上下文中（本地模式）
-    if context and variable:
-        context.set(variable, value)
-
     # 记录提取的值
     allure.attach(
-        f"JSONPath: {path}\n提取值: {value}\n保存到变量: {variable}",
+        f"JSONPath: {path}\n提取值: {value}",
         name="JSON数据提取",
         attachment_type=allure.attachment_type.TEXT
     )
 
-    # 检查是否是远程关键字调用（通过检查调用栈或特殊标记）
-    # 这里简化处理：如果context存在且不是远程调用，返回简单值
-    if context and hasattr(context, '__class__') and 'TestContext' in context.__class__.__name__:
-        # 本地模式，返回简单值
-        return value
-    else:
-        # 远程模式或无法确定时，返回完整格式以保持兼容性
-        return {
-            "result": value,  # 主要返回值保持兼容
-            "captures": {variable: value} if variable else {},  # 明确的捕获变量
-            "session_state": {},
-            "metadata": {
-                "jsonpath": path,
-                "variable_name": variable
-            }
-        }
+    return value
 
 
 @keyword_manager.register('类型断言', [
