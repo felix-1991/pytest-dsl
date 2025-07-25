@@ -35,7 +35,9 @@ class RemoteKeywordClient:
         """连接到远程服务器并获取可用关键字"""
         try:
             print(f"RemoteKeywordClient: 正在连接到远程服务器 {self.url}")
-            keyword_names = self.server.get_keyword_names()
+            from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+            keyword_names = XMLRPCSerializer.safe_xmlrpc_call(
+                self.server, 'get_keyword_names')
             print(f"RemoteKeywordClient: 获取到 {len(keyword_names)} 个关键字")
             for name in keyword_names:
                 self._register_remote_keyword(name)
@@ -57,13 +59,17 @@ class RemoteKeywordClient:
         """注册远程关键字到本地关键字管理器"""
         # 获取关键字参数信息
         try:
-            param_names = self.server.get_keyword_arguments(name)
-            doc = self.server.get_keyword_documentation(name)
+            from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+            param_names = XMLRPCSerializer.safe_xmlrpc_call(
+                self.server, 'get_keyword_arguments', name)
+            doc = XMLRPCSerializer.safe_xmlrpc_call(
+                self.server, 'get_keyword_documentation', name)
 
             # 尝试获取参数详细信息（包括默认值）
             param_details = []
             try:
-                param_details = self.server.get_keyword_parameter_details(name)
+                param_details = XMLRPCSerializer.safe_xmlrpc_call(
+                    self.server, 'get_keyword_parameter_details', name)
             except Exception as e:
                 print(f"获取关键字 {name} 的参数详细信息失败，使用基本信息: {e}")
                 # 如果新方法不可用，使用旧的方式
@@ -195,10 +201,13 @@ class RemoteKeywordClient:
 
         # 执行远程调用
         # 检查是否需要传递API密钥
+        from pytest_dsl.core.serialization_utils import XMLRPCSerializer
         if self.api_key:
-            result = self.server.run_keyword(name, mapped_kwargs, self.api_key)
+            result = XMLRPCSerializer.safe_xmlrpc_call(
+                self.server, 'run_keyword', name, mapped_kwargs, self.api_key)
         else:
-            result = self.server.run_keyword(name, mapped_kwargs)
+            result = XMLRPCSerializer.safe_xmlrpc_call(
+                self.server, 'run_keyword', name, mapped_kwargs)
 
         print(f"远程关键字执行结果: {result}")
 
@@ -270,7 +279,9 @@ class RemoteKeywordClient:
             if variables_to_sync:
                 # 调用远程服务器的变量同步接口
                 try:
-                    result = self.server.sync_variables_from_client(
+                    from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+                    result = XMLRPCSerializer.safe_xmlrpc_call(
+                        self.server, 'sync_variables_from_client',
                         variables_to_sync, self.api_key)
                     if result.get('status') == 'success':
                         print(f"✅ 实时同步 {len(variables_to_sync)} 个上下文变量到远程服务器")
@@ -327,9 +338,12 @@ class RemoteKeywordClient:
                 
                 if serializable_variables:
                     try:
-                        # 调用远程服务器的变量接收接口
-                        result = self.server.sync_variables_from_client(
+                        # 使用安全的XML-RPC调用
+                        from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+                        result = XMLRPCSerializer.safe_xmlrpc_call(
+                            self.server, 'sync_variables_from_client',
                             serializable_variables, self.api_key)
+
                         if result.get('status') == 'success':
                             print(f"成功传递 {len(serializable_variables)} "
                                   f"个变量到远程服务器")

@@ -5,7 +5,7 @@
 
 import re
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from pytest_dsl.core.global_context import global_context
 from pytest_dsl.core.context import TestContext
 
@@ -302,11 +302,12 @@ class VariableReplacer:
                 raise KeyError(
                     f"无法访问属性 '{access_token}'，当前值类型是 {type(current_value).__name__}")
 
-    def replace_in_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def replace_in_dict(self, data: Dict[str, Any], visited: Optional[set] = None) -> Dict[str, Any]:
         """递归替换字典中的变量引用
 
         Args:
             data: 包含变量引用的字典
+            visited: 已访问对象的集合，用于检测循环引用
 
         Returns:
             替换后的字典
@@ -317,22 +318,36 @@ class VariableReplacer:
         if not isinstance(data, dict):
             return data
 
-        result = {}
-        for key, value in data.items():
-            # 替换键中的变量
-            new_key = self.replace_in_string(
-                key) if isinstance(key, str) else key
-            # 替换值中的变量
-            new_value = self.replace_in_value(value)
-            result[new_key] = new_value
+        # 初始化访问集合
+        if visited is None:
+            visited = set()
 
-        return result
+        # 检测循环引用
+        data_id = id(data)
+        if data_id in visited:
+            return {"<循环引用>": f"字典对象 {type(data).__name__}"}
 
-    def replace_in_list(self, data: List[Any]) -> List[Any]:
+        visited.add(data_id)
+        try:
+            result = {}
+            for key, value in data.items():
+                # 替换键中的变量
+                new_key = self.replace_in_string(
+                    key) if isinstance(key, str) else key
+                # 替换值中的变量
+                new_value = self.replace_in_value(value, visited)
+                result[new_key] = new_value
+
+            return result
+        finally:
+            visited.discard(data_id)
+
+    def replace_in_list(self, data: List[Any], visited: Optional[set] = None) -> List[Any]:
         """递归替换列表中的变量引用
 
         Args:
             data: 包含变量引用的列表
+            visited: 已访问对象的集合，用于检测循环引用
 
         Returns:
             替换后的列表
@@ -343,13 +358,27 @@ class VariableReplacer:
         if not isinstance(data, list):
             return data
 
-        return [self.replace_in_value(item) for item in data]
+        # 初始化访问集合
+        if visited is None:
+            visited = set()
 
-    def replace_in_value(self, value: Any) -> Any:
+        # 检测循环引用
+        data_id = id(data)
+        if data_id in visited:
+            return [f"<循环引用: 列表对象 {type(data).__name__}>"]
+
+        visited.add(data_id)
+        try:
+            return [self.replace_in_value(item, visited) for item in data]
+        finally:
+            visited.discard(data_id)
+
+    def replace_in_value(self, value: Any, visited: Optional[set] = None) -> Any:
         """递归替换任意值中的变量引用
 
         Args:
             value: 任意值，可能是字符串、字典、列表等
+            visited: 已访问对象的集合，用于检测循环引用
 
         Returns:
             替换后的值
@@ -360,9 +389,9 @@ class VariableReplacer:
         if isinstance(value, str):
             return self.replace_in_string(value)
         elif isinstance(value, dict):
-            return self.replace_in_dict(value)
+            return self.replace_in_dict(value, visited)
         elif isinstance(value, list):
-            return self.replace_in_list(value)
+            return self.replace_in_list(value, visited)
         elif isinstance(value, (int, float, bool, type(None))):
             return value
         else:

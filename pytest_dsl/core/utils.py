@@ -4,7 +4,7 @@
 """
 
 import re
-from typing import Dict, Any, Union, List
+from typing import Dict, Any, Union, List, Optional
 
 from pytest_dsl.core.global_context import global_context
 
@@ -84,19 +84,34 @@ def _legacy_replace_variables_in_string(value: str) -> str:
     return value
 
 
-def replace_variables_in_dict(data: Union[Dict, List, str]) -> Union[Dict, List, str]:
+def replace_variables_in_dict(data: Union[Dict, List, str], visited: Optional[set] = None) -> Union[Dict, List, str]:
     """递归替换字典中的变量引用
 
     Args:
         data: 包含变量引用的字典、列表或字符串
+        visited: 已访问对象的集合，用于检测循环引用
 
     Returns:
         替换变量后的数据
     """
-    if isinstance(data, dict):
-        return {k: replace_variables_in_dict(v) for k, v in data.items()}
-    elif isinstance(data, list):
-        return [replace_variables_in_dict(item) for item in data]
+    # 初始化访问集合
+    if visited is None:
+        visited = set()
+
+    # 检测循环引用
+    if isinstance(data, (dict, list)):
+        data_id = id(data)
+        if data_id in visited:
+            return f"<循环引用: {type(data).__name__}>"
+
+        visited.add(data_id)
+        try:
+            if isinstance(data, dict):
+                return {k: replace_variables_in_dict(v, visited) for k, v in data.items()}
+            elif isinstance(data, list):
+                return [replace_variables_in_dict(item, visited) for item in data]
+        finally:
+            visited.discard(data_id)
     elif isinstance(data, str) and '${' in data:
         return replace_variables_in_string(data)
     else:

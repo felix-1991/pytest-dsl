@@ -110,12 +110,20 @@ class DSLValidator:
                 f"预注册自定义关键字时出现警告: {str(e)}"
             ))
 
-    def _find_and_register_custom_keywords(self, node: Node) -> None:
+    def _find_and_register_custom_keywords(self, node: Node, depth: int = 0) -> None:
         """递归查找并注册自定义关键字
 
         Args:
             node: 当前节点
+            depth: 当前递归深度
         """
+        # 防止过深的递归
+        if depth > 100:  # 设置合理的深度限制
+            self.warnings.append(DSLValidationError(
+                "结构警告", f"AST节点嵌套过深（深度 {depth}），跳过进一步处理"
+            ))
+            return
+
         # 检查当前节点是否是自定义关键字定义
         if node.type in ['CustomKeyword', 'Function']:
             try:
@@ -139,7 +147,7 @@ class DSLValidator:
         if hasattr(node, 'children') and node.children:
             for child in node.children:
                 if isinstance(child, Node):
-                    self._find_and_register_custom_keywords(child)
+                    self._find_and_register_custom_keywords(child, depth + 1)
 
     def _cleanup_temp_keywords(self) -> None:
         """清理临时注册的关键字"""

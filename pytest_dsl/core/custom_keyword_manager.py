@@ -317,6 +317,14 @@ class CustomKeywordManager:
         @keyword_manager.register(keyword_name, parameters)
         def custom_keyword_executor(**kwargs):
             """自定义关键字执行器"""
+            # 检查递归调用深度
+            call_stack = getattr(custom_keyword_executor, '_call_stack', [])
+            if keyword_name in call_stack:
+                raise RecursionError(f"检测到自定义关键字递归调用: {' -> '.join(call_stack + [keyword_name])}")
+
+            if len(call_stack) > 50:  # 设置合理的调用深度限制
+                raise RecursionError(f"自定义关键字调用深度过深: {len(call_stack)}")
+
             # 创建一个新的DSL执行器
             executor = DSLExecutor()
 
@@ -347,6 +355,10 @@ class CustomKeywordManager:
                 executor.variables, executor.test_context
             )
 
+            # 更新调用栈
+            new_call_stack = call_stack + [keyword_name]
+            custom_keyword_executor._call_stack = new_call_stack
+
             # 执行关键字体中的语句
             result = None
             try:
@@ -358,6 +370,9 @@ class CustomKeywordManager:
             except Exception as e:
                 print(f"执行自定义关键字 {keyword_name} 时发生错误: {str(e)}")
                 raise
+            finally:
+                # 恢复调用栈
+                custom_keyword_executor._call_stack = call_stack
 
             return result
 
