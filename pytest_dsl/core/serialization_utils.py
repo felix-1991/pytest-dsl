@@ -21,7 +21,7 @@ class XMLRPCSerializer:
     
     # 敏感信息过滤模式
     DEFAULT_EXCLUDE_PATTERNS = [
-        'password', 'secret', 'token', 'credential', 'auth', 'private'
+        
     ]
 
     # XML-RPC限制
