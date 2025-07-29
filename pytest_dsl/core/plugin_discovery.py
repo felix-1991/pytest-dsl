@@ -33,15 +33,22 @@ from pytest_dsl.core.keyword_manager import keyword_manager
 def discover_installed_plugins() -> List[str]:
     """
     发现所有已安装的pytest-dsl关键字插件
-    
+
     通过entry_points机制查找所有声明了'pytest_dsl.keywords'入口点的包
-    
+
     Returns:
         List[str]: 已安装的插件包名列表
     """
     plugins = []
     try:
-        eps = importlib.metadata.entry_points(group='pytest_dsl.keywords')
+        # Python 3.10+ 支持 group 参数
+        try:
+            eps = importlib.metadata.entry_points(group='pytest_dsl.keywords')
+        except TypeError:
+            # Python 3.9 兼容性：不支持 group 参数，需要手动过滤
+            all_eps = importlib.metadata.entry_points()
+            eps = all_eps.get('pytest_dsl.keywords', [])
+
         for ep in eps:
             plugins.append(ep.module)
     except Exception as e:
