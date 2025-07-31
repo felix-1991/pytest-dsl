@@ -173,3 +173,16 @@ class DSLHookSpecs:
         Returns:
             验证错误列表，空列表表示验证通过
         """
+
+    @hookspec
+    def dsl_filter_sync_variables(self, variables: Dict[str, Any],
+                                 sync_context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """过滤要同步的变量（在最终同步前调用）
+
+        Args:
+            variables: 经过基础过滤后的变量字典
+            sync_context: 同步上下文信息
+
+        Returns:
+            过滤后的变量字典，返回None表示不修改
+        """

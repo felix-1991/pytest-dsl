@@ -391,12 +391,15 @@ class RemoteKeywordClient:
             
             # 扩展排除模式
             exclude_patterns = self.sync_config.get('yaml_exclude_patterns', [
-                'password', 'secret', 'token', 'credential', 'auth',
-                'private', 'remote_servers'
+                'remote_servers'
             ])
             
             variables_to_sync = XMLRPCSerializer.filter_variables(
                 context_variables, exclude_patterns)
+
+            # 应用Hook过滤
+            variables_to_sync = self._apply_hook_filter(
+                variables_to_sync, context_variables, 'realtime')
 
             if variables_to_sync:
                 # 调用远程服务器的变量同步接口
@@ -457,7 +460,9 @@ class RemoteKeywordClient:
                 )
                 serializable_variables = XMLRPCSerializer.filter_variables(
                     variables_to_send)
-                
+
+                # 注意：Hook过滤已在各个变量收集方法中完成，此处不再重复过滤
+
                 if serializable_variables:
                     try:
                         # 使用安全的XML-RPC调用
@@ -514,6 +519,11 @@ class RemoteKeywordClient:
                             )
                             filtered_global_vars = XMLRPCSerializer.filter_variables(
                                 global_vars)
+
+                            # 应用Hook过滤
+                            filtered_global_vars = self._apply_hook_filter(
+                                filtered_global_vars, global_vars, 'initial', 'global')
+
                             variables.update(filtered_global_vars)
         except Exception as e:
             logger.warning(f"收集全局变量失败: {str(e)}")
@@ -562,6 +572,11 @@ class RemoteKeywordClient:
                     )
                     filtered_yaml_vars = XMLRPCSerializer.filter_variables(
                         yaml_data, exclude_patterns)
+
+                    # 应用Hook过滤
+                    filtered_yaml_vars = self._apply_hook_filter(
+                        filtered_yaml_vars, yaml_data, 'initial', 'yaml')
+
                     variables.update(filtered_yaml_vars)
                     for key in filtered_yaml_vars:
                         print(f"传递YAML变量: {key}")
@@ -569,6 +584,43 @@ class RemoteKeywordClient:
         except Exception as e:
             logger.warning(f"收集YAML变量失败: {str(e)}")
             print(f"收集YAML变量失败: {str(e)}")
+
+        return variables
+
+    def _apply_hook_filter(self, variables, original_variables, sync_type, variable_source='context'):
+        """应用Hook过滤
+
+        Args:
+            variables: 经过基础过滤的变量字典
+            original_variables: 原始变量字典
+            sync_type: 同步类型 ('initial', 'realtime', 'change')
+            variable_source: 变量来源 ('context', 'global', 'yaml')
+
+        Returns:
+            经过Hook过滤的变量字典
+        """
+        try:
+            from pytest_dsl.core.hook_manager import hook_manager
+
+            # 构建同步上下文
+            sync_context = {
+                'server_alias': self.alias,
+                'server_url': self.url,
+                'sync_type': sync_type,
+                'variable_source': variable_source,
+            }
+
+            # 调用所有注册的过滤hook
+            hook_results = hook_manager.pm.hook.dsl_filter_sync_variables(
+                variables=variables, sync_context=sync_context)
+
+            for filtered_result in hook_results:
+                if filtered_result is not None:
+                    variables = filtered_result
+                    print(f"Hook过滤后变量数量: {len(variables)} (服务器: {self.alias}, 类型: {sync_type})")
+
+        except Exception as e:
+            print(f"Hook过滤失败，使用原始过滤结果: {e}")
 
         return variables
 

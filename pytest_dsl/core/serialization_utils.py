@@ -370,7 +370,7 @@ class XMLRPCSerializer:
             serialized = xmlrpc.client.dumps((data,), allow_none=True)
 
             # 检查序列化后的大小
-            if len(serialized) > 1024 * 1024:  # 1MB限制
+            if len(serialized) > 1024 * 1024 * 5:  # 5MB限制
                 return False, f"序列化数据过大: {len(serialized)} 字节"
 
             # 尝试反序列化验证完整性

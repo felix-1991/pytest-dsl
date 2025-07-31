@@ -776,9 +776,8 @@ class DSLExecutor:
                         attachment_type=allure.attachment_type.TEXT
                     )
 
-                # 通知远程服务器变量已更新
-                self._notify_remote_servers_variable_changed(
-                    var_name, expr_value)
+                # 注释：移除变量变化通知，因为远程关键字执行前的实时同步已经足够
+                # self._notify_remote_servers_variable_changed(var_name, expr_value)
 
             except Exception as e:
                 # 在步骤内部记录异常详情
@@ -825,8 +824,8 @@ class DSLExecutor:
                         attachment_type=allure.attachment_type.TEXT
                     )
 
-                # 通知远程服务器变量已更新
-                self._notify_remote_servers_variable_changed(var_name, result)
+                # 注释：移除变量变化通知，因为远程关键字执行前的实时同步已经足够
+                # self._notify_remote_servers_variable_changed(var_name, result)
 
             except Exception as e:
                 # 在步骤内部记录异常详情
@@ -866,9 +865,16 @@ class DSLExecutor:
             # 获取所有已连接的远程服务器客户端
             for alias, client in remote_keyword_manager.clients.items():
                 try:
+                    # 应用Hook过滤
+                    final_variables = client._apply_hook_filter(
+                        filtered_variables, variables_to_filter, 'change')
+
+                    if not final_variables:
+                        continue  # Hook过滤后没有变量需要同步
+
                     # 调用远程服务器的变量同步接口
                     result = client.server.sync_variables_from_client(
-                        filtered_variables, client.api_key)
+                        final_variables, client.api_key)
 
                     if result.get('status') == 'success':
                         print(f"🔄 变量 {var_name} 已同步到远程服务器 {alias}")
@@ -1457,9 +1463,8 @@ class DSLExecutor:
                             attachment_type=allure.attachment_type.TEXT
                         )
 
-                    # 通知远程服务器变量已更新
-                    self._notify_remote_servers_variable_changed(
-                        var_name, actual_result)
+                    # 注释：移除变量变化通知，因为远程关键字执行前的实时同步已经足够
+                    # self._notify_remote_servers_variable_changed(var_name, actual_result)
 
                     # 同时处理captures中的变量同步
                     if isinstance(result, dict) and 'captures' in result:

@@ -325,16 +325,32 @@ class CustomKeywordManager:
             if len(call_stack) > 50:  # 设置合理的调用深度限制
                 raise RecursionError(f"自定义关键字调用深度过深: {len(call_stack)}")
 
-            # 创建一个新的DSL执行器
-            executor = DSLExecutor()
+            # 尝试获取当前线程的执行器，优先使用现有执行器
+            import threading
+            current_executor = getattr(threading.current_thread(), 'dsl_executor', None)
+
+            # 如果有当前执行器，直接使用它；否则创建新的
+            if current_executor:
+                executor = current_executor
+                print(f"使用现有执行器执行自定义关键字: {keyword_name}")
+            else:
+                executor = DSLExecutor()
+                print(f"创建新执行器执行自定义关键字: {keyword_name}")
 
             # 导入ReturnException以避免循环导入
             from pytest_dsl.core.dsl_executor import ReturnException
 
             # 获取传递的上下文
             context = kwargs.get('context')
-            if context:
-                executor.test_context = context
+            if context and hasattr(executor, 'test_context'):
+                # 更新测试上下文，但不覆盖现有的重要状态
+                if hasattr(context, 'items'):
+                    # 如果是字典类型
+                    for key, value in context.items():
+                        executor.test_context.set(key, value)
+                elif hasattr(context, '_variables'):
+                    # 如果是TestContext类型，直接赋值
+                    executor.test_context = context
 
             # 先应用默认值
             for param_name, default_value in param_defaults.items():
