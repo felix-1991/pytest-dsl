@@ -542,9 +542,10 @@ class DSLExecutor:
 
     def _handle_start(self, node):
         """处理开始节点"""
+        teardown_node = None
+
         try:
             metadata = {}
-            teardown_node = None
 
             # 自动导入项目中的resources目录
             self._auto_import_resources()
@@ -569,17 +570,26 @@ class DSLExecutor:
             self._execute_test_iteration(metadata, node, teardown_node)
 
         except Exception as e:
-            # 如果是断言错误，直接抛出
-            if isinstance(e, AssertionError):
-                raise
-            # 如果是语法错误，记录并抛出
+            # 如果是语法错误，记录并抛出（让finally块执行）
             if "语法错误" in str(e):
                 print(f"DSL语法错误: {str(e)}")
                 raise
-            # 其他错误，记录并抛出
+            # 其他错误，记录并抛出（让finally块执行）
             print(f"测试执行错误: {str(e)}")
             raise
         finally:
+            # 确保teardown在任何情况下都执行
+            if teardown_node:
+                try:
+                    self.execute(teardown_node)
+                except Exception as e:
+                    print(f"🚨 清理操作发生严重错误: {str(e)}")
+                    allure.attach(
+                        f"清理严重失败: {str(e)}",
+                        name="清理严重错误",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+
             # 测试用例执行完成后清空上下文
             self.test_context.clear()
 
@@ -706,17 +716,6 @@ class DSLExecutor:
                 if child.type != 'Teardown' and child.type != 'Metadata':
                     self.execute(child)
 
-            # 执行teardown
-            if teardown_node:
-                with allure.step("执行清理操作"):
-                    try:
-                        self.execute(teardown_node)
-                    except Exception as e:
-                        allure.attach(
-                            f"清理失败: {str(e)}",
-                            name="清理失败",
-                            attachment_type=allure.attachment_type.TEXT
-                        )
         finally:
             # 使用环境变量控制是否清空变量
             # 当 PYTEST_DSL_KEEP_VARIABLES=1 时，保留变量（用于单元测试）
@@ -1269,10 +1268,72 @@ class DSLExecutor:
 
         return kwargs
 
-    @allure.step("执行清理操作")
     def _handle_teardown(self, node):
-        """处理清理操作"""
-        self.execute(node.children[0])
+        """处理清理操作 - 强制执行所有清理关键字，即使某些失败"""
+        if not node.children:
+            return
+
+        teardown_errors = []
+
+        # teardown块只有一个子节点：Statements节点
+        # 直接遍历Statements节点的所有子节点，确保即使某个语句失败也继续执行后续语句
+        statements_node = node.children[0]
+
+        # 处理不同类型的teardown块结构
+        if statements_node is None:
+            # 空的teardown块，什么都不做
+            return
+        elif hasattr(statements_node, 'type') and statements_node.type == 'Statements':
+            # 正常的Statements节点，遍历所有子语句
+            for stmt in statements_node.children:
+                # 跳过None节点（可能由空的statements块产生）
+                if stmt is None:
+                    continue
+                try:
+                    self.execute(stmt)
+                except Exception as e:
+                    # 记录错误但继续执行下一个清理操作
+                    error_info = {
+                        'line_number': getattr(stmt, 'line_number', None),
+                        'error': str(e),
+                        'statement_type': getattr(stmt, 'type', 'Unknown')
+                    }
+                    teardown_errors.append(error_info)
+
+                    # 记录到allure报告中
+                    error_msg = f"清理操作失败 (行{error_info['line_number'] if error_info['line_number'] else '未知'}): {str(e)}"
+                    allure.attach(
+                        error_msg,
+                        name="清理操作警告",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+        else:
+            # 其他类型的节点（如单个语句），直接执行
+            try:
+                self.execute(statements_node)
+            except Exception as e:
+                error_info = {
+                    'line_number': getattr(statements_node, 'line_number', None),
+                    'error': str(e),
+                    'statement_type': getattr(statements_node, 'type', 'Unknown')
+                }
+                teardown_errors.append(error_info)
+
+                error_msg = f"清理操作失败 (行{error_info['line_number'] if error_info['line_number'] else '未知'}): {str(e)}"
+                allure.attach(
+                    error_msg,
+                    name="清理操作警告",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+
+        # 如果有清理错误，打印汇总信息但不抛出异常
+        if teardown_errors:
+            error_count = len(teardown_errors)
+            print(f"⚠️  清理操作完成，但有 {error_count} 个操作失败:")
+            for i, error in enumerate(teardown_errors, 1):
+                line_info = f"行{error['line_number']}" if error['line_number'] else "未知行号"
+                print(f"   {i}. [{error['statement_type']}] {line_info}: {error['error']}")
+            print("📋 注意：清理操作失败不会影响测试结果，所有清理步骤都已尝试执行")
 
     @allure.step("执行返回语句")
     def _handle_return(self, node):

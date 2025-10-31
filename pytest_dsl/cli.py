@@ -197,14 +197,16 @@ def load_yaml_variables(args):
 
 def execute_dsl_file(file_path, lexer, parser, executor):
     """执行单个DSL文件"""
+    print(f"执行文件: {file_path}")
+    dsl_code = read_file(file_path)
+    ast = parser.parse(dsl_code, lexer=lexer)
+
     try:
-        print(f"执行文件: {file_path}")
-        dsl_code = read_file(file_path)
-        ast = parser.parse(dsl_code, lexer=lexer)
         executor.execute(ast)
         return True
     except Exception as e:
         print(f"执行失败 {file_path}: {e}")
+        # 异常已经发生，executor的finally块应该已经处理了teardown
         return False
 
 

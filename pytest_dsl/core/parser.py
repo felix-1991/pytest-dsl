@@ -353,8 +353,14 @@ def p_parameter_item(p):
 
 
 def p_teardown(p):
-    '''teardown : TEARDOWN DO statements END'''
-    p[0] = Node('Teardown', [p[3]])
+    '''teardown : TEARDOWN DO statements END
+                | TEARDOWN DO END'''
+    if len(p) == 5:
+        # 有statements的teardown块
+        p[0] = Node('Teardown', [p[3]])
+    else:
+        # 空的teardown块，创建一个空的Statements节点
+        p[0] = Node('Teardown', [Node('Statements', [])])
 
 
 def p_data_source(p):
