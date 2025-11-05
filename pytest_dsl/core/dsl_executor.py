@@ -590,8 +590,8 @@ class DSLExecutor:
                         attachment_type=allure.attachment_type.TEXT
                     )
 
-            # 测试用例执行完成后清空上下文
-            self.test_context.clear()
+            # 测试用例执行完成后清空上下文/变量
+            self._clear_execution_state()
 
     def _auto_import_resources(self):
         """自动导入项目中的resources目录"""
@@ -699,35 +699,21 @@ class DSLExecutor:
 
     def _execute_test_iteration(self, metadata, node, teardown_node):
         """执行测试迭代"""
-        try:
-            # 设置 Allure 报告信息
-            if '@name' in metadata:
-                test_name = metadata['@name']
-                allure.dynamic.title(test_name)
-            if '@description' in metadata:
-                description = metadata['@description']
-                allure.dynamic.description(description)
-            if '@tags' in metadata:
-                for tag in metadata['@tags']:
-                    allure.dynamic.tag(tag.value)
+        # 设置 Allure 报告信息
+        if '@name' in metadata:
+            test_name = metadata['@name']
+            allure.dynamic.title(test_name)
+        if '@description' in metadata:
+            description = metadata['@description']
+            allure.dynamic.description(description)
+        if '@tags' in metadata:
+            for tag in metadata['@tags']:
+                allure.dynamic.tag(tag.value)
 
-            # 执行所有非teardown节点
-            for child in node.children:
-                if child.type != 'Teardown' and child.type != 'Metadata':
-                    self.execute(child)
-
-        finally:
-            # 使用环境变量控制是否清空变量
-            # 当 PYTEST_DSL_KEEP_VARIABLES=1 时，保留变量（用于单元测试）
-            # 否则清空变量（用于正常DSL执行）
-            import os
-            keep_variables = os.environ.get(
-                'PYTEST_DSL_KEEP_VARIABLES', '0') == '1'
-
-            if not keep_variables:
-                self.variables.clear()
-                # 同时清空测试上下文
-                self.test_context.clear()
+        # 执行所有非teardown节点
+        for child in node.children:
+            if child.type != 'Teardown' and child.type != 'Metadata':
+                self.execute(child)
 
     def _handle_statements(self, node):
         """处理语句列表"""
@@ -1857,6 +1843,21 @@ class DSLExecutor:
             raise Exception(f"DSL解析失败: {'; '.join(error_messages)}")
 
         return ast
+
+    def _clear_execution_state(self):
+        """在teardown完成后清理执行状态"""
+        import os
+
+        keep_variables = os.environ.get('PYTEST_DSL_KEEP_VARIABLES', '0') == '1'
+        if keep_variables:
+            return
+
+        self.variables.clear()
+        self.test_context.clear()
+
+        # VariableReplacer持有的local_variables引用同一个字典，但出于防御依然清理一次
+        if hasattr(self.variable_replacer, 'local_variables'):
+            self.variable_replacer.local_variables.clear()
 
 
 def read_file(filename):

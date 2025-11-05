@@ -209,25 +209,29 @@ for i in range(1, 5) do
     [打印], 内容: "循环次数: ${i}"
 end
 
-# 注意：当前不支持直接遍历数组，需要使用索引访问
+# 列表遍历循环（普通列表或数据驱动列表均可）
 items = ["apple", "banana", "orange"]
-items_length = 3  # 预定义长度
-
-for i in range(0, ${items_length}) do
-    [打印], 内容: "当前项: ${items[i]}"
+for item in items do
+    [打印], 内容: "当前项: ${item}"
 end
 
-# 字典列表循环 - 使用索引访问
+# 字典列表循环
 users = [
     {"name": "张三", "age": 25},
     {"name": "李四", "age": 30}
 ]
-users_length = 2  # 预定义长度
+for user in users do
+    [打印], 内容: "用户: ${user['name']}, 年龄: ${user['age']}"
+end
 
-for i in range(0, ${users_length}) do
-    [打印], 内容: "用户: ${users[i].name}, 年龄: ${users[i].age}"
+# 键值对遍历
+user_profile = {"name": "王五", "age": 28}
+for key, value in user_profile do
+    [打印], 内容: "${key}: ${value}"
 end
 ```
+
+> 注意：占位表达式暂不支持使用循环索引进行多级访问（如`${users[i]['name']}`），如需访问列表项详情，建议使用列表遍历写法并在占位中通过键名获取属性。
 
 ### 循环控制
 

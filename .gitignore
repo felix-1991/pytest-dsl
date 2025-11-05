@@ -118,3 +118,4 @@ $RECYCLE.BIN/
 performance_report.json
 # Playwright认证状态文件
 playwright/.auth
+web-editor/
