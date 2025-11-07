@@ -8,6 +8,7 @@ import json
 from typing import Any, Dict, List, Optional
 from pytest_dsl.core.global_context import global_context
 from pytest_dsl.core.context import TestContext
+from pytest_dsl.core.serialization_utils import XMLRPCSerializer
 
 
 class VariableReplacer:
@@ -89,7 +90,12 @@ class VariableReplacer:
             try:
                 if '.' in value:
                     return float(value)
-                return int(value)
+                int_value = int(value)
+                # 避免将超出XML-RPC范围的整数字符串转换为int
+                if (XMLRPCSerializer.MIN_INT_VALUE <= int_value <=
+                        XMLRPCSerializer.MAX_INT_VALUE):
+                    return int_value
+                return value
             except (ValueError, TypeError):
                 pass
         return value
