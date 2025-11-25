@@ -18,7 +18,10 @@ reserved = {
     'function': 'FUNCTION',  # 添加function关键字支持，用于自定义关键字定义
     'teardown': 'TEARDOWN',   # 添加teardown关键字支持，用于清理操作
     'break': 'BREAK',  # 添加break关键字支持，用于循环控制
-    'continue': 'CONTINUE'  # 添加continue关键字支持，用于循环控制
+    'continue': 'CONTINUE',  # 添加continue关键字支持，用于循环控制
+    'and': 'AND',  # 添加逻辑与运算符
+    'or': 'OR',    # 添加逻辑或运算符
+    'not': 'NOT'   # 添加逻辑非运算符
 }
 
 # token 名称列表

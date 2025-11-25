@@ -67,6 +67,8 @@ def main():
         "auth_test.dsl",
         "test_dict_support.dsl",
         "test_if_elif_else.dsl",
+        "test_in_operator.dsl",  # 新增：in和not in运算符测试
+        "test_logical_operators.dsl",  # 新增：逻辑运算符（and、or、not）测试
         "test_break_continue_final.dsl",
         "boolean_demo.dsl",
         "../test_new_for_loops.dsl",  # 新增：for循环语法测试

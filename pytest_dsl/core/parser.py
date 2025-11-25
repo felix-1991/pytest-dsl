@@ -28,9 +28,14 @@ class Node:
 
 
 # 定义优先级和结合性
+# 注意：优先级从低到高，列表越靠后优先级越高
 precedence = (
     ('left', 'COMMA'),
-    ('left', 'GT', 'LT', 'GE', 'LE', 'EQ', 'NE'),  # 比较运算符优先级
+    ('left', 'OR'),  # 逻辑或运算符优先级（最低）
+    ('left', 'AND'),  # 逻辑与运算符优先级
+    ('right', 'NOT'),  # 逻辑非运算符优先级
+    ('left', 'IN'),  # 成员运算符优先级
+    ('left', 'GT', 'LT', 'GE', 'LE', 'EQ', 'NE'),  # 比较运算符优先级（高于逻辑运算符）
     ('left', 'PLUS', 'MINUS'),  # 加减运算符优先级
     ('left', 'TIMES', 'DIVIDE', 'MODULO'),  # 乘除模运算符优先级
     ('right', 'EQUALS'),
@@ -175,7 +180,8 @@ def p_assignment(p):
 def p_expression(p):
     '''expression : expr_atom
                   | comparison_expr
-                  | arithmetic_expr'''
+                  | arithmetic_expr
+                  | logical_expr'''
     # 如果是比较表达式或其他复合表达式，则已经是一个Node对象
     if isinstance(p[1], Node):
         p[0] = p[1]
@@ -455,10 +461,16 @@ def p_comparison_expr(p):
                       | expr_atom GE expr_atom
                       | expr_atom LE expr_atom
                       | expr_atom EQ expr_atom
-                      | expr_atom NE expr_atom'''
+                      | expr_atom NE expr_atom
+                      | expr_atom IN expr_atom %prec IN
+                      | expr_atom NOT IN expr_atom %prec IN'''
 
     # 根据规则索引判断使用的是哪个操作符
-    if p.slice[2].type == 'GT':
+    # 先检查多token运算符（not in）- 通过检查token类型而不是长度，更稳妥
+    if len(p) == 5 and p.slice[2].type == 'NOT' and p.slice[3].type == 'IN':
+        # not in 运算符
+        operator = 'not in'
+    elif p.slice[2].type == 'GT':
         operator = '>'
     elif p.slice[2].type == 'LT':
         operator = '<'
@@ -470,11 +482,36 @@ def p_comparison_expr(p):
         operator = '=='
     elif p.slice[2].type == 'NE':
         operator = '!='
+    elif p.slice[2].type == 'IN':
+        operator = 'in'
     else:
         print(f"警告: 无法识别的操作符类型 {p.slice[2].type}")
         operator = None
 
-    p[0] = Node('ComparisonExpr', [p[1], p[3]], operator)
+    # 对于 not in，左操作数是 p[1]，右操作数是 p[4]
+    # 对于其他运算符，左操作数是 p[1]，右操作数是 p[3]
+    if operator == 'not in':
+        p[0] = Node('ComparisonExpr', [p[1], p[4]], operator)
+    else:
+        p[0] = Node('ComparisonExpr', [p[1], p[3]], operator)
+
+
+def p_logical_expr(p):
+    '''logical_expr : expression AND expression %prec AND
+                    | expression OR expression %prec OR
+                    | NOT expression %prec NOT'''
+    # 根据token类型判断运算符类型
+    if p.slice[1].type == 'NOT':
+        # 一元逻辑运算符: not
+        p[0] = Node('LogicalExpr', [p[2]], 'not')
+    elif p.slice[2].type == 'AND':
+        # 二元逻辑运算符: and
+        p[0] = Node('LogicalExpr', [p[1], p[3]], 'and')
+    elif p.slice[2].type == 'OR':
+        # 二元逻辑运算符: or
+        p[0] = Node('LogicalExpr', [p[1], p[3]], 'or')
+    else:
+        raise SyntaxError(f"未知的逻辑运算符: {p.slice[2].type if len(p) > 2 else p.slice[1].type}")
 
 
 def p_arithmetic_expr(p):

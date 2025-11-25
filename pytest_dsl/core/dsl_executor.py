@@ -339,6 +339,9 @@ class DSLExecutor:
             elif expr_node.type == 'ArithmeticExpr':
                 # 处理算术表达式
                 return self._eval_arithmetic_expr(expr_node)
+            elif expr_node.type == 'LogicalExpr':
+                # 处理逻辑表达式
+                return self._eval_logical_expr(expr_node)
             else:
                 raise Exception(f"无法求值的表达式类型: {expr_node.type}")
 
@@ -418,6 +421,30 @@ class DSLExecutor:
                 return left_value == right_value
             elif operator == '!=':
                 return left_value != right_value
+            elif operator == 'in':
+                # 成员运算符：检查 left_value 是否在 right_value 中
+                if isinstance(right_value, (list, tuple, set)):
+                    return left_value in right_value
+                elif isinstance(right_value, dict):
+                    return left_value in right_value.keys()
+                elif isinstance(right_value, str):
+                    # 字符串包含检查
+                    return str(left_value) in right_value
+                else:
+                    # 尝试转换为字符串进行包含检查
+                    return str(left_value) in str(right_value)
+            elif operator == 'not in':
+                # 非成员运算符：检查 left_value 是否不在 right_value 中
+                if isinstance(right_value, (list, tuple, set)):
+                    return left_value not in right_value
+                elif isinstance(right_value, dict):
+                    return left_value not in right_value.keys()
+                elif isinstance(right_value, str):
+                    # 字符串不包含检查
+                    return str(left_value) not in right_value
+                else:
+                    # 尝试转换为字符串进行不包含检查
+                    return str(left_value) not in str(right_value)
             else:
                 raise Exception(f"未知的比较操作符: {operator}")
         except Exception as e:
@@ -483,6 +510,41 @@ class DSLExecutor:
                 raise Exception(f"未知的算术操作符: {operator}")
         except Exception as e:
             context_info = f"算术表达式求值 '{operator}'"
+            self._handle_exception_with_line_info(e, expr_node, context_info)
+
+    def _eval_logical_expr(self, expr_node):
+        """
+        对逻辑表达式进行求值
+
+        :param expr_node: 逻辑表达式节点
+        :return: 逻辑运算结果（布尔值）
+        """
+        operator = "未知"  # 设置默认值，避免UnboundLocalError
+        try:
+            operator = expr_node.value  # 操作符: and, or, not
+            
+            if operator == 'not':
+                # 一元逻辑运算符: not
+                operand_value = self.eval_expression(expr_node.children[0])
+                # 将值转换为布尔值
+                return not bool(operand_value)
+            else:
+                # 二元逻辑运算符: and, or
+                left_value = self.eval_expression(expr_node.children[0])
+                right_value = self.eval_expression(expr_node.children[1])
+                
+                # 将值转换为布尔值
+                left_bool = bool(left_value)
+                right_bool = bool(right_value)
+                
+                if operator == 'and':
+                    return left_bool and right_bool
+                elif operator == 'or':
+                    return left_bool or right_bool
+                else:
+                    raise Exception(f"未知的逻辑操作符: {operator}")
+        except Exception as e:
+            context_info = f"逻辑表达式求值 '{operator}'"
             self._handle_exception_with_line_info(e, expr_node, context_info)
 
     def _get_variable(self, var_name):
