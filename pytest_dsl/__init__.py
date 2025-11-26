@@ -12,7 +12,7 @@ pytest-dsl - 基于pytest的DSL测试框架
 - 自定义关键字支持
 """
 
-__version__ = "0.17.4"
+__version__ = "0.18.0"
 
 # 核心执行器
 from pytest_dsl.core.dsl_executor import DSLExecutor
