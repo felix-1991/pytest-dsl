@@ -26,6 +26,8 @@ examples/readme_validation/
 ├── auth.resource           # 认证相关关键字资源文件
 ├── data_driven.dsl         # 数据驱动测试示例（需要pytest运行）
 ├── data_driven.csv         # 数据驱动测试数据文件
+├── test_in_operator.dsl    # in和not in运算符测试示例
+├── test_logical_operators.dsl   # 逻辑运算符（and、or、not）测试示例
 └── test_runner.py          # pytest集成示例
 ```
 
@@ -92,6 +94,8 @@ pytest test_runner.py -v
 - **auth.resource**: 认证相关关键字资源文件
 - **data_driven.dsl**: 数据驱动测试示例（需要pytest运行）
 - **data_driven.csv**: 数据驱动测试数据文件
+- **test_in_operator.dsl**: 演示in和not in运算符的使用，包括列表、字符串、字典等场景
+- **test_logical_operators.dsl**: 演示逻辑运算符（and、or、not）的使用，包括复杂逻辑组合和优先级测试
 
 ### pytest集成示例
 
