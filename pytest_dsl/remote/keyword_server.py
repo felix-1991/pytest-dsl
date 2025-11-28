@@ -241,6 +241,15 @@ class RemoteKeywordServer:
 
             # 映射参数（通用逻辑）
             for param_name, param_value in args_dict.items():
+                # 处理大整数：如果参数值是以 __bigint__: 开头的字符串，转换为整数
+                if isinstance(param_value, str) and param_value.startswith("__bigint__:"):
+                    try:
+                        bigint_value = int(param_value.split(":", 1)[1])
+                        param_value = bigint_value
+                        print(f"参数 {param_name} 的大整数字符串已转换为整数: {bigint_value}")
+                    except (ValueError, IndexError):
+                        pass  # 转换失败，保持原值
+                
                 if param_name in mapping:
                     exec_kwargs[mapping[param_name]] = param_value
                 else:

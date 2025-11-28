@@ -137,9 +137,11 @@ class XMLRPCSerializer:
         elif isinstance(value, int):
             # 检查整数范围
             if value > XMLRPCSerializer.MAX_INT_VALUE:
-                return f"<整数过大: {value}>"
+                # 超出范围时使用特殊标记，服务器端会自动转换回整数
+                return f"__bigint__:{value}"
             elif value < XMLRPCSerializer.MIN_INT_VALUE:
-                return f"<整数过小: {value}>"
+                # 超出范围时使用特殊标记，服务器端会自动转换回整数
+                return f"__bigint__:{value}"
             return value
 
         # 处理浮点数
@@ -228,7 +230,41 @@ class XMLRPCSerializer:
             except Exception:
                 return "<循环引用: 未知类型>"
 
-        # 如果已经可序列化，先进行安全处理再返回
+        # 对于字典和列表，需要递归处理，不能直接调用 safe_serialize_value
+        # 因为 safe_serialize_value 只处理基本类型，不处理容器类型
+        if isinstance(value, dict):
+            # 注意：循环引用检查已在第226行完成
+            visited.add(value_id)
+            try:
+                # 递归处理字典中的值
+                converted_dict = {}
+                for k, v in value.items():
+                    # 键必须是字符串
+                    if not isinstance(k, str):
+                        k = str(k)
+                    # 递归转换值
+                    converted_value = XMLRPCSerializer.convert_to_serializable(v, visited)
+                    if converted_value is not None or v is None:
+                        converted_dict[k] = converted_value
+                return converted_dict
+            finally:
+                visited.discard(value_id)
+        
+        if isinstance(value, (list, tuple)):
+            # 注意：循环引用检查已在第226行完成
+            visited.add(value_id)
+            try:
+                # 递归处理列表/元组中的元素
+                converted_list = []
+                for item in value:
+                    converted_item = XMLRPCSerializer.convert_to_serializable(item, visited)
+                    if converted_item is not None or item is None:
+                        converted_list.append(converted_item)
+                return tuple(converted_list) if isinstance(value, tuple) else converted_list
+            finally:
+                visited.discard(value_id)
+        
+        # 对于其他可序列化的基本类型，进行安全处理
         if XMLRPCSerializer.is_serializable(value):
             return XMLRPCSerializer.safe_serialize_value(value)
 
@@ -409,19 +445,31 @@ class XMLRPCSerializer:
             # 获取方法
             method = getattr(server_proxy, method_name)
 
-            # 验证参数
-            for i, arg in enumerate(args):
+            # 先转换参数（处理超长整数等边界情况）
+            # 这样可以确保超长整数在验证前就被转换为字符串格式
+            converted_args = []
+            for arg in args:
+                converted_arg = XMLRPCSerializer.convert_to_serializable(arg)
+                converted_args.append(converted_arg)
+            
+            converted_kwargs = {}
+            for key, value in kwargs.items():
+                converted_value = XMLRPCSerializer.convert_to_serializable(value)
+                converted_kwargs[key] = converted_value
+
+            # 验证转换后的参数
+            for i, arg in enumerate(converted_args):
                 is_valid, error_msg = XMLRPCSerializer.validate_xmlrpc_data(arg)
                 if not is_valid:
                     raise ValueError(f"参数 {i} 无法序列化: {error_msg}")
 
-            for key, value in kwargs.items():
+            for key, value in converted_kwargs.items():
                 is_valid, error_msg = XMLRPCSerializer.validate_xmlrpc_data(value)
                 if not is_valid:
                     raise ValueError(f"参数 '{key}' 无法序列化: {error_msg}")
 
-            # 执行调用
-            return method(*args, **kwargs)
+            # 执行调用（使用转换后的参数）
+            return method(*converted_args, **converted_kwargs)
 
         except xmlrpc.client.ProtocolError as e:
             raise Exception(f"XML-RPC协议错误: {e.errcode} {e.errmsg}")
