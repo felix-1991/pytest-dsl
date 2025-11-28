@@ -245,12 +245,13 @@ def assert_condition(**kwargs):
                 left_value)
 
         # 修复：只对安全的表达式执行eval
-        if isinstance(left_value, str) and _is_safe_expression(left_value):
+        # 对于特定操作符（如正则匹配、字符串包含），保持字符串类型不转换，不执行eval
+        if isinstance(left_value, str) and _is_safe_expression(left_value) and operator_used not in ['matches', 'not_matches', 'regex_match', 'contains', 'not_contains']:
             left_value = _safe_eval_expression(left_value)
 
         # 处理布尔值字符串和数字字符串
-        # 对于特定操作符（如正则匹配），保持字符串类型不转换
-        if isinstance(left_value, str) and operator_used not in ['matches', 'not_matches', 'regex_match']:
+        # 对于特定操作符（如正则匹配、字符串包含），保持字符串类型不转换
+        if isinstance(left_value, str) and operator_used not in ['matches', 'not_matches', 'regex_match', 'contains', 'not_contains']:
             if left_value.lower() in ('true', 'false'):
                 left_value = left_value.lower() == 'true'
             elif left_value.lower() in (
@@ -282,12 +283,13 @@ def assert_condition(**kwargs):
                 right_value)
 
         # 修复：只对安全的表达式执行eval
-        if isinstance(right_value, str) and _is_safe_expression(right_value):
+        # 对于特定操作符（如正则匹配、字符串包含），保持字符串类型不转换，不执行eval
+        if isinstance(right_value, str) and _is_safe_expression(right_value) and operator_used not in ['matches', 'not_matches', 'regex_match', 'contains', 'not_contains']:
             right_value = _safe_eval_expression(right_value)
 
         # 处理布尔值字符串
-        # 对于特定操作符（如正则匹配），保持字符串类型不转换
-        if isinstance(right_value, str) and operator_used not in ['matches', 'not_matches', 'regex_match']:
+        # 对于特定操作符（如正则匹配、字符串包含），保持字符串类型不转换
+        if isinstance(right_value, str) and operator_used not in ['matches', 'not_matches', 'regex_match', 'contains', 'not_contains']:
             if right_value.lower() in ('true', 'false'):
                 right_value = right_value.lower() == 'true'
             elif right_value.lower() in (
