@@ -28,6 +28,7 @@ examples/readme_validation/
 ├── data_driven.csv         # 数据驱动测试数据文件
 ├── test_in_operator.dsl    # in和not in运算符测试示例
 ├── test_logical_operators.dsl   # 逻辑运算符（and、or、not）测试示例
+├── test_contains_operators.dsl  # contains和not_contains操作符测试示例
 └── test_runner.py          # pytest集成示例
 ```
 
@@ -96,6 +97,7 @@ pytest test_runner.py -v
 - **data_driven.csv**: 数据驱动测试数据文件
 - **test_in_operator.dsl**: 演示in和not in运算符的使用，包括列表、字符串、字典等场景
 - **test_logical_operators.dsl**: 演示逻辑运算符（and、or、not）的使用，包括复杂逻辑组合和优先级测试
+- **test_contains_operators.dsl**: 演示contains和not_contains操作符的使用，包括字符串、列表、数字转换等多种场景
 
 ### pytest集成示例
 
