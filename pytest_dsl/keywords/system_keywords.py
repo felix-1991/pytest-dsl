@@ -7,6 +7,9 @@ import datetime
 import logging
 from pytest_dsl.core.keyword_manager import keyword_manager
 
+# 配置日志
+logger = logging.getLogger(__name__)
+
 
 @keyword_manager.register('打印', [
     {'name': '内容', 'mapping': 'content', 'description': '要打印的文本内容'}
@@ -785,3 +788,258 @@ def convert_to_boolean(**kwargs):
             attachment_type=allure.attachment_type.TEXT
         )
         raise
+
+
+@keyword_manager.register('重试执行', [
+    {'name': '关键字名称', 'mapping': 'keyword_name', 'description': '要执行的关键字名称'},
+    {'name': '关键字参数', 'mapping': 'keyword_params', 'description': '关键字参数（字典格式）', 'default': {}},
+    {'name': '重试次数', 'mapping': 'max_retries', 'description': '最大重试次数', 'default': 3},
+    {'name': '重试间隔', 'mapping': 'retry_interval', 'description': '重试间隔（秒）', 'default': 1},
+    {'name': '成功条件', 'mapping': 'success_condition', 'description': '判断成功的DSL表达式，如 "${result.status_code} == 200"', 'default': None},
+    {'name': '打印字段', 'mapping': 'print_fields', 'description': '要打印的字段路径列表，如 ["result.status_code", "result.json.success"]', 'default': []},
+    {'name': '异常时退出', 'mapping': 'fail_on_exception', 'description': '遇到异常时是否立即退出（不重试），默认False（继续重试）', 'default': False},
+], category='系统/重试', tags=['重试', '错误处理'])
+def retry_execute(**kwargs):
+    """重试执行关键字，支持自定义成功条件和调试信息打印
+    
+    返回值格式:
+    {
+        'success': bool,  # 是否成功
+        'result': Any     # 执行结果（成功时返回结果，失败时返回None）
+    }
+    """
+    keyword_name = kwargs.get('keyword_name')
+    keyword_params = kwargs.get('keyword_params', {})
+    max_retries = kwargs.get('max_retries', 3)
+    retry_interval = kwargs.get('retry_interval', 1)
+    success_condition = kwargs.get('success_condition')
+    print_fields = kwargs.get('print_fields', [])
+    fail_on_exception = kwargs.get('fail_on_exception', False)
+    
+    import threading
+    from pytest_dsl.core.parser import parse_with_error_handling
+    from pytest_dsl.core.lexer import get_lexer
+    
+    # 获取当前执行器（用于求值表达式和访问变量）
+    current_executor = getattr(threading.current_thread(), 'dsl_executor', None)
+    if not current_executor:
+        from pytest_dsl.core.dsl_executor import DSLExecutor
+        current_executor = DSLExecutor()
+    
+    def _print_debug_info(result, attempt):
+        """打印调试信息（异常不影响重试流程）"""
+        if not print_fields:
+            return
+        
+        try:
+            debug_info_lines = [f"[重试调试信息 - 第 {attempt} 次尝试]"]
+            for field_path in print_fields:
+                try:
+                    # 将 result 临时保存到执行器的变量中
+                    current_executor.variables['result'] = result
+                    current_executor.variables['_retry_result'] = result
+                    
+                    # 处理字段路径：如果以 result. 开头则去掉，否则直接使用
+                    if field_path.startswith('result.'):
+                        var_ref = field_path.replace('result.', '')
+                    else:
+                        var_ref = field_path
+                    
+                    # 使用变量路径解析器访问字段
+                    value = current_executor.variable_replacer._parse_variable_path(var_ref)
+                    debug_info_lines.append(f"  {field_path}: {value}")
+                except Exception as e:
+                    # 打印字段访问失败不影响重试，只记录警告
+                    debug_info_lines.append(f"  {field_path}: [无法访问 - {str(e)}]")
+            
+            debug_info_text = "\n".join(debug_info_lines)
+            
+            # 使用 logging 输出到控制台
+            logger.debug(debug_info_text)
+            
+            # 使用 allure.attach 记录调试信息
+            allure.attach(
+                debug_info_text,
+                name=f"重试调试信息 - 第 {attempt} 次尝试",
+                attachment_type=allure.attachment_type.TEXT
+            )
+        except Exception as e:
+            # 打印过程异常不影响重试流程
+            error_msg = f"[重试调试信息] 打印失败: {str(e)}"
+            logger.warning(error_msg)
+            allure.attach(
+                error_msg,
+                name="重试调试信息错误",
+                attachment_type=allure.attachment_type.TEXT
+            )
+    
+    def _check_success_condition(result):
+        """检查成功条件（返回 (是否成功, 错误信息)）"""
+        if not success_condition:
+            return True, None
+        
+        try:
+            # 将结果保存到执行器的变量中
+            current_executor.variables['result'] = result
+            current_executor.variables['_retry_result'] = result
+            
+            # 解析DSL表达式
+            lexer = get_lexer()
+            ast, parse_errors = parse_with_error_handling(success_condition, lexer)
+            
+            if parse_errors:
+                error_msg = f"成功条件表达式解析失败: {parse_errors}"
+                return False, error_msg
+            
+            # 求值条件表达式
+            condition_result = current_executor.eval_expression(ast)
+            
+            if not bool(condition_result):
+                error_msg = f"结果不符合预期条件: {success_condition}"
+                return False, error_msg
+            
+            return True, None
+            
+        except Exception as e:
+            # 条件检查过程中的异常（解析、求值等）
+            error_msg = f"成功条件检查异常: {str(e)}"
+            return False, error_msg
+    
+    # 使用 allure.step 包装整个重试过程
+    with allure.step(f"重试执行关键字: {keyword_name} (最多 {max_retries + 1} 次)"):
+        # 记录开始重试
+        logger.info(f"开始重试执行关键字: {keyword_name} (最多 {max_retries + 1} 次尝试)")
+        if success_condition:
+            logger.info(f"成功条件: {success_condition}")
+        
+        # 主重试循环
+        for attempt in range(max_retries + 1):
+            try:
+                # 记录尝试开始
+                logger.info(f"第 {attempt + 1}/{max_retries + 1} 次尝试执行关键字: {keyword_name}")
+                
+                # 执行关键字（可能抛出异常）
+                result = keyword_manager.execute(keyword_name, **keyword_params)
+                
+                # 打印调试信息（异常不影响重试）
+                _print_debug_info(result, attempt + 1)
+                
+                # 检查成功条件（可能抛出异常）
+                condition_ok, condition_error = _check_success_condition(result)
+                
+                if condition_ok:
+                    # 成功执行
+                    success_msg = f"第 {attempt + 1} 次尝试成功"
+                    logger.info(f"✓ {success_msg}")
+                    allure.attach(
+                        success_msg,
+                        name="重试执行成功",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    return {
+                        'success': True,
+                        'result': result
+                    }
+                else:
+                    # 条件不满足，继续重试
+                    failure_msg = f"第 {attempt + 1} 次尝试 - 条件不满足: {condition_error}"
+                    logger.warning(f"✗ {failure_msg}")
+                    allure.attach(
+                        failure_msg,
+                        name=f"重试执行 - 第 {attempt + 1} 次尝试失败",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    if attempt < max_retries:
+                        wait_msg = f"等待 {retry_interval} 秒后重试..."
+                        logger.info(wait_msg)
+                        allure.attach(
+                            wait_msg,
+                            name="重试等待",
+                            attachment_type=allure.attachment_type.TEXT
+                        )
+                        time.sleep(retry_interval)
+                        continue
+                    else:
+                        # 最后一次尝试也失败
+                        final_failure_msg = f"所有 {max_retries + 1} 次尝试都失败（条件不满足）"
+                        logger.error(f"✗ {final_failure_msg}")
+                        allure.attach(
+                            final_failure_msg,
+                            name="重试执行失败",
+                            attachment_type=allure.attachment_type.TEXT
+                        )
+                        return {
+                            'success': False,
+                            'result': None
+                        }
+                
+            except KeyError as e:
+                # 关键字未注册异常（不应该重试，直接返回失败）
+                error_msg = f"关键字未注册: {str(e)}"
+                logger.error(f"✗ {error_msg}")
+                allure.attach(
+                    error_msg,
+                    name="重试执行错误",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+                return {
+                    'success': False,
+                    'result': None
+                }
+                
+            except Exception as e:
+                # 其他所有异常
+                error_msg = f"{type(e).__name__}: {str(e)}"
+                exception_msg = f"第 {attempt + 1} 次尝试失败: {error_msg}"
+                logger.warning(f"✗ {exception_msg}")
+                allure.attach(
+                    exception_msg,
+                    name=f"重试执行异常 - 第 {attempt + 1} 次尝试",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+                
+                # 根据 fail_on_exception 参数决定是否继续重试
+                if fail_on_exception:
+                    # 异常时立即退出，不重试
+                    exit_msg = "异常时退出模式，立即返回失败"
+                    logger.error(f"✗ {exit_msg}")
+                    allure.attach(
+                        exit_msg,
+                        name="重试执行 - 异常退出",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    return {
+                        'success': False,
+                        'result': None
+                    }
+                else:
+                    # 异常时继续重试（默认行为）
+                    if attempt < max_retries:
+                        wait_msg = f"等待 {retry_interval} 秒后重试..."
+                        logger.info(wait_msg)
+                        allure.attach(
+                            wait_msg,
+                            name="重试等待",
+                            attachment_type=allure.attachment_type.TEXT
+                        )
+                        time.sleep(retry_interval)
+                        continue
+                    else:
+                        # 所有重试都失败
+                        final_failure_msg = f"所有 {max_retries + 1} 次尝试都失败（异常）"
+                        logger.error(f"✗ {final_failure_msg}")
+                        allure.attach(
+                            final_failure_msg,
+                            name="重试执行失败",
+                            attachment_type=allure.attachment_type.TEXT
+                        )
+                        return {
+                            'success': False,
+                            'result': None
+                        }
+        
+        # 理论上不会执行到这里，但为了安全起见
+        return {
+            'success': False,
+            'result': None
+        }
