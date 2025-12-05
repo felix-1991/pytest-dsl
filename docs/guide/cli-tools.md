@@ -247,10 +247,10 @@ pytest-dsl-list --filter "关键字名称" --format text
 pytest-dsl-list --format json | jq '.summary.category_counts'
 ```
 
-#### 集成到CI/CD
+#### 自动化环境生成工件
 
 ```bash
-# 在CI中生成关键字文档
+# 在流水线中生成关键字文档
 pytest-dsl-list --format html --output artifacts/keywords.html
 
 # 导出关键字数据供其他工具使用
@@ -395,41 +395,19 @@ echo "4. 查找HTTP相关关键字："
 pytest-dsl-list --filter http --format text
 ```
 
-### 3. CI/CD集成
+### 3. 自动化运行
 
-```yaml
-# .github/workflows/docs.yml
-name: Generate Documentation
+在自动化流程或流水线中运行 pytest-dsl：
 
-on:
-  push:
-    branches: [ main ]
+```bash
+# 运行所有测试
+pytest-dsl tests/
 
-jobs:
-  docs:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-    
-    - name: Setup Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.9'
-    
-    - name: Install dependencies
-      run: |
-        pip install pytest-dsl
-    
-    - name: Generate keyword documentation
-      run: |
-        pytest-dsl-list --format html --output docs/keywords.html
-        pytest-dsl-list --format json --output docs/keywords.json
-    
-    - name: Deploy to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v3
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./docs
+# 指定配置文件
+pytest-dsl tests/ --yaml-vars config/dev.yaml
+
+# 生成关键字文档
+pytest-dsl-list --format html --output artifacts/keywords.html
 ```
 
 ## 下一步

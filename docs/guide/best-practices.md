@@ -186,7 +186,7 @@ class TestCriticalPayment:
 **特殊场景适用情况：**
 
 1. **大型项目** - 需要精确控制测试执行粒度
-2. **CI/CD管道** - 不同阶段运行不同测试集
+2. **CI/CD管道** - 不同阶段运行不同测试集（按常规pytest配置，无额外插件）
 3. **并行执行** - 需要平衡不同测试类的执行时间
 4. **测试隔离** - 某些测试需要特殊的环境或数据准备
 5. **标记管理** - 需要复杂的pytest标记策略
@@ -796,7 +796,7 @@ pytest test_runner.py -m smoke --html=smoke_report.html
 pytest test_runner.py -m regression --alluredir=allure-results
 ```
 
-**CI/CD脚本示例：**
+**自动化脚本示例（基于pytest）：**
 
 ```bash
 # scripts/run_tests.sh
@@ -900,11 +900,11 @@ function 监控API性能 (API名称, 请求配置) do
 end
 ```
 
-## 持续集成最佳实践
+## 自动化运行最佳实践
 
-### CI/CD 管道配置（pytest集成）
+### 自动化管道配置（基于pytest）
 
-**利用pytest的强大CI/CD支持：**
+**利用pytest的标准能力：**
 
 ```yaml
 # .github/workflows/test.yml

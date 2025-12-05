@@ -140,6 +140,33 @@ pytest-dsl tests/
 '''
 ```
 
+### 🌐 远程执行
+
+```python
+@remote: "http://remote-server:8270/" as remote_machine
+
+# 在远程机器上执行关键字
+remote_machine|[HTTP请求], 客户端: "default", 配置: '''
+    method: GET
+    url: https://internal-api.example.com/data
+'''
+```
+
+### 🧪 Pytest集成
+
+```python
+# test_runner.py
+from pytest_dsl.core.auto_decorator import auto_dsl
+
+@auto_dsl("./tests")
+class TestDSL:
+    """自动将DSL目录转换为pytest测试"""
+    pass
+
+# 使用pytest运行
+# pytest test_runner.py -q
+```
+
 ### 🖥️ Web UI测试
 
 ```python
@@ -177,18 +204,6 @@ end
 
 # 使用自定义关键字
 token = [用户登录], 用户名: "admin"
-```
-
-### 🌐 远程执行
-
-```python
-@remote: "http://remote-server:8270/" as remote_machine
-
-# 在远程机器上执行关键字
-remote_machine|[HTTP请求], 客户端: "default", 配置: '''
-    method: GET
-    url: https://internal-api.example.com/data
-'''
 ```
 
 ### 📊 数据驱动

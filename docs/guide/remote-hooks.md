@@ -132,7 +132,8 @@ def my_hook(context):
     
     # 操作共享变量
     token = context.get_shared_variable('auth_token')
-    context.set_shared_variable('last_execution', datetime.now())
+    shared = context.get('shared_variables', {})
+    shared['last_execution'] = datetime.now()
 ```
 
 ## 自定义授权实现

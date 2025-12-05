@@ -376,7 +376,7 @@ pytest test_runner.py -n auto
 
 注意：确保您的 DSL 测试是线程安全的。
 
-## CI/CD 集成示例
+## 自动化运行示例（基于pytest）
 
 ### GitHub Actions
 

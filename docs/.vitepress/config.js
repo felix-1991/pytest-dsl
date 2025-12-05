@@ -35,6 +35,22 @@ export default defineConfig({
           ]
         },
         {
+          text: '集成与工具',
+          items: [
+            { text: 'pytest集成', link: '/guide/pytest-integration' },
+            { text: '测试报告', link: '/guide/reporting' },
+            { text: '命令行工具', link: '/guide/cli-tools' },
+            { text: '最佳实践', link: '/guide/best-practices' }
+          ]
+        },
+        {
+          text: '高级特性',
+          items: [
+            { text: '远程关键字', link: '/guide/remote-keywords' },
+            { text: '远程服务器Hook', link: '/guide/remote-hooks' }
+          ]
+        },
+        {
           text: '进阶功能',
           items: [
             { text: '自定义关键字', link: '/guide/custom-keywords' },
@@ -51,23 +67,6 @@ export default defineConfig({
             { text: 'VS Code扩展', link: '/guide/vscode-extension' }
           ]
         },
-        {
-          text: '集成与工具',
-          items: [
-            { text: 'pytest集成', link: '/guide/pytest-integration' },
-            { text: '测试报告', link: '/guide/reporting' },
-            { text: 'CI/CD集成', link: '/guide/cicd' },
-            { text: '命令行工具', link: '/guide/cli-tools' },
-            { text: '最佳实践', link: '/guide/best-practices' }
-          ]
-        },
-        {
-          text: '高级特性',
-          items: [
-            { text: '远程关键字', link: '/guide/remote-keywords' },
-            { text: '远程服务器Hook', link: '/guide/remote-hooks' }
-          ]
-        }
       ],
       
     },

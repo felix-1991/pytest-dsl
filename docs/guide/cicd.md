@@ -1,6 +1,10 @@
 # CI/CD集成
 
-pytest-dsl 可以轻松集成到各种 CI/CD 平台中，实现自动化测试、持续集成和持续部署。本指南将介绍如何在主流 CI/CD 平台中集成 pytest-dsl。
+::: warning 状态说明
+目前没有额外的“官方” CI/CD 集成插件，按常规 pytest 流程即可运行 pytest-dsl。以下示例仅作为参考模版，可根据团队的流水线工具自由调整。
+:::
+
+pytest-dsl 依赖 pytest 运行，能以常规 pytest 方式接入各类 CI/CD 平台。下面给出常见平台的示例配置，按需裁剪使用。
 
 ## GitHub Actions
 

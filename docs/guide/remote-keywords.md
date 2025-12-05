@@ -366,17 +366,18 @@ node3|[HTTP请求], 客户端: "default", 配置: '''
 
 ### 4. 安全考虑
 
-```python
-# 使用API密钥保护远程服务器
-@remote: "http://production-server:8270/" as prod_server with api_key="${PROD_API_KEY}"
-
-# 避免在代码中硬编码密钥
-# ❌ 不要这样做
-@remote: "http://server:8270/" as server with api_key="hardcoded_key"
-
-# ✅ 使用环境变量或配置文件
-@remote: "http://server:8270/" as server with api_key="${API_KEY}"
+```yaml
+# 在YAML中配置API密钥（推荐）
+remote_servers:
+  prod_server:
+    url: "http://production-server:8270/"
+    alias: "prod_server"
+    api_key: "${PROD_API_KEY}"  # 通过环境变量传入
 ```
+
+- 不要在DSL里直接写明密钥，@remote 目前不支持声明 api_key。
+- 将密钥放在环境变量或受控配置中，通过 `--yaml-vars` 加载。
+- 为远程服务器启用API Key校验，避免公开部署无认证的服务。
 
 ## 调试和故障排除
 
@@ -458,4 +459,3 @@ pytest-dsl-server --host 0.0.0.0 --port 8270
 
 - **[环境配置管理](./configuration)** - 管理多环境的远程服务器配置
 - **[最佳实践](./best-practices)** - 学习分布式测试的最佳实践
-- **[CI/CD集成](./cicd)** - 在持续集成中使用远程关键字 
