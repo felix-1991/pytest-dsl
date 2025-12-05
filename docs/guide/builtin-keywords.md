@@ -82,6 +82,10 @@ status_code = 200
 response_text = "success"
 [断言], 条件: "${response_text} contains success", 消息: "响应中未包含成功标识"
 
+# 字符串不包含检查
+error_text = "internal server error"
+[断言], 条件: "${error_text} not_contains timeout", 消息: "错误信息中不应包含timeout"
+
 # 正则表达式匹配
 phone_number = "13812345678"
 [断言], 条件: "${phone_number} matches ^138", 消息: "手机号正则匹配失败"
@@ -89,7 +93,7 @@ phone_number = "13812345678"
 # 列表成员检查
 test_list = [1, 2, 3, 4, 5]
 [断言], 条件: "1 in ${test_list}", 消息: "列表应包含数字1"
-[断言], 条件: "6 not_in ${test_list}", 消息: "列表不应包含数字6"
+[断言], 条件: "6 not in ${test_list}", 消息: "列表不应包含数字6"
 ```
 
 **参数：**
@@ -142,10 +146,10 @@ token = "abc123"
 ```
 
 **参数：**
-- `客户端` (必需): HTTP客户端名称，对应YAML变量文件中的客户端配置
-- `配置` (必需): YAML格式的请求配置，包含请求、捕获和断言
+- `客户端` (可选): HTTP客户端名称，对应YAML变量文件中的客户端配置，默认为`default`
+- `配置` (必需): 请求配置（YAML字符串或已解析的字典），包含请求、捕获和断言
 - `会话` (可选): 会话名称，用于在多个请求间保持会话状态
-- `保存响应` (可选): 将完整响应保存到指定变量名中
+- `保存响应` (可选): 将完整响应保存到指定变量名中，后续步骤可直接使用该变量获取响应详情
 - `禁用授权` (可选): 禁用客户端配置中的授权机制，默认为false
 - `模板` (可选): 使用YAML变量文件中定义的请求模板
 - `断言重试次数` (可选): 断言失败时的重试次数，默认为0
@@ -163,7 +167,10 @@ token = "abc123"
 - `captures`: 响应数据捕获
 - `asserts`: 断言验证
 
-**返回值：** 响应对象（包含状态码、头部、内容等）
+- 请求/头/数据字段支持通过`@file:`或`file_ref`引用外部文件，并可在模板模式下替换变量
+- 配置中也可以使用`retry`或`retry_assertions`控制断言重试（与关键字参数的断言重试次数/间隔统一）
+
+**返回值：** 包含`result/side_effects/metadata`的字典，其中`result`为捕获到的变量；如需拿到原始响应，请通过`保存响应`参数显式存储
 
 ### 设置HTTP客户端
 
@@ -205,6 +212,10 @@ score = 85
 # 字符串比较
 name = "pytest-dsl"
 [数据比较], 实际值: ${name}, 预期值: "pytest-dsl", 操作符: "=="
+
+# 不包含检查
+message = "success"
+[数据比较], 实际值: ${message}, 预期值: "error", 操作符: "not_contains"
 ```
 
 **参数：**
@@ -222,11 +233,11 @@ name = "pytest-dsl"
 - `<=`: 小于等于
 - `contains`: 包含
 - `not_contains`: 不包含
-- `in`: 包含（用于列表成员检查）
-- `not_in`: 不包含（用于列表成员检查）
 - `matches`: 正则表达式匹配
+- `and`/`or`/`not`: 逻辑组合
+- `not in`: 不包含检查
 
-**返回值：** 比较结果 (True/False)
+**返回值：** 比较结果 (True/False)，比较失败时抛出`AssertionError`
 
 ### 字符串操作
 
@@ -313,20 +324,20 @@ string_boolean = "True"
 - `类型` (必需): 预期的类型
   - `string`: 字符串类型
   - `number`: 数字类型（整数或浮点数）
-  - `boolean`: 布尔类型
-  - `list`: 列表类型
-  - `object`: 对象/字典类型
-  - `null`: 空值类型
+- `boolean`: 布尔类型
+- `list`: 列表类型
+- `object`: 对象/字典类型
+- `null`: 空值类型
 - `消息` (可选): 断言失败时的错误消息
 
-**返回值：** 断言结果 (True/False)
+**返回值：** 断言结果 (True/False)，断言失败时抛出`AssertionError`
 
 ### JSON提取
 
 从JSON数据中提取特定值。
 
 ```python
-# JSON数据（必须是字符串格式）
+# JSON数据（可以是字符串或已解析的对象）
 json_data = '{"users": [{"id": 1, "name": "张三", "email": "zhangsan@example.com"}, {"id": 2, "name": "李四", "email": "lisi@example.com"}], "total": 2}'
 
 # 提取总数
@@ -343,22 +354,21 @@ all_emails = [JSON提取], JSON数据: ${json_data}, JSONPath: "$.users[*].email
 ```
 
 **参数：**
-- `JSON数据` (必需): JSON数据（字符串格式）
+- `JSON数据` (必需): JSON数据（字符串或对象）
 - `JSONPath` (必需): JSONPath表达式
 
-**返回值：** 提取的值或值列表
+**返回值：** 提取的值或值列表（未匹配时返回`None`或空列表；路径无效会抛出`ValueError`）
 
 **注意：** 
-- JSON数据必须是字符串格式，不能是对象格式
-- 如果从HTTP响应中获取JSON数据，通常已经是字符串格式
-- 在本地模式下，返回的是提取的具体值，而不是完整的字典格式
+- 传入字符串时会自动解析为JSON对象；已解析的字典/列表可直接使用
+- JSONPath无效或解析失败会抛出`ValueError`
 
 ### JSON断言
 
 执行JSON断言验证。
 
 ```python
-# 验证JSON数据中的值（必须是字符串格式）
+# 验证JSON数据中的值（支持字符串或已解析的对象）
 response_data = '{"status": "success", "code": 200, "data": {"id": 123}}'
 
 # 基本断言
@@ -367,23 +377,24 @@ response_data = '{"status": "success", "code": 200, "data": {"id": 123}}'
 # 使用不同操作符
 [JSON断言], JSON数据: ${response_data}, JSONPath: "$.code", 预期值: 200, 操作符: "=="
 [JSON断言], JSON数据: ${response_data}, JSONPath: "$.data.id", 预期值: 100, 操作符: ">"
+[JSON断言], JSON数据: ${response_data}, JSONPath: "$.message", 预期值: "error", 操作符: "not_contains"
 
 # 自定义错误消息
 [JSON断言], JSON数据: ${response_data}, JSONPath: "$.status", 预期值: "success", 消息: "API状态应该为成功"
 ```
 
 **参数：**
-- `JSON数据` (必需): JSON数据（字符串格式）
+- `JSON数据` (必需): JSON数据（字符串或对象）
 - `JSONPath` (必需): JSONPath表达式
 - `预期值` (必需): 预期的值
 - `操作符` (可选): 比较操作符，默认为"=="
 - `消息` (可选): 断言失败时的错误消息
 
-**返回值：** 断言结果 (True/False)
+**返回值：** 断言结果 (True/False)，断言失败时抛出`AssertionError`
 
 **注意：** 
-- JSON数据必须是字符串格式，不能是对象格式
-- 支持的操作符包括：==, !=, >, <, >=, <=, contains, not_contains等
+- JSON数据既可以是字符串也可以是已解析的对象，字符串会先被解析
+- 支持的操作符包括：==, !=, >, <, >=, <=, contains, not_contains, matches, and, or, not, not in
 
 ## 变量管理关键字
 
@@ -404,7 +415,7 @@ token = [获取全局变量], 变量名: "api_token"
 - `变量名` (必需): 全局变量的名称
 - `值` (必需): 全局变量的值
 
-**返回值：** 无
+**返回值：** 包含`result/captures/session_state/metadata`的字典，`result`字段为设置的值
 
 ### 获取全局变量
 
@@ -419,7 +430,7 @@ current_user = [获取全局变量], 变量名: "current_user"
 **参数：**
 - `变量名` (必需): 全局变量的名称
 
-**返回值：** 全局变量的值
+**返回值：** 包含`result/captures/session_state/metadata`的字典，`result`字段为变量值；变量不存在时会抛出异常。需要直接使用变量值时，请读取返回结果中的`result`字段
 
 ### 删除全局变量
 
@@ -443,7 +454,7 @@ token = [获取全局变量], 变量名: "temp_token"
 **参数：**
 - `变量名` (必需): 要删除的全局变量名称
 
-**返回值：** 无
+**返回值：** 包含`result/captures/session_state/metadata`的字典，`result`字段为`True`
 
 ### 清除所有全局变量
 
@@ -464,7 +475,7 @@ token = [获取全局变量], 变量名: "temp_token"
 
 **参数：** 无
 
-**返回值：** 无
+**返回值：** 包含`result/captures/session_state/metadata`的字典，`result`字段为`True`
 
 ## Python内置函数关键字
 
@@ -1063,13 +1074,13 @@ user_data = {
 | 断言 | 条件验证 | 条件, 消息 | 无 |
 | 返回结果 | 结果返回 | 结果 | 指定结果 |
 | **HTTP测试** |
-| HTTP请求 | API测试 | 客户端, 配置 | 响应对象 |
+| HTTP请求 | API测试 | 客户端, 配置 | 捕获值字典（可选保存响应） |
 | **数据处理** |
-| 数据比较 | 值比较 | 实际值, 预期值 | 布尔值 |
-| JSON提取 | JSON数据提取 | JSON数据, JSONPath | 提取值 |
-| JSON断言 | JSON数据断言 | JSON数据, JSONPath, 预期值 | 布尔值 |
+| 数据比较 | 值比较 | 实际值, 预期值 | 布尔值/失败抛异常 |
+| JSON提取 | JSON数据提取 | JSON数据, JSONPath | 提取值 (未匹配返回None/空列表) |
+| JSON断言 | JSON数据断言 | JSON数据, JSONPath, 预期值 | 布尔值/失败抛异常 |
 | 字符串操作 | 字符串处理 | 字符串 | 处理后字符串 |
-| 类型断言 | 类型验证 | 值, 类型 | 布尔值 |
+| 类型断言 | 类型验证 | 值, 类型 | 布尔值/失败抛异常 |
 | **Python内置函数** |
 | 求和 | 数字求和 | 数据 | 数字总和 |
 | 获取长度 | 长度计算 | 对象 | 长度值 |
@@ -1082,10 +1093,10 @@ user_data = {
 | 转换为浮点数 | 类型转换 | 值 | 浮点数 |
 | 转换为布尔值 | 类型转换 | 值 | 布尔值 |
 | **变量管理** |
-| 设置全局变量 | 变量存储 | 变量名, 值 | 无 |
-| 获取全局变量 | 变量获取 | 变量名 | 变量值 |
-| 删除全局变量 | 变量删除 | 变量名 | 无 |
-| 清除所有全局变量 | 变量清理 | 无 | 无 |
+| 设置全局变量 | 变量存储 | 变量名, 值 | result字段为设置值 |
+| 获取全局变量 | 变量获取 | 变量名 | result字段为变量值 |
+| 删除全局变量 | 变量删除 | 变量名 | result=True |
+| 清除所有全局变量 | 变量清理 | 无 | result=True |
 | **工具类** |
 | 生成随机数 | 随机数生成 | 无 | 随机数 |
 | 生成随机字符串 | 随机字符串生成 | 无 | 随机字符串 |

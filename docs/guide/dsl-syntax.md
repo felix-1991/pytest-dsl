@@ -46,12 +46,16 @@ end
 @date: "2024-01-15"                    # 创建日期
 ```
 
+`@date`支持`YYYY-MM-DD`或`YYYY-MM-DD HH:MM:SS`格式的日期字面量，也可以写成普通字符串。
+
 ### 数据驱动标签
 
 ```python
 @data: "test_data.csv" using csv        # CSV数据驱动
 @data: "test_data.json" using json      # JSON数据驱动
 ```
+
+`using`后跟数据格式标识符（不需要引号），如`csv`、`json`。
 
 ### 资源导入标签
 
@@ -63,8 +67,8 @@ end
 ### 远程服务器标签
 
 ```python
-@remote: "http://server:8270/" as server1              # 基本远程连接
-@remote: "http://server:8270/" as server1 with api_key="key"  # 带认证的连接
+@remote: "http://server:8270/" as server1   # 声明远程关键字源并指定别名
+# 同一文件可声明多个远程源，别名必须唯一
 ```
 
 ## 变量系统
@@ -184,20 +188,31 @@ else
     [打印], 内容: "测试失败"
 end
 
-# 使用布尔变量
-is_ready = True
-if ${is_ready} do
-    [打印], 内容: "系统就绪"
-end
-
-# 复杂条件
+# 多分支和逻辑运算
 count = 5
-if ${count} > 3 do
-    [打印], 内容: "数量大于3"
+is_retry = False
+if ${count} > 10 and not ${is_retry} do
+    [打印], 内容: "数量大于10且不是重试"
+elif ${count} in [5, 6, 7] do
+    [打印], 内容: "数量在允许范围: ${count}"
 elif ${count} == 3 do
     [打印], 内容: "数量等于3"
 else
-    [打印], 内容: "数量小于3"
+    [打印], 内容: "数量其他情况"
+end
+
+# 成员判断
+state = "running"
+if ${state} not in ["failed", "aborted"] do
+    [打印], 内容: "状态正常: ${state}"
+end
+
+# 嵌套判断
+is_ready = True
+if ${is_ready} do
+    if ${count} >= 5 do
+        [打印], 内容: "就绪且数量满足: ${count}"
+    end
 end
 ```
 
@@ -207,6 +222,13 @@ end
 # 数字范围循环
 for i in range(1, 5) do
     [打印], 内容: "循环次数: ${i}"
+end
+
+# 范围可以是表达式
+start = 2
+finish = 6
+for i in range(${start}, ${finish}) do
+    [打印], 内容: "当前: ${i}"
 end
 
 # 列表遍历循环（普通列表或数据驱动列表均可）
@@ -229,9 +251,20 @@ user_profile = {"name": "王五", "age": 28}
 for key, value in user_profile do
     [打印], 内容: "${key}: ${value}"
 end
+
+# 嵌套循环
+matrix = [
+    [1, 2],
+    [3, 4]
+]
+for row in matrix do
+    for col in row do
+        [打印], 内容: "元素: ${col}"
+    end
+end
 ```
 
-> 注意：占位表达式暂不支持使用循环索引进行多级访问（如`${users[i]['name']}`），如需访问列表项详情，建议使用列表遍历写法并在占位中通过键名获取属性。
+> 占位符支持属性、列表索引和字典键混合访问（如`${users[0]['name']}`），使用前请确保对应数据结构已初始化。
 
 ### 循环控制
 
@@ -242,13 +275,13 @@ for i in range(1, 11) do
     if ${i} % 2 == 0 do
         continue
     end
-    
+
     # 当达到7时退出循环
     if ${i} == 7 do
         [打印], 内容: "达到7，退出循环"
         break
     end
-    
+
     [打印], 内容: "奇数: ${i}"
 end
 ```
@@ -286,13 +319,27 @@ result = [关键字名称], 参数: 值
 message = "测试消息"
 [打印], 内容: ${message}
 
-# 多行字符串参数（YAML格式）
+# 多行字符串参数（YAML格式）；支持''' '''或\"\"\" \"\"\"包裹
 [HTTP请求], 客户端: "default", 配置: '''
     method: GET
     url: https://api.example.com/users
     asserts:
         - ["status", "eq", 200]
 '''
+```
+
+### 远程关键字调用
+
+声明了`@remote`后，可用管道语法调用远程关键字：
+
+```python
+@remote: "http://server:8270/" as server1
+
+# 无参数
+server1 | [健康检查]
+
+# 带参数
+结果 = server1 | [登录], 用户名: "admin", 密码: "123456"
 ```
 
 ## 自定义关键字（函数）
@@ -322,7 +369,7 @@ function 计算器 (操作, 数字1, 数字2=0) do
     else
         结果 = 0
     end
-    
+
     [打印], 内容: "${数字1} ${操作} ${数字2} = ${结果}"
     return ${结果}
 end
@@ -331,6 +378,8 @@ end
 sum_result = [计算器], 操作: "加法", 数字1: 10, 数字2: 5
 diff_result = [计算器], 操作: "减法", 数字1: 10  # 数字2使用默认值0
 ```
+
+> 参数默认值目前仅支持字符串或数字字面量。
 
 ## 资源文件
 
@@ -384,6 +433,18 @@ teardown do
     [设置全局变量], 变量名: "test_status", 值: "completed"
 end
 ```
+
+## 表达式与运算符
+
+在条件、循环、赋值、参数中均可使用表达式，支持以下运算：
+
+- 比较运算：`>` `<` `>=` `<=` `==` `!=`，成员运算：`in`、`not in`
+- 逻辑运算：`and`、`or`、`not`
+- 算术运算：`+` `-` `*` `/` `%`，括号可调整优先级
+- 布尔字面量：`True`、`False`
+- 列表/字典字面量：`[1, 2]`、`{"a": 1, "b": 2}`
+
+> 运算符优先级从低到高：`,` < `or` < `and` < `not` < `in/not in` < 比较运算 < 加减 < 乘除模。必要时使用括号明确顺序。
 
 ## 注释
 
