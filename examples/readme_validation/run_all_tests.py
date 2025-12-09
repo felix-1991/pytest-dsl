@@ -72,6 +72,9 @@ def main():
         "test_contains_operators.dsl",  # 新增：contains和not_contains操作符测试
         "test_break_continue_final.dsl",
         "boolean_demo.dsl",
+        "retry_block_every_until.dsl",
+        "retry_block_no_modifiers.dsl",
+        "retry_block_times.dsl",
         "../test_new_for_loops.dsl",  # 新增：for循环语法测试
     ]
 

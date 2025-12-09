@@ -152,6 +152,7 @@ def p_statement(p):
                 | keyword_call
                 | remote_keyword_call
                 | loop
+                | retry_statement
                 | custom_keyword
                 | return_statement
                 | if_statement
@@ -297,6 +298,51 @@ def p_loop(p):
     else:
         # 双变量遍历语法: for key, value in dict do ... end
         p[0] = Node('ForKeyValueLoop', [p[6], p[8]], {'key_var': p[2], 'value_var': p[4]}, line_number=line_number)
+
+
+def p_retry_statement(p):
+    '''retry_statement : RETRY expression retry_modifiers DO statements END
+                       | RETRY expression RETRY_TIMES retry_modifiers DO statements END'''
+    line_number = getattr(p.slice[1], 'lineno', None)
+
+    if len(p) == 7:
+        count_expr = p[2]
+        modifiers = p[3] or []
+        body = p[5]
+    else:
+        count_expr = p[2]
+        modifiers = p[4] or []
+        body = p[6]
+
+    interval_expr = None
+    until_expr = None
+    for mod in modifiers:
+        if mod['type'] == 'every':
+            interval_expr = mod['expr']
+        elif mod['type'] == 'until':
+            until_expr = mod['expr']
+
+    # children 顺序: [重试次数表达式, 间隔表达式/None, 直到表达式/None, 语句块]
+    p[0] = Node('Retry', [count_expr, interval_expr, until_expr, body], line_number=line_number)
+
+
+def p_retry_modifiers(p):
+    '''retry_modifiers : retry_modifier retry_modifiers
+                       | retry_modifier
+                       | empty'''
+    if len(p) == 3:
+        p[0] = [p[1]] + (p[2] or [])
+    elif len(p) == 2 and p[1]:
+        p[0] = [p[1]]
+    else:
+        p[0] = []
+
+
+def p_retry_modifier(p):
+    '''retry_modifier : EVERY expression
+                      | UNTIL expression'''
+    mod_type = 'every' if p.slice[1].type == 'EVERY' else 'until'
+    p[0] = {'type': mod_type, 'expr': p[2]}
 
 
 def p_keyword_call(p):

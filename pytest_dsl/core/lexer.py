@@ -4,6 +4,10 @@ import ply.lex as lex
 reserved = {
     'do': 'DO',
     'end': 'END',
+    'retry': 'RETRY',  # 重试块
+    'every': 'EVERY',  # 重试间隔
+    'until': 'UNTIL',  # 重试成功条件
+    'times': 'RETRY_TIMES',  # 可读性修饰词: retry 3 times
     'for': 'FOR',
     'in': 'IN',
     'range': 'RANGE',

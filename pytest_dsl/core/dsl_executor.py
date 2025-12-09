@@ -2,6 +2,7 @@ import re
 import allure
 import csv
 import os
+import time
 from typing import Dict, Any
 from pytest_dsl.core.parser import Node
 from pytest_dsl.core.keyword_manager import keyword_manager
@@ -780,6 +781,9 @@ class DSLExecutor:
     def _handle_statements(self, node):
         """处理语句列表"""
         for stmt in node.children:
+            if stmt is None:
+                # 防御性处理，跳过空语句节点
+                continue
             try:
                 self.execute(stmt)
             except ReturnException as e:
@@ -837,6 +841,64 @@ class DSLExecutor:
                 )
                 # 重新抛出异常，让外层的统一异常处理机制处理
                 raise
+
+    def _handle_retry(self, node):
+        """处理 retry 语句块"""
+        count_expr, interval_expr, until_expr, body = node.children
+
+        # 默认间隔 1 秒（若未提供 every）
+        default_interval = 1.0
+        try:
+            retry_count = int(self.eval_expression(count_expr))
+        except Exception as e:
+            raise DSLExecutionError(
+                f"重试次数无效: {e}", line_number=getattr(node, 'line_number', None),
+                node_type='Retry', original_exception=e)
+
+        retry_interval = default_interval
+        if interval_expr is not None:
+            try:
+                retry_interval = float(self.eval_expression(interval_expr))
+            except Exception as e:
+                raise DSLExecutionError(
+                    f"重试间隔无效: {e}",
+                    line_number=getattr(node, 'line_number', None),
+                    node_type='Retry', original_exception=e)
+
+        def _check_until():
+            if until_expr is None:
+                return True
+            result = self.eval_expression(until_expr)
+            return bool(result)
+
+        last_error = None
+        for attempt in range(1, retry_count + 1):
+            try:
+                # 执行块体
+                self.execute(body)
+                # 块体成功后，如果没有 until 条件，直接结束；有 until 则检查
+                if _check_until():
+                    return
+                last_error = AssertionError("retry until 条件未满足")
+            except (BreakException, ContinueException, ReturnException):
+                # 保持控制流语义
+                raise
+            except Exception as e:
+                last_error = e
+
+            # 未成功且还有剩余次数 -> 等待后继续
+            if attempt < retry_count:
+                try:
+                    time.sleep(max(0.0, retry_interval))
+                except Exception:
+                    # sleep 异常不应阻断重试流程
+                    pass
+
+        # 重试用尽仍未成功
+        if last_error:
+            raise last_error
+        # 理论上不会到这里，但防御性处理
+        raise AssertionError("retry 块未成功且未捕获错误")
 
     def _handle_assignment_keyword_call(self, node):
         """处理关键字调用赋值
@@ -1600,6 +1662,10 @@ class DSLExecutor:
 
     def execute(self, node):
         """执行AST节点"""
+        if node is None:
+            raise DSLExecutionError("收到空节点，可能是解析失败或语法错误导致",
+                                    line_number=None, node_type=None)
+
         # 执行跟踪
         if self.enable_tracking and self.execution_tracker:
             line_number = getattr(node, 'line_number', None)
@@ -1618,6 +1684,7 @@ class DSLExecutor:
             'ForRangeLoop': self._handle_for_range_loop,
             'ForItemLoop': self._handle_for_item_loop,
             'ForKeyValueLoop': self._handle_for_key_value_loop,
+            'Retry': self._handle_retry,
             'KeywordCall': self._execute_keyword_call,
             'Teardown': self._handle_teardown,
             'Return': self._handle_return,
@@ -1717,6 +1784,7 @@ class DSLExecutor:
             'Return': "返回语句",
             'Break': "Break语句",
             'Continue': "Continue语句",
+            'Retry': "重试块",
             'Teardown': "清理操作",
             'Start': "开始执行",
             'Statements': "语句块"

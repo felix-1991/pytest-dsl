@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 from pytest_dsl.core.lexer import get_lexer
-from pytest_dsl.core.parser import get_parser
+from pytest_dsl.core.parser import get_parser, parse_with_error_handling
 from pytest_dsl.core.dsl_executor import DSLExecutor
 from pytest_dsl.core.yaml_loader import load_yaml_variables_from_args
 from pytest_dsl.core.auto_directory import (
@@ -199,7 +199,11 @@ def execute_dsl_file(file_path, lexer, parser, executor):
     """执行单个DSL文件"""
     print(f"执行文件: {file_path}")
     dsl_code = read_file(file_path)
-    ast = parser.parse(dsl_code, lexer=lexer)
+    # 使用带错误收集的解析，避免None节点导致后续AttributeError
+    ast, errors = parse_with_error_handling(dsl_code, lexer=lexer)
+    if errors:
+        print(f"解析失败 {file_path}: {errors}")
+        return False
 
     try:
         executor.execute(ast)
