@@ -1,6 +1,9 @@
 import xmlrpc.client
 from functools import partial
 import logging
+import socket
+import http.client
+import urllib.parse
 
 from pytest_dsl.core.keyword_manager import keyword_manager, Parameter
 
@@ -12,14 +15,18 @@ class RemoteKeywordClient:
     """远程关键字客户端，用于连接远程关键字服务器并执行关键字"""
 
     def __init__(self, url='http://localhost:8270/', api_key=None, alias=None,
-                 sync_config=None):
+                 sync_config=None, timeout=600):
         self.url = url
-        self.server = xmlrpc.client.ServerProxy(url, allow_none=True)
-        self.keyword_cache = {}
-        self.param_mappings = {}  # 存储每个关键字的参数映射
+        self.timeout = timeout  # 连接超时时间（秒）
         self.api_key = api_key
         self.alias = alias or url.replace('http://', '').replace(
             'https://', '').split(':')[0]
+        
+        # 创建带连接超时的XML-RPC服务器代理
+        self.server = self._create_timeout_server_proxy(url, timeout)
+        
+        self.keyword_cache = {}
+        self.param_mappings = {}  # 存储每个关键字的参数映射
 
         # 变量传递配置（简化版）
         self.sync_config = sync_config or {
@@ -31,13 +38,67 @@ class RemoteKeywordClient:
             ]
         }
 
+    def _create_timeout_server_proxy(self, url, timeout):
+        """创建带连接超时的XML-RPC服务器代理"""
+        try:
+            # 解析URL
+            parsed_url = urllib.parse.urlparse(url)
+            host = parsed_url.hostname
+            port = parsed_url.port or (443 if parsed_url.scheme == 'https' else 80)
+            
+            # 自定义Transport类，支持连接超时
+            class TimeoutTransport(xmlrpc.client.Transport):
+                def __init__(self, timeout=30, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self.timeout = timeout
+                
+                def make_connection(self, host):
+                    # 创建HTTP连接，设置超时
+                    if self._connection and host == self._connection[0]:
+                        return self._connection[1]
+                    
+                    # 获取主机信息
+                    chost, self._extra_headers, x509 = self.get_host_info(host)
+                    
+                    # 创建HTTP连接，设置超时
+                    self._connection = host, http.client.HTTPConnection(chost, timeout=self.timeout)
+                    return self._connection[1]
+                
+                def request(self, host, handler, request_body, verbose=0):
+                    # 重写请求方法，添加详细的错误处理
+                    try:
+                        return super().request(host, handler, request_body, verbose)
+                    except socket.timeout as e:
+                        raise socket.timeout(f"连接超时 ({self.timeout}秒): {str(e)}")
+                    except socket.error as e:
+                        if e.errno == 10060:  # Windows连接超时错误码
+                            raise socket.timeout(f"连接超时 ({self.timeout}秒): 无法连接到远程服务器")
+                        elif e.errno == 10061:  # 连接被拒绝
+                            raise ConnectionRefusedError("连接被拒绝，远程服务器可能未启动")
+                        else:
+                            raise socket.error(f"网络连接错误: {str(e)}")
+                    except Exception as e:
+                        if "timeout" in str(e).lower():
+                            raise socket.timeout(f"操作超时: {str(e)}")
+                        raise e
+
+            # 创建带超时的服务器代理
+            return xmlrpc.client.ServerProxy(url, allow_none=True, transport=TimeoutTransport(timeout=timeout))
+            
+        except Exception as e:
+            logger.warning(f"创建带超时的服务器代理失败，回退到普通代理: {str(e)}")
+            # 如果创建失败，回退到普通代理
+            return xmlrpc.client.ServerProxy(url, allow_none=True)
+
     def connect(self):
         """连接到远程服务器并获取可用关键字"""
         try:
             print(f"RemoteKeywordClient: 正在连接到远程服务器 {self.url}")
+            print(f"RemoteKeywordClient: 连接超时设置: {self.timeout}秒")
+            
             from pytest_dsl.core.serialization_utils import XMLRPCSerializer
             keyword_names = XMLRPCSerializer.safe_xmlrpc_call(
-                self.server, 'get_keyword_names')
+                self.server, 'get_keyword_names', _xmlrpc_timeout=self.timeout)
             print(f"RemoteKeywordClient: 获取到 {len(keyword_names)} 个关键字")
             for name in keyword_names:
                 self._register_remote_keyword(name)
@@ -61,15 +122,15 @@ class RemoteKeywordClient:
         try:
             from pytest_dsl.core.serialization_utils import XMLRPCSerializer
             param_names = XMLRPCSerializer.safe_xmlrpc_call(
-                self.server, 'get_keyword_arguments', name)
+                self.server, 'get_keyword_arguments', name, _xmlrpc_timeout=self.timeout)
             doc = XMLRPCSerializer.safe_xmlrpc_call(
-                self.server, 'get_keyword_documentation', name)
+                self.server, 'get_keyword_documentation', name, _xmlrpc_timeout=self.timeout)
 
             # 尝试获取参数详细信息（包括默认值）
             param_details = []
             try:
                 param_details = XMLRPCSerializer.safe_xmlrpc_call(
-                    self.server, 'get_keyword_parameter_details', name)
+                    self.server, 'get_keyword_parameter_details', name, _xmlrpc_timeout=self.timeout)
             except Exception as e:
                 print(f"获取关键字 {name} 的参数详细信息失败，使用基本信息: {e}")
                 # 如果新方法不可用，使用旧的方式
@@ -204,10 +265,10 @@ class RemoteKeywordClient:
         from pytest_dsl.core.serialization_utils import XMLRPCSerializer
         if self.api_key:
             result = XMLRPCSerializer.safe_xmlrpc_call(
-                self.server, 'run_keyword', name, mapped_kwargs, self.api_key)
+                self.server, 'run_keyword', name, mapped_kwargs, self.api_key, _xmlrpc_no_timeout=True)
         else:
             result = XMLRPCSerializer.safe_xmlrpc_call(
-                self.server, 'run_keyword', name, mapped_kwargs)
+                self.server, 'run_keyword', name, mapped_kwargs, _xmlrpc_no_timeout=True)
 
         print(f"远程关键字执行结果: {result}")
 
@@ -407,7 +468,7 @@ class RemoteKeywordClient:
                     from pytest_dsl.core.serialization_utils import XMLRPCSerializer
                     result = XMLRPCSerializer.safe_xmlrpc_call(
                         self.server, 'sync_variables_from_client',
-                        variables_to_sync, self.api_key)
+                        variables_to_sync, self.api_key, _xmlrpc_no_timeout=True)
                     if result.get('status') == 'success':
                         print(f"✅ 实时同步 {len(variables_to_sync)} 个上下文变量到远程服务器")
                     else:
@@ -469,7 +530,7 @@ class RemoteKeywordClient:
                         from pytest_dsl.core.serialization_utils import XMLRPCSerializer
                         result = XMLRPCSerializer.safe_xmlrpc_call(
                             self.server, 'sync_variables_from_client',
-                            serializable_variables, self.api_key)
+                            serializable_variables, self.api_key, _xmlrpc_no_timeout=True)
 
                         if result.get('status') == 'success':
                             print(f"成功传递 {len(serializable_variables)} "
