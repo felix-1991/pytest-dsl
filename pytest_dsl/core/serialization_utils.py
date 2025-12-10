@@ -440,13 +440,21 @@ class XMLRPCSerializer:
         import xmlrpc.client
         import socket
         import http.client
+        import threading
+        import time
+        import signal
+        import os
+        import errno
+
+        # 获取超时参数
+        timeout = kwargs.pop('_xmlrpc_timeout', None)
+        no_timeout = kwargs.pop('_xmlrpc_no_timeout', False)
 
         try:
             # 获取方法
             method = getattr(server_proxy, method_name)
 
             # 先转换参数（处理超长整数等边界情况）
-            # 这样可以确保超长整数在验证前就被转换为字符串格式
             converted_args = []
             for arg in args:
                 converted_arg = XMLRPCSerializer.convert_to_serializable(arg)
@@ -468,17 +476,75 @@ class XMLRPCSerializer:
                 if not is_valid:
                     raise ValueError(f"参数 '{key}' 无法序列化: {error_msg}")
 
-            # 执行调用（使用转换后的参数）
-            return method(*converted_args, **converted_kwargs)
+            # 如果禁用超时或无超时设置，直接执行调用
+            if no_timeout or timeout is None:
+                return method(*converted_args, **converted_kwargs)
+
+            # 使用进程级别的超时机制，更可靠地处理Windows快速编辑模式
+            result = [None]
+            exception = [None]
+            call_completed = [False]
+            timeout_occurred = [False]
+            
+            def xmlrpc_call():
+                try:
+                    # 在独立的线程中执行调用
+                    result[0] = method(*converted_args, **converted_kwargs)
+                    call_completed[0] = True
+                except Exception as e:
+                    exception[0] = e
+                    call_completed[0] = True
+
+            # 启动调用线程
+            call_thread = threading.Thread(target=xmlrpc_call)
+            call_thread.daemon = True
+            call_thread.start()
+            
+            # 记录开始时间
+            start_time = time.time()
+            check_interval = 0.1  # 检查间隔100ms，更精确
+            
+            while call_thread.is_alive():
+                # 检查是否超时
+                elapsed_time = time.time() - start_time
+                if elapsed_time >= timeout:
+                    timeout_occurred[0] = True
+                    break
+                
+                # 短暂休眠，避免CPU占用过高，但保持响应性
+                time.sleep(min(check_interval, timeout - elapsed_time))
+            
+            # 处理超时情况
+            if timeout_occurred[0]:
+                # 尝试中断线程（虽然不能强制终止，但可以设置标志）
+                # 在实际应用中，这里可以考虑使用更底层的socket超时
+                raise socket.timeout(f"XML-RPC调用超时 ({timeout}秒，实际等待 {time.time() - start_time:.1f}秒)")
+            
+            # 检查是否有异常
+            if exception[0]:
+                raise exception[0]
+            
+            # 如果线程完成了但没有结果，可能是被中断了
+            if not call_completed[0] and not timeout_occurred[0]:
+                raise socket.timeout("XML-RPC调用被意外中断")
+            
+            return result[0]
 
         except xmlrpc.client.ProtocolError as e:
             raise Exception(f"XML-RPC协议错误: {e.errcode} {e.errmsg}")
         except xmlrpc.client.Fault as e:
             raise Exception(f"XML-RPC服务器错误: {e.faultCode} {e.faultString}")
-        except socket.timeout:
-            raise Exception("XML-RPC调用超时")
+        except socket.timeout as e:
+            raise Exception(f"XML-RPC调用超时: {str(e)}")
         except socket.error as e:
-            raise Exception(f"网络连接错误: {str(e)}")
+            if e.errno == errno.ECONNREFUSED:
+                raise Exception("连接被拒绝，远程服务器可能未启动")
+            elif e.errno == errno.ETIMEDOUT:
+                raise Exception("连接超时")
+            elif e.errno == 10060:  # Windows连接超时
+                raise Exception("连接超时 (Windows socket timeout)")
+            else:
+                raise Exception(f"网络连接错误: {str(e)}")
         except http.client.HTTPException as e:
             raise Exception(f"HTTP错误: {str(e)}")
         except UnicodeError as e:
