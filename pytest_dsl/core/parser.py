@@ -645,10 +645,33 @@ def parse_with_error_handling(content, lexer=None):
 
 def p_remote_keyword_call(p):
     '''remote_keyword_call : ID PIPE LBRACKET ID RBRACKET COMMA parameter_list
-                          | ID PIPE LBRACKET ID RBRACKET'''
-    if len(p) == 8:
-        p[0] = Node('RemoteKeywordCall', [p[7]], {
-                    'alias': p[1], 'keyword': p[4]})
+                          | ID PIPE LBRACKET ID RBRACKET
+                          | PLACEHOLDER PIPE LBRACKET ID RBRACKET COMMA parameter_list
+                          | PLACEHOLDER PIPE LBRACKET ID RBRACKET
+                          | STRING PIPE LBRACKET ID RBRACKET COMMA parameter_list
+                          | STRING PIPE LBRACKET ID RBRACKET'''
+    # 获取执行机名称（可能是ID、PLACEHOLDER或STRING）
+    executor_name = p[1]
+    
+    # 创建执行机名称节点，根据类型设置不同的节点
+    if isinstance(executor_name, str):
+        # 检查是否是变量占位符 ${var}
+        if executor_name.startswith('${') and executor_name.endswith('}'):
+            executor_node = Node('PlaceholderRef', value=executor_name)
+        else:
+            # 普通字符串或ID
+            executor_node = Node('StringLiteral', value=executor_name)
     else:
-        p[0] = Node('RemoteKeywordCall', [[]], {
+        # 其他类型的表达式节点
+        executor_node = executor_name if hasattr(executor_name, 'type') else Node('StringLiteral', value=str(executor_name))
+
+    if len(p) == 8:
+        # 有参数的远程关键字调用
+        remote_node = Node('RemoteKeywordCall', [executor_node, p[7]], {
                     'alias': p[1], 'keyword': p[4]})
+        p[0] = remote_node
+    else:
+        # 无参数的远程关键字调用
+        remote_node = Node('RemoteKeywordCall', [executor_node, []], {
+                    'alias': p[1], 'keyword': p[4]})
+        p[0] = remote_node

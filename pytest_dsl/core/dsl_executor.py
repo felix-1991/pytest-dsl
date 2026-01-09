@@ -1533,7 +1533,17 @@ class DSLExecutor:
         from pytest_dsl.remote.keyword_client import remote_keyword_manager
 
         call_info = node.value
-        alias = call_info['alias']
+        # 获取执行机名称节点（可能是参数化的）
+        executor_node = node.children[0]
+        
+        # 如果执行机名称是参数化的，需要先求值
+        if hasattr(executor_node, 'type') and executor_node.type == 'PlaceholderRef':
+            # 参数化的执行机名称，如 ${pk_name}
+            alias = self.eval_expression(executor_node)
+        else:
+            # 固定的执行机名称
+            alias = call_info['alias']
+        
         keyword_name = call_info['keyword']
         line_info = self._get_line_info(node)
 
@@ -1541,8 +1551,8 @@ class DSLExecutor:
             try:
                 # 准备参数
                 params = []
-                if node.children and node.children[0]:
-                    params = node.children[0]
+                if len(node.children) > 1 and node.children[1]:
+                    params = node.children[1]
 
                 kwargs = {}
                 for param in params:
