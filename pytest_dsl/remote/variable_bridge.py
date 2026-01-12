@@ -44,7 +44,7 @@ class VariableBridge:
         
         self._bridge_installed = True
         logger.info("变量桥接机制已安装")
-        print(f"🔗 变量桥接机制已安装，可桥接 {len(shared_variables)} 个同步变量")
+        # print(f"🔗 变量桥接机制已安装，可桥接 {len(shared_variables)} 个同步变量")  # 注释掉以避免调试时输出过多日志
     
     def _bridged_yaml_get_variable(self, name: str) -> Optional[Any]:
         """桥接的YAML变量获取方法
@@ -62,7 +62,7 @@ class VariableBridge:
         # 如果原始YAML中没有，尝试从同步变量获取
         if name in self.shared_variables:
             logger.debug(f"从同步变量获取YAML变量: {name}")
-            print(f"🔗 变量桥接: 从同步变量获取 {name}")
+            # print(f"🔗 变量桥接: 从同步变量获取 {name}")  # 注释掉以避免调试时输出过多日志
             return self.shared_variables[name]
         
         logger.debug(f"变量 {name} 在原始YAML和同步变量中都不存在")
@@ -88,7 +88,7 @@ class VariableBridge:
         # 如果原始全局变量中没有，尝试从同步变量获取
         if name in self.shared_variables:
             logger.debug(f"从同步变量获取全局变量: {name}")
-            print(f"🔗 变量桥接: 从同步变量获取全局变量 {name}")
+            # print(f"🔗 变量桥接: 从同步变量获取全局变量 {name}")  # 注释掉以避免调试时输出过多日志
             return self.shared_variables[name]
         
         # 如果都没有找到，返回None（保持原有行为）
@@ -121,7 +121,7 @@ def setup_variable_bridge(context):
     if shared_variables is not None:
         variable_bridge.install_bridge(shared_variables)
         logger.info("变量桥接机制已在服务器启动时安装")
-        print(f"🔗 服务器启动时安装变量桥接机制，可桥接 {len(shared_variables)} 个变量")
+        # print(f"🔗 服务器启动时安装变量桥接机制，可桥接 {len(shared_variables)} 个变量")  # 注释掉以避免调试时输出过多日志
     else:
         logger.warning("无法获取shared_variables，变量桥接机制安装失败")
 
