@@ -34,11 +34,11 @@ class RemoteKeywordClient:
     def connect(self):
         """连接到远程服务器并获取可用关键字"""
         try:
-            print(f"RemoteKeywordClient: 正在连接到远程服务器 {self.url}")
+            # print(f"RemoteKeywordClient: 正在连接到远程服务器 {self.url}")  # 注释掉以避免调试时输出过多日志
             from pytest_dsl.core.serialization_utils import XMLRPCSerializer
             keyword_names = XMLRPCSerializer.safe_xmlrpc_call(
                 self.server, 'get_keyword_names')
-            print(f"RemoteKeywordClient: 获取到 {len(keyword_names)} 个关键字")
+            # print(f"RemoteKeywordClient: 获取到 {len(keyword_names)} 个关键字")  # 注释掉以避免调试时输出过多日志
             for name in keyword_names:
                 self._register_remote_keyword(name)
 
@@ -46,13 +46,13 @@ class RemoteKeywordClient:
             self._send_initial_variables()
 
             logger.info(f"已连接到远程关键字服务器: {self.url}, 别名: {self.alias}")
-            print(f"RemoteKeywordClient: 成功连接到远程服务器 {self.url}, "
-                  f"别名: {self.alias}")
+            # print(f"RemoteKeywordClient: 成功连接到远程服务器 {self.url}, "
+            #       f"别名: {self.alias}")  # 注释掉以避免调试时输出过多日志
             return True
         except Exception as e:
             error_msg = f"连接远程关键字服务器失败: {str(e)}"
             logger.error(error_msg)
-            print(f"RemoteKeywordClient: {error_msg}")
+            # print(f"RemoteKeywordClient: {error_msg}")  # 注释掉以避免调试时输出过多日志
             return False
 
     def _register_remote_keyword(self, name):
@@ -71,7 +71,7 @@ class RemoteKeywordClient:
                 param_details = XMLRPCSerializer.safe_xmlrpc_call(
                     self.server, 'get_keyword_parameter_details', name)
             except Exception as e:
-                print(f"获取关键字 {name} 的参数详细信息失败，使用基本信息: {e}")
+                # print(f"获取关键字 {name} 的参数详细信息失败，使用基本信息: {e}")  # 注释掉以避免调试时输出过多日志
                 # 如果新方法不可用，使用旧的方式
                 for param_name in param_names:
                     param_details.append({
@@ -81,7 +81,7 @@ class RemoteKeywordClient:
                         'default': None
                     })
 
-            print(f"注册远程关键字: {name}, 参数详情: {param_details}")
+            # print(f"注册远程关键字: {name}, 参数详情: {param_details}")  # 注释掉以避免调试时输出过多日志
 
             # 创建参数列表
             parameters = []
@@ -162,7 +162,7 @@ class RemoteKeywordClient:
             kwargs.pop('step_name', None)
 
         # 打印调试信息
-        print(f"远程关键字调用: {name}, 参数: {kwargs}")
+        # print(f"远程关键字调用: {name}, 参数: {kwargs}")  # 注释掉以避免调试时输出过多日志
 
         # 创建反向映射字典，用于检查参数是否已经映射
         reverse_mapping = {}
@@ -170,13 +170,13 @@ class RemoteKeywordClient:
         # 使用动态注册的参数映射
         if name in self.param_mappings:
             param_mapping = self.param_mappings[name]
-            print(f"使用动态参数映射: {param_mapping}")
+            # print(f"使用动态参数映射: {param_mapping}")  # 注释掉以避免调试时输出过多日志
             for cn_name, en_name in param_mapping.items():
                 reverse_mapping[en_name] = cn_name
         else:
             # 如果没有任何映射，使用原始参数名
             param_mapping = None
-            print("没有找到参数映射，使用原始参数名")
+            # print("没有找到参数映射，使用原始参数名")  # 注释掉以避免调试时输出过多日志
 
         # 映射参数名称
         mapped_kwargs = {}
@@ -185,7 +185,7 @@ class RemoteKeywordClient:
                 if k in param_mapping:
                     mapped_key = param_mapping[k]
                     mapped_kwargs[mapped_key] = v
-                    print(f"参数映射: {k} -> {mapped_key} = {v}")
+                    # print(f"参数映射: {k} -> {mapped_key} = {v}")  # 注释掉以避免调试时输出过多日志
                 else:
                     mapped_kwargs[k] = v
         else:
@@ -195,7 +195,7 @@ class RemoteKeywordClient:
         # 获取关键字的参数信息
         if name in self.keyword_cache:
             param_names = self.keyword_cache[name]['parameters']
-            print(f"远程关键字 {name} 的参数列表: {param_names}")
+            # print(f"远程关键字 {name} 的参数列表: {param_names}")  # 注释掉以避免调试时输出过多日志
             # 不再显示警告信息，因为参数已经在服务器端正确处理
             # 服务器端会使用默认值或者报错，客户端不需要重复警告
 
@@ -209,7 +209,7 @@ class RemoteKeywordClient:
             result = XMLRPCSerializer.safe_xmlrpc_call(
                 self.server, 'run_keyword', name, mapped_kwargs)
 
-        print(f"远程关键字执行结果: {result}")
+        # print(f"远程关键字执行结果: {result}")  # 注释掉以避免调试时输出过多日志
 
         if result['status'] == 'PASS':
             return_data = result['return']
@@ -218,16 +218,16 @@ class RemoteKeywordClient:
             if isinstance(return_data, dict):
                 # 处理捕获的变量 - 这里需要访问本地上下文
                 if 'captures' in return_data and return_data['captures']:
-                    print(f"远程关键字捕获的变量: {return_data['captures']}")
+                    pass  # 远程关键字捕获的变量日志已注释掉以避免调试时输出过多日志
 
                 # 处理会话状态
                 if ('session_state' in return_data and
                         return_data['session_state']):
-                    print(f"远程关键字会话状态: {return_data['session_state']}")
+                    pass  # 远程关键字会话状态日志已注释掉以避免调试时输出过多日志
 
                 # 处理响应数据
                 if 'response' in return_data and return_data['response']:
-                    print("远程关键字响应数据: 已接收")
+                    pass  # 远程关键字响应数据日志已注释掉以避免调试时输出过多日志
 
                 # 使用通用的返回处理机制
                 # 检查是否有嵌套的新格式数据
@@ -419,7 +419,7 @@ class RemoteKeywordClient:
 
         except Exception as e:
             logger.warning(f"实时变量同步失败: {str(e)}")
-            print(f"❌ 实时变量同步失败: {str(e)}")
+            # print(f"❌ 实时变量同步失败: {str(e)}")  # 注释掉以避免调试时输出过多日志
 
     def _collect_context_variables(self, context):
         """从TestContext收集所有变量（包括外部提供者变量）
@@ -486,7 +486,7 @@ class RemoteKeywordClient:
 
         except Exception as e:
             logger.warning(f"初始变量传递失败: {str(e)}")
-            print(f"初始变量传递失败: {str(e)}")
+            # print(f"初始变量传递失败: {str(e)}")  # 注释掉以避免调试时输出过多日志
 
     def _collect_global_variables(self):
         """收集全局变量"""
@@ -583,7 +583,7 @@ class RemoteKeywordClient:
 
         except Exception as e:
             logger.warning(f"收集YAML变量失败: {str(e)}")
-            print(f"收集YAML变量失败: {str(e)}")
+            # print(f"收集YAML变量失败: {str(e)}")  # 注释掉以避免调试时输出过多日志
 
         return variables
 

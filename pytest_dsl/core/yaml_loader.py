@@ -54,38 +54,41 @@ def load_yaml_variables_from_args(yaml_files=None, yaml_vars_dir=None,
         auto_load_default = not (user_specified_files or user_specified_dir)
 
         if not auto_load_default:
-            print("🎯 检测到用户指定了配置，跳过默认配置自动加载")
+            # print("🎯 检测到用户指定了配置，跳过默认配置自动加载")  # 注释掉以避免调试时输出过多日志
+            pass
         else:
-            print("📁 未指定配置，将自动加载默认配置目录")
+            # print("📁 未指定配置，将自动加载默认配置目录")  # 注释掉以避免调试时输出过多日志
+            pass
 
     # 首先尝试通过hook加载变量（最高优先级）
     hook_variables = _load_variables_through_hooks(
         project_root=project_root, environment=environment)
 
     if hook_variables:
-        print(f"🔌 通过Hook加载了 {len(hook_variables)} 个变量")
+        # print(f"🔌 通过Hook加载了 {len(hook_variables)} 个变量")  # 注释掉以避免调试时输出过多日志
         # 将hook变量加载到yaml_vars中
         yaml_vars._variables.update(hook_variables)
 
     # 加载用户指定的YAML文件（第二优先级）
     if yaml_files:
         yaml_vars.load_yaml_files(yaml_files)
-        print(f"📄 已加载用户指定的YAML文件: {', '.join(yaml_files)}")
+        # print(f"📄 已加载用户指定的YAML文件: {', '.join(yaml_files)}")  # 注释掉以避免调试时输出过多日志
 
     # 加载用户指定的目录中的YAML文件（第三优先级）
     if yaml_vars_dir:
         if Path(yaml_vars_dir).exists():
             yaml_vars.load_from_directory(yaml_vars_dir)
-            print(f"📂 已加载用户指定的YAML目录: {yaml_vars_dir}")
+            # print(f"📂 已加载用户指定的YAML目录: {yaml_vars_dir}")  # 注释掉以避免调试时输出过多日志
             loaded_files = yaml_vars.get_loaded_files()
             if loaded_files:
                 # 过滤出当前目录的文件
                 dir_files = [f for f in loaded_files if Path(
                     f).parent == Path(yaml_vars_dir)]
-                if dir_files:
-                    print(f"   目录中加载的文件: {', '.join(dir_files)}")
+                # if dir_files:
+                #     print(f"   目录中加载的文件: {', '.join(dir_files)}")  # 注释掉以避免调试时输出过多日志
         else:
-            print(f"⚠️ 用户指定的YAML目录不存在: {yaml_vars_dir}")
+            # print(f"⚠️ 用户指定的YAML目录不存在: {yaml_vars_dir}")  # 注释掉以避免调试时输出过多日志
+            pass
 
     # 自动加载默认配置（最低优先级，仅在用户未指定配置时）
     if auto_load_default:
@@ -93,29 +96,32 @@ def load_yaml_variables_from_args(yaml_files=None, yaml_vars_dir=None,
         if project_root:
             # 默认使用项目根目录下的config目录
             default_yaml_vars_dir = str(Path(project_root) / 'config')
-            print(f"🏠 使用默认YAML变量目录: {default_yaml_vars_dir}")
+            # print(f"🏠 使用默认YAML变量目录: {default_yaml_vars_dir}")  # 注释掉以避免调试时输出过多日志
 
         if default_yaml_vars_dir and Path(default_yaml_vars_dir).exists():
             yaml_vars.load_from_directory(default_yaml_vars_dir)
-            print(f"📁 已加载默认YAML变量目录: {default_yaml_vars_dir}")
+            # print(f"📁 已加载默认YAML变量目录: {default_yaml_vars_dir}")  # 注释掉以避免调试时输出过多日志
             loaded_files = yaml_vars.get_loaded_files()
             if loaded_files:
                 # 过滤出默认目录的文件
                 dir_files = [f for f in loaded_files if Path(
                     f).parent == Path(default_yaml_vars_dir)]
-                if dir_files:
-                    print(f"   默认目录中加载的文件: {', '.join(dir_files)}")
+                # if dir_files:
+                #     print(f"   默认目录中加载的文件: {', '.join(dir_files)}")  # 注释掉以避免调试时输出过多日志
         elif default_yaml_vars_dir:
-            print(f"📁 默认YAML变量目录不存在: {default_yaml_vars_dir}")
+            # print(f"📁 默认YAML变量目录不存在: {default_yaml_vars_dir}")  # 注释掉以避免调试时输出过多日志
+            pass
 
     # 显示最终加载的变量汇总
     all_loaded_files = yaml_vars.get_loaded_files()
     if all_loaded_files:
-        print(f"✅ 变量加载完成，共加载 {len(all_loaded_files)} 个文件")
-        if len(yaml_vars._variables) > 0:
-            print(f"📊 总共加载了 {len(yaml_vars._variables)} 个变量")
+        # print(f"✅ 变量加载完成，共加载 {len(all_loaded_files)} 个文件")  # 注释掉以避免调试时输出过多日志
+        # if len(yaml_vars._variables) > 0:
+        #     print(f"📊 总共加载了 {len(yaml_vars._variables)} 个变量")  # 注释掉以避免调试时输出过多日志
+        pass
     else:
-        print("⚠️ 未加载任何YAML变量文件")
+        # print("⚠️ 未加载任何YAML变量文件")  # 注释掉以避免调试时输出过多日志
+        pass
 
     # 加载完YAML变量后，自动连接远程服务器
     load_remote_servers_from_yaml()

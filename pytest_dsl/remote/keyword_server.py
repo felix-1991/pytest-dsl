@@ -7,6 +7,7 @@ import signal
 import atexit
 import threading
 import time
+import logging
 
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.remote.hook_manager import hook_manager, HookType
@@ -118,9 +119,22 @@ class RemoteKeywordServer:
 
     def start(self):
         """启动远程关键字服务器"""
+        # 配置XML-RPC服务器日志，抑制HTTP请求日志
+        logging.getLogger('xmlrpc').setLevel(logging.ERROR)
+        logging.getLogger('xmlrpc.server').setLevel(logging.ERROR)
+        
         try:
             self.server = xmlrpc.server.SimpleXMLRPCServer(
                 (self.host, self.port), allow_none=True)
+            # 禁用请求日志处理器
+            if hasattr(self.server, 'RequestHandlerClass'):
+                # 创建一个自定义的请求处理器类，禁用日志输出
+                class QuietRequestHandler(self.server.RequestHandlerClass):
+                    def log_message(self, format, *args):
+                        # 重写log_message方法，不输出任何日志
+                        pass
+                
+                self.server.RequestHandlerClass = QuietRequestHandler
         except OSError as e:
             if "Address already in use" in str(e):
                 print(f"端口 {self.port} 已被占用，请使用其他端口或关闭占用该端口的进程")
@@ -421,7 +435,7 @@ class RemoteKeywordServer:
             # 更新共享变量
             for name, value in variables.items():
                 self.shared_variables[name] = value
-                print(f"接收到客户端变量: {name}")
+                # print(f"接收到客户端变量: {name}")  # 注释掉以避免调试时输出过多日志
 
             # 将所有同步的变量直接注入到yaml_vars中，实现无缝访问
             from pytest_dsl.core.yaml_vars import yaml_vars
@@ -429,14 +443,14 @@ class RemoteKeywordServer:
             for name, value in variables.items():
                 # 直接设置到yaml_vars中，确保所有关键字都能无缝访问
                 yaml_vars._variables[name] = value
-                print(f"✓ 变量 {name} 已注入到yaml_vars，实现无缝访问")
+                # print(f"✓ 变量 {name} 已注入到yaml_vars，实现无缝访问")  # 注释掉以避免调试时输出过多日志
 
             # 同时处理全局变量到global_context
             from pytest_dsl.core.global_context import global_context
             for name, value in variables.items():
                 if name.startswith('g_'):
                     global_context.set_variable(name, value)
-                    print(f"✓ 全局变量 {name} 已注入到global_context")
+                    # print(f"✓ 全局变量 {name} 已注入到global_context")  # 注释掉以避免调试时输出过多日志
 
             print(f"✅ 总共同步了 {len(variables)} 个变量，全部实现无缝访问")
 
