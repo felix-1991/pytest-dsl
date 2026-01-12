@@ -1349,12 +1349,27 @@ class DSLExecutor:
     def _prepare_keyword_params(self, node, keyword_info):
         """准备关键字调用参数"""
         mapping = keyword_info.get('mapping', {})
+        parameters = keyword_info.get('parameters', [])
         kwargs = {'context': self.test_context}  # 默认传入context参数
+
+        # 构建有效的参数名集合（包括中文和英文参数名）
+        valid_param_names = set()
+        for param in parameters:
+            valid_param_names.add(param.name)  # 中文参数名
+            valid_param_names.add(param.mapping)  # 英文参数名
+        
+        # 添加默认的特殊参数（context、step_name等，这些不需要用户传入）
+        special_params = {'context', 'step_name', 'skip_logging'}
+        valid_param_names.update(special_params)
+
+        # 收集传入的参数名用于验证
+        provided_params = []
 
         # 检查是否有参数列表
         if node.children[0]:
             for param in node.children[0]:
                 param_name = param.value
+                provided_params.append(param_name)
                 english_param_name = mapping.get(param_name, param_name)
 
                 # 在子步骤中处理参数值解析，但不记录异常详情
@@ -1375,6 +1390,24 @@ class DSLExecutor:
                         # 将异常重新包装，添加参数名信息，但不在这里记录到allure
                         raise Exception(
                             f"参数解析异常 ({param_name}): {str(e)}")
+
+        # 验证传入的参数是否都是有效的
+        unknown_params = []
+        for param_name in provided_params:
+            # 检查参数名是否在有效参数列表中
+            if param_name not in valid_param_names:
+                unknown_params.append(param_name)
+
+        # 如果发现未知参数，抛出错误
+        if unknown_params:
+            # 获取关键字的原始中文参数名列表（不包括特殊参数）
+            chinese_params = [p.name for p in parameters if p.name not in special_params]
+            valid_params_str = ', '.join(chinese_params) if chinese_params else '无'
+            
+            raise Exception(
+                f"传入了未知的参数: {', '.join(unknown_params)}\n"
+                f"关键字 '{node.value}' 支持的参数: {valid_params_str}"
+            )
 
         return kwargs
 

@@ -161,6 +161,35 @@ class RemoteKeywordClient:
         if 'step_name' in kwargs:
             kwargs.pop('step_name', None)
 
+        # 验证传入的参数是否都是有效的
+        if name in self.keyword_cache and name in self.param_mappings:
+            # 获取有效参数列表（包括中文参数名）
+            param_details = self.keyword_cache[name].get('param_details', [])
+             
+            valid_param_names = set()
+            for param in param_details:
+                valid_param_names.add(param.get('name', ''))
+             
+            # 添加默认的特殊参数
+            special_params = {'context', 'step_name'}
+             
+            # 收集传入的参数名
+            provided_params = set(kwargs.keys())
+             
+            # 检查未知参数
+            unknown_params = provided_params - valid_param_names - special_params
+             
+            if unknown_params:
+                # 获取关键字的中文参数名列表
+                chinese_params = [p.get('name', '') for p in param_details if p.get('name')]
+                valid_params_str = ', '.join(chinese_params) if chinese_params else '无'
+                
+                error_msg = (
+                    f"传入了未知的参数: {', '.join(unknown_params)}\n"
+                    f"远程关键字 '{name}' 支持的参数: {valid_params_str}"
+                )
+                raise Exception(error_msg)
+
         # 打印调试信息
         # print(f"远程关键字调用: {name}, 参数: {kwargs}")  # 注释掉以避免调试时输出过多日志
 
