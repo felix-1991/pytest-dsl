@@ -38,15 +38,15 @@ class RemoteKeywordServer:
         )
 
         # 0. 首先加载内置关键字模块（确保内置关键字被注册）
-        print("正在加载内置关键字...")
+        # print("正在加载内置关键字...")
         try:
             import pytest_dsl.keywords
-            print("内置关键字模块加载完成")
+            # print("内置关键字模块加载完成")
         except ImportError as e:
             print(f"加载内置关键字模块失败: {e}")
 
         # 1. 加载所有已安装的关键字插件（与本地模式一致）
-        print("正在加载第三方关键字插件...")
+        # print("正在加载第三方关键字插件...")
         load_all_plugins()
 
         # 2. 扫描本地keywords目录中的关键字（与本地模式一致）
@@ -599,11 +599,11 @@ def main():
 
     # 在创建服务器之前加载额外的扩展模块（如果指定）
     if args.extensions:
-        print("正在加载额外的扩展模块...")
+        # print("正在加载额外的扩展模块...")
         _load_extensions(args.extensions)
 
     # 自动加载当前目录下的扩展
-    print("正在自动加载当前目录下的扩展...")
+    # print("正在自动加载当前目录下的扩展...")
     _auto_load_extensions()
 
     # 创建并启动服务器（服务器初始化时会自动加载标准关键字）
@@ -631,7 +631,7 @@ def _load_extensions(extensions_arg):
                     module_name, ext_path)
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
-                print(f"已加载扩展模块: {ext_path}")
+                # print(f"已加载扩展模块: {ext_path}")
             elif os.path.isdir(ext_path):
                 # 加载目录下的所有Python文件
                 for filename in os.listdir(ext_path):
@@ -642,7 +642,7 @@ def _load_extensions(extensions_arg):
                             module_name, file_path)
                         module = importlib.util.module_from_spec(spec)
                         spec.loader.exec_module(module)
-                        print(f"已加载扩展模块: {file_path}")
+                        # print(f"已加载扩展模块: {file_path}")
             else:
                 # 尝试作为模块名导入
                 importlib.import_module(ext_path)

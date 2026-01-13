@@ -392,7 +392,7 @@ class CustomKeywordManager:
 
             return result
 
-        print(f"已注册自定义关键字: {keyword_name} 来自文件: {file_path}")
+        # print(f"已注册自定义关键字: {keyword_name} 来自文件: {file_path}")
 
     def register_keyword_from_dsl_content(self, dsl_content: str,
                                           source_name: str = "DSL内容") -> list:
@@ -438,7 +438,7 @@ class CustomKeywordManager:
             return registered_keywords
 
         except Exception as e:
-            print(f"从DSL内容注册关键字失败（来源：{source_name}）: {e}")
+            # print(f"从DSL内容注册关键字失败（来源：{source_name}）: {e}")
             raise
 
     def register_specific_keyword_from_dsl_content(
@@ -486,8 +486,8 @@ class CustomKeywordManager:
             raise ValueError(f"在DSL内容中未找到关键字定义: {keyword_name}")
 
         except Exception as e:
-            print(f"从DSL内容注册关键字失败 {keyword_name}（来源：{source_name}）: {e}")
-            print(f"DSL内容: {repr(dsl_content)}")
+            # print(f"从DSL内容注册关键字失败 {keyword_name}（来源：{source_name}）: {e}")
+            # print(f"DSL内容: {repr(dsl_content)}")
             raise
 
 

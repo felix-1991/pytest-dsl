@@ -676,7 +676,7 @@ class DSLExecutor:
                             print(f"通过hook自动导入资源: {case_id}")
                             self._handle_import(case_id)
                         except Exception as e:
-                            print(f"通过hook自动导入资源失败: {case_id}, 错误: {str(e)}")
+                            # print(f"通过hook自动导入资源失败: {case_id}, 错误: {str(e)}")
                             continue
             except Exception as e:
                 print(f"通过hook自动导入资源时出现警告: {str(e)}")
@@ -757,7 +757,7 @@ class DSLExecutor:
                 custom_keyword_manager.load_resource_file(file_path)
                 self.imported_files.add(file_path)
         except Exception as e:
-            print(f"导入资源文件失败: {file_path}, 错误: {str(e)}")
+            # print(f"导入资源文件失败: {file_path}, 错误: {str(e)}")
             raise
 
     def _execute_test_iteration(self, metadata, node, teardown_node):
@@ -993,7 +993,8 @@ class DSLExecutor:
                               f"失败: {error_msg}")
 
                 except Exception as e:
-                    print(f"❌ 通知远程服务器 {alias} 变量变化失败: {str(e)}")
+                    # print(f"❌ 通知远程服务器 {alias} 变量变化失败: {str(e)}")
+                    pass
 
         except ImportError:
             # 如果没有导入远程模块，跳过通知
@@ -1896,7 +1897,8 @@ class DSLExecutor:
                 try:
                     hook_manager.pm.hook.dsl_register_custom_keywords()
                 except Exception as e:
-                    print(f"重新执行hook关键字注册时出现警告: {e}")
+                    # print(f"重新执行hook关键字注册时出现警告: {e}")
+                    pass
 
         except Exception as e:
             print(f"确保hook系统更新时出现警告: {e}")
@@ -1971,7 +1973,8 @@ class DSLExecutor:
                         exception=exception
                     )
                 except Exception as hook_error:
-                    print(f"Hook执行失败: {hook_error}")
+                    # print(f"Hook执行失败: {hook_error}")
+                    pass
             raise
         else:
             # 执行后hook（在成功情况下）
@@ -1984,7 +1987,8 @@ class DSLExecutor:
                         exception=None
                     )
                 except Exception as hook_error:
-                    print(f"Hook执行失败: {hook_error}")
+                    # print(f"Hook执行失败: {hook_error}")
+                    pass
         finally:
             # 完成执行跟踪
             if self.enable_tracking and self.execution_tracker:

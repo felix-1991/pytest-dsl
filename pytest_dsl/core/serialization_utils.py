@@ -386,7 +386,8 @@ class XMLRPCSerializer:
                     print(f"跳过不可序列化的变量: {var_name} "
                           f"(类型: {type(var_value).__name__})")
             else:
-                print(f"跳过敏感变量: {var_name}")
+                # print(f"跳过敏感变量: {var_name}")
+                pass
         
         return filtered_variables
     

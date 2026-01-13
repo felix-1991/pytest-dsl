@@ -41,7 +41,7 @@ def pytest_configure(config):
     # 首先导入内置关键字模块，确保内置关键字被注册
     try:
         import pytest_dsl.keywords  # noqa: F401
-        print("pytest环境：内置关键字模块加载完成")
+        # print("pytest环境：内置关键字模块加载完成")
     except ImportError as e:
         print(f"pytest环境：加载内置关键字模块失败: {e}")
 

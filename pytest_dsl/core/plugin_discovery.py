@@ -90,7 +90,7 @@ def load_plugin_keywords(plugin_name: str) -> None:
             
             plugin_manager = PluginKeywordManager(keyword_manager, plugin_name)
             plugin.register_keywords(plugin_manager)
-            print(f"通过register_keywords加载插件: {plugin_name}")
+            # print(f"通过register_keywords加载插件: {plugin_name}")
             return
         
         # 否则，遍历包中的所有模块
@@ -211,11 +211,12 @@ def scan_local_keywords() -> None:
                             loaded_modules += 1
             
             if loaded_modules > 0:
-                print(f"成功从项目中加载了 {loaded_modules} 个关键字模块")
-            else:
-                print("未从项目中加载到任何关键字模块")
-        else:
-            print("提示: 未在项目中找到keywords目录")
+                # print(f"成功从项目中加载了 {loaded_modules} 个关键字模块")
+                pass
+            # else:
+            #     print("未从项目中加载到任何关键字模块")
+        # else:
+        #     print("提示: 未在项目中找到keywords目录")
     except Exception as e:
         print(f"扫描项目关键字时出错: {e}")
 

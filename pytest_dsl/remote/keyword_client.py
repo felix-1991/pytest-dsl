@@ -334,13 +334,13 @@ class RemoteKeywordClient:
                 if var_name.startswith('g_'):
                     # 全局变量
                     global_context.set_variable(var_name, var_value)
-                    print(f"✅ 注入全局变量: {var_name} = {var_value}")
+                    # print(f"✅ 注入全局变量: {var_name} = {var_value}")
                 else:
                     # 本地变量
                     if current_executor:
                         current_executor.variable_replacer.local_variables[var_name] = var_value
                         current_executor.test_context.set(var_name, var_value)
-                        print(f"✅ 注入本地变量: {var_name} = {var_value}")
+                        # print(f"✅ 注入本地变量: {var_name} = {var_value}")
                     else:
                         # 如果没有执行器，至少设置为全局变量
                         global_context.set_variable(var_name, var_value)
@@ -361,20 +361,21 @@ class RemoteKeywordClient:
             # 处理会话状态更新
             if 'session_state' in context_updates:
                 session_state = context_updates['session_state']
-                print(f"✅ 更新会话状态: {session_state}")
+                # print(f"✅ 更新会话状态: {session_state}")
                 # 这里可以根据需要更新会话管理器的状态
 
             # 处理响应数据更新
             if 'response' in context_updates:
                 response_data = context_updates['response']
-                print(f"✅ 更新响应数据: 已接收响应数据")
+                # print(f"✅ 更新响应数据: 已接收响应数据")
                 # 可以将响应数据存储到特定位置
 
             # 处理其他上下文更新
             for key, value in context_updates.items():
                 if key not in ['session_state', 'response']:
-                    print(f"✅ 更新上下文: {key} = {value}")
+                    # print(f"✅ 更新上下文: {key} = {value}")
                     # 可以根据需要处理其他类型的上下文更新
+                    pass
 
         except Exception as e:
             print(f"❌ 上下文更新失败: {str(e)}")
@@ -438,7 +439,8 @@ class RemoteKeywordClient:
                         self.server, 'sync_variables_from_client',
                         variables_to_sync, self.api_key)
                     if result.get('status') == 'success':
-                        print(f"✅ 实时同步 {len(variables_to_sync)} 个上下文变量到远程服务器")
+                        # print(f"✅ 实时同步 {len(variables_to_sync)} 个上下文变量到远程服务器")
+                        pass
                     else:
                         print(f"❌ 实时同步变量失败: {result.get('error', '未知错误')}")
                 except Exception as e:
@@ -501,17 +503,18 @@ class RemoteKeywordClient:
                             serializable_variables, self.api_key)
 
                         if result.get('status') == 'success':
-                            print(f"成功传递 {len(serializable_variables)} "
-                                  f"个变量到远程服务器")
+                            # print(f"成功传递 {len(serializable_variables)} "
+                            #       f"个变量到远程服务器")
+                            pass
                         else:
                             print(f"传递变量到远程服务器失败: "
                                   f"{result.get('error', '未知错误')}")
                     except Exception as e:
                         print(f"调用远程变量接口失败: {str(e)}")
-                else:
-                    print("没有可序列化的变量需要传递")
-            else:
-                print("没有需要传递的变量")
+                # else:
+                #     print("没有可序列化的变量需要传递")
+            # else:
+            #     print("没有需要传递的变量")
 
         except Exception as e:
             logger.warning(f"初始变量传递失败: {str(e)}")
@@ -646,7 +649,7 @@ class RemoteKeywordClient:
             for filtered_result in hook_results:
                 if filtered_result is not None:
                     variables = filtered_result
-                    print(f"Hook过滤后变量数量: {len(variables)} (服务器: {self.alias}, 类型: {sync_type})")
+                    # print(f"Hook过滤后变量数量: {len(variables)} (服务器: {self.alias}, 类型: {sync_type})")
 
         except Exception as e:
             print(f"Hook过滤失败，使用原始过滤结果: {e}")
@@ -674,16 +677,16 @@ class RemoteKeywordManager:
         Returns:
             bool: 是否成功连接
         """
-        print(f"RemoteKeywordManager: 正在注册远程服务器 {url} 别名 {alias}")
+        # print(f"RemoteKeywordManager: 正在注册远程服务器 {url} 别名 {alias}")
         client = RemoteKeywordClient(url=url, api_key=api_key, alias=alias,
                                      sync_config=sync_config)
         success = client.connect()
 
         if success:
-            print(f"RemoteKeywordManager: 成功连接到远程服务器 {url}")
+            # print(f"RemoteKeywordManager: 成功连接到远程服务器 {url}")
             self.clients[alias] = client
         else:
-            print(f"RemoteKeywordManager: 连接远程服务器 {url} 失败")
+            print(f"远程服务器连接失败: {url} (别名: {alias})")
 
         return success
 
