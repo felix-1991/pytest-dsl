@@ -80,7 +80,8 @@ class DSLHookManager:
         try:
             loaded = self.load_setuptools_entrypoints()
             if loaded > 0:
-                print(f"加载了 {loaded} 个插件")
+                # print(f"加载了 {loaded} 个插件")
+                pass
         except Exception as e:
             print(f"加载插件时出现错误: {e}")
 
@@ -91,7 +92,7 @@ class DSLHookManager:
 
         这个方法专门用于pytest环境下，在新插件加载后重新初始化hook系统
         """
-        print("检测到新插件加载，重新初始化Hook管理器...")
+        # print("检测到新插件加载，重新初始化Hook管理器...")
 
         # 重新加载setuptools入口点插件
         try:

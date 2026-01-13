@@ -43,7 +43,7 @@ class HookableKeywordManager:
             try:
                 # 调用hook注册自定义关键字
                 hook_manager.pm.hook.dsl_register_custom_keywords()
-                print(f"通过Hook注册了 {len(self.hook_keywords)} 个自定义关键字")
+                # print(f"通过Hook注册了 {len(self.hook_keywords)} 个自定义关键字")
             except Exception as e:
                 print(f"Hook关键字注册失败: {e}")
 
@@ -56,10 +56,10 @@ class HookableKeywordManager:
         """
         if hook_manager and hook_manager._initialized:
             try:
-                print("重新执行Hook关键字注册...")
+                # print("重新执行Hook关键字注册...")
                 # 重新调用hook注册自定义关键字
                 hook_manager.pm.hook.dsl_register_custom_keywords()
-                print(f"重新注册完成，当前Hook关键字数量: {len(self.hook_keywords)}")
+                # print(f"重新注册完成，当前Hook关键字数量: {len(self.hook_keywords)}")
             except Exception as e:
                 print(f"重新执行Hook关键字注册失败: {e}")
 
@@ -74,7 +74,7 @@ class HookableKeywordManager:
         """
         # 检查是否已经注册过
         if keyword_name in self.hook_keywords:
-            print(f"Hook关键字 {keyword_name} 已存在，跳过重复注册")
+            # print(f"Hook关键字 {keyword_name} 已存在，跳过重复注册")
             return
 
         # 使用custom_keyword_manager的公共方法注册关键字
@@ -111,7 +111,7 @@ class HookableKeywordManager:
                     }
                 }
 
-                print(f"注册Hook关键字: {keyword_name}")
+                # print(f"注册Hook关键字: {keyword_name}")
 
         except Exception as e:
             print(f"注册Hook关键字失败 {keyword_name}: {e}")

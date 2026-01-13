@@ -39,7 +39,7 @@ class KeywordLoader:
         # 首先导入内置关键字模块，确保内置关键字被注册
         try:
             import pytest_dsl.keywords  # noqa: F401
-            print("内置关键字模块加载完成")
+            # print("内置关键字模块加载完成")
         except ImportError as e:
             print(f"加载内置关键字模块失败: {e}")
 
@@ -59,12 +59,12 @@ class KeywordLoader:
             self._load_resource_files(project_custom_keywords)
 
         # 根据参数决定是否加载远程关键字
-        if include_remote:
-            print("正在扫描远程关键字...")
-            # 这里可以添加远程关键字的扫描逻辑
-            # 目前远程关键字是通过DSL文件中的@remote导入指令动态加载的
-        else:
-            print("跳过远程关键字扫描")
+        # if include_remote:
+        #     print("正在扫描远程关键字...")
+        #     # 这里可以添加远程关键字的扫描逻辑
+        #     # 目前远程关键字是通过DSL文件中的@remote导入指令动态加载的
+        # else:
+        #     print("跳过远程关键字扫描")
 
         self._project_custom_keywords = project_custom_keywords
         return project_custom_keywords
