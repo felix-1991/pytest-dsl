@@ -3,6 +3,7 @@ import allure
 import csv
 import os
 import time
+import difflib
 from typing import Dict, Any
 from pytest_dsl.core.parser import Node
 from pytest_dsl.core.keyword_manager import keyword_manager
@@ -45,15 +46,14 @@ class DSLExecutionError(Exception):
         error_parts = [message]
         if line_number:
             error_parts.append(f"行号: {line_number}")
-        if node_type:
-            error_parts.append(f"节点类型: {node_type}")
         if original_exception:
-            error_parts.append(
-                f"原始异常: {type(original_exception).__name__}: "
-                f"{str(original_exception)}"
-            )
+            # 避免把同一段错误信息重复打印两遍
+            original_text = f"{type(original_exception).__name__}: {str(original_exception)}"
+            if (str(original_exception) not in message and
+                    original_text not in message):
+                error_parts.append(f"原因: {original_text}")
 
-        super().__init__(" | ".join(error_parts))
+        super().__init__(" \n ".join(error_parts))
 
 
 class DSLExecutor:
@@ -574,16 +574,13 @@ class DSLExecutor:
         if not isinstance(alias, str):
             alias = str(alias)
 
-        print(f"正在连接远程关键字服务器: {url}, 别名: {alias}")
-
         # 注册远程服务器
         success = remote_keyword_manager.register_remote_server(url, alias)
 
         if not success:
-            print(f"无法连接到远程关键字服务器: {url}")
-            raise Exception(f"无法连接到远程关键字服务器: {url}")
+            raise Exception(f"无法连接远程服务器: {alias} ({url})")
 
-        print(f"已成功连接到远程关键字服务器: {url}, 别名: {alias}")
+        print(f"远程服务器已连接: {alias} ({url})")
 
         allure.attach(
             f"已连接到远程关键字服务器: {url}\n"
@@ -642,6 +639,9 @@ class DSLExecutor:
             # 如果是语法错误，记录并抛出（让finally块执行）
             if "语法错误" in str(e):
                 print(f"DSL语法错误: {str(e)}")
+                raise
+            # DSLExecutionError 已经是友好错误信息，由上层（CLI/调用方）负责打印，避免重复日志
+            if isinstance(e, DSLExecutionError):
                 raise
             # 其他错误，记录并抛出（让finally块执行）
             print(f"测试执行错误: {str(e)}")
@@ -1357,11 +1357,71 @@ class DSLExecutor:
         mapping = keyword_info.get('mapping', {})
         kwargs = {'context': self.test_context}  # 默认传入context参数
 
+        def _format_supported_params() -> str:
+            if not mapping:
+                return "（无可用参数信息）"
+            # mapping: 中文参数名 -> 英文参数名
+            items = []
+            for cn_name, en_name in mapping.items():
+                if cn_name == en_name:
+                    items.append(f"{cn_name}")
+                else:
+                    items.append(f"{cn_name}({en_name})")
+            return ", ".join(items)
+
+        def _suggest_param_name(bad_name: str) -> str:
+            if not mapping:
+                return ""
+            candidates = list(mapping.keys()) + list(mapping.values())
+            matches = difflib.get_close_matches(
+                bad_name, candidates, n=1, cutoff=0.6)
+            if matches:
+                return f"你是不是想用: {matches[0]}"
+            return ""
+
         # 检查是否有参数列表
         if node.children[0]:
+            seen_raw_names = set()
+            seen_mapped_names = set()
             for param in node.children[0]:
                 param_name = param.value
                 english_param_name = mapping.get(param_name, param_name)
+
+                # 参数名校验：允许传中文名（mapping的key）或英文名（mapping的value）
+                if mapping:
+                    allowed_cn = set(mapping.keys())
+                    allowed_en = set(mapping.values())
+                    if (param_name not in allowed_cn and
+                            param_name not in allowed_en):
+                        suggestion = _suggest_param_name(param_name)
+                        details = [
+                            f"关键字参数错误: {node.value} 不支持参数: {param_name}",
+                            f"支持的参数: {_format_supported_params()}",
+                        ]
+                        if suggestion:
+                            details.append(suggestion)
+                        raise DSLExecutionError(
+                            " \n ".join(details),
+                            line_number=getattr(node, 'line_number', None),
+                            node_type=getattr(node, 'type', None),
+                        )
+
+                # 重复参数检查（原始名称或映射后的名称重复都会导致覆盖，直接报错）
+                if param_name in seen_raw_names:
+                    raise DSLExecutionError(
+                        f"关键字参数错误: {node.value} 参数重复: {param_name}",
+                        line_number=getattr(node, 'line_number', None),
+                        node_type=getattr(node, 'type', None),
+                    )
+                if english_param_name in seen_mapped_names:
+                    raise DSLExecutionError(
+                        f"关键字参数错误: {node.value} 参数重复(映射后): "
+                        f"{english_param_name}",
+                        line_number=getattr(node, 'line_number', None),
+                        node_type=getattr(node, 'type', None),
+                    )
+                seen_raw_names.add(param_name)
+                seen_mapped_names.add(english_param_name)
 
                 # 在子步骤中处理参数值解析，但不记录异常详情
                 with allure.step(f"解析参数: {param_name}"):
@@ -1555,8 +1615,17 @@ class DSLExecutor:
                     params = node.children[0]
 
                 kwargs = {}
+                seen_param_names = set()
                 for param in params:
                     param_name = param.value
+                    if param_name in seen_param_names:
+                        raise DSLExecutionError(
+                            f"远程关键字参数错误: {alias}|{keyword_name} 参数重复: "
+                            f"{param_name}",
+                            line_number=getattr(node, 'line_number', None),
+                            node_type=getattr(node, 'type', None),
+                        )
+                    seen_param_names.add(param_name)
                     param_value = self.eval_expression(param.children[0])
                     kwargs[param_name] = param_value
 

@@ -1,11 +1,25 @@
 import xmlrpc.client
 from functools import partial
 import logging
+import difflib
+import os
 
 from pytest_dsl.core.keyword_manager import keyword_manager, Parameter
 
 # 配置日志
 logger = logging.getLogger(__name__)
+
+
+def _is_verbose() -> bool:
+    """是否输出详细调试信息（默认关闭）。"""
+    value = os.getenv("PYTEST_DSL_VERBOSE", "").strip().lower()
+    return value in {"1", "true", "yes", "y", "on"}
+
+
+def _print_verbose(message: str) -> None:
+    if _is_verbose():
+        print("开始输出")
+        print(message)
 
 
 class RemoteKeywordClient:
@@ -34,11 +48,12 @@ class RemoteKeywordClient:
     def connect(self):
         """连接到远程服务器并获取可用关键字"""
         try:
-            print(f"RemoteKeywordClient: 正在连接到远程服务器 {self.url}")
+            _print_verbose(f"远程连接: 开始连接 {self.alias} ({self.url})")
             from pytest_dsl.core.serialization_utils import XMLRPCSerializer
             keyword_names = XMLRPCSerializer.safe_xmlrpc_call(
                 self.server, 'get_keyword_names')
-            print(f"RemoteKeywordClient: 获取到 {len(keyword_names)} 个关键字")
+            _print_verbose(
+                f"远程连接: {self.alias} 加载关键字 {len(keyword_names)} 个")
             for name in keyword_names:
                 self._register_remote_keyword(name)
 
@@ -46,13 +61,12 @@ class RemoteKeywordClient:
             self._send_initial_variables()
 
             logger.info(f"已连接到远程关键字服务器: {self.url}, 别名: {self.alias}")
-            print(f"RemoteKeywordClient: 成功连接到远程服务器 {self.url}, "
-                  f"别名: {self.alias}")
+            _print_verbose(f"远程连接: 成功 {self.alias} ({self.url})")
             return True
         except Exception as e:
             error_msg = f"连接远程关键字服务器失败: {str(e)}"
             logger.error(error_msg)
-            print(f"RemoteKeywordClient: {error_msg}")
+            print(f"远程连接失败: {self.alias} ({self.url})，原因: {error_msg}")
             return False
 
     def _register_remote_keyword(self, name):
@@ -71,7 +85,8 @@ class RemoteKeywordClient:
                 param_details = XMLRPCSerializer.safe_xmlrpc_call(
                     self.server, 'get_keyword_parameter_details', name)
             except Exception as e:
-                print(f"获取关键字 {name} 的参数详细信息失败，使用基本信息: {e}")
+                _print_verbose(
+                    f"远程关键字: {name} 参数详情获取失败，使用基础参数: {e}")
                 # 如果新方法不可用，使用旧的方式
                 for param_name in param_names:
                     param_details.append({
@@ -81,7 +96,7 @@ class RemoteKeywordClient:
                         'default': None
                     })
 
-            print(f"注册远程关键字: {name}, 参数详情: {param_details}")
+            _print_verbose(f"远程关键字注册: {name} 参数: {param_details}")
 
             # 创建参数列表
             parameters = []
@@ -161,8 +176,43 @@ class RemoteKeywordClient:
         if 'step_name' in kwargs:
             kwargs.pop('step_name', None)
 
-        # 打印调试信息
-        print(f"远程关键字调用: {name}, 参数: {kwargs}")
+        # 参数名校验：避免“参数不存在但不报错”的静默问题
+        if name in self.param_mappings:
+            mapping = self.param_mappings[name]  # 中文参数名 -> 英文参数名
+            allowed_cn = set(mapping.keys())
+            allowed_en = set(mapping.values())
+
+            invalid = [
+                k for k in kwargs.keys()
+                if k not in allowed_cn and k not in allowed_en
+            ]
+            if invalid:
+                candidates = list(allowed_cn) + list(allowed_en)
+                suggestions = {}
+                for bad in invalid:
+                    match = difflib.get_close_matches(
+                        bad, candidates, n=1, cutoff=0.6)
+                    if match:
+                        suggestions[bad] = match[0]
+
+                supported_preview = ", ".join(
+                    f"{cn}({en})" if cn != en else cn
+                    for cn, en in mapping.items()
+                )
+                parts = [
+                    f"远程关键字参数错误: {self.alias}|{name} 不支持参数: "
+                    f"{', '.join(invalid)}",
+                    f"支持的参数: {supported_preview}",
+                ]
+                if suggestions:
+                    sug_text = ", ".join(
+                        f"{k}->{v}" for k, v in suggestions.items()
+                    )
+                    parts.append(f"你是不是想用: {sug_text}")
+                raise Exception(" \n ".join(parts))
+
+        # 调试信息默认关闭，避免输出过多
+        _print_verbose(f"远程调用: {self.alias}|{name} 参数: {kwargs}")
 
         # 创建反向映射字典，用于检查参数是否已经映射
         reverse_mapping = {}
@@ -170,13 +220,13 @@ class RemoteKeywordClient:
         # 使用动态注册的参数映射
         if name in self.param_mappings:
             param_mapping = self.param_mappings[name]
-            print(f"使用动态参数映射: {param_mapping}")
+            _print_verbose(f"远程调用: 使用参数映射 {param_mapping}")
             for cn_name, en_name in param_mapping.items():
                 reverse_mapping[en_name] = cn_name
         else:
             # 如果没有任何映射，使用原始参数名
             param_mapping = None
-            print("没有找到参数映射，使用原始参数名")
+            _print_verbose("远程调用: 未找到参数映射，使用原始参数名")
 
         # 映射参数名称
         mapped_kwargs = {}
@@ -185,7 +235,7 @@ class RemoteKeywordClient:
                 if k in param_mapping:
                     mapped_key = param_mapping[k]
                     mapped_kwargs[mapped_key] = v
-                    print(f"参数映射: {k} -> {mapped_key} = {v}")
+                    _print_verbose(f"远程调用: 参数映射 {k}->{mapped_key}={v}")
                 else:
                     mapped_kwargs[k] = v
         else:
@@ -195,7 +245,7 @@ class RemoteKeywordClient:
         # 获取关键字的参数信息
         if name in self.keyword_cache:
             param_names = self.keyword_cache[name]['parameters']
-            print(f"远程关键字 {name} 的参数列表: {param_names}")
+            _print_verbose(f"远程调用: {name} 支持参数: {param_names}")
             # 不再显示警告信息，因为参数已经在服务器端正确处理
             # 服务器端会使用默认值或者报错，客户端不需要重复警告
 
@@ -209,7 +259,7 @@ class RemoteKeywordClient:
             result = XMLRPCSerializer.safe_xmlrpc_call(
                 self.server, 'run_keyword', name, mapped_kwargs)
 
-        print(f"远程关键字执行结果: {result}")
+        _print_verbose(f"远程调用: 结果 {result}")
 
         if result['status'] == 'PASS':
             return_data = result['return']
@@ -218,12 +268,14 @@ class RemoteKeywordClient:
             if isinstance(return_data, dict):
                 # 处理捕获的变量 - 这里需要访问本地上下文
                 if 'captures' in return_data and return_data['captures']:
-                    print(f"远程关键字捕获的变量: {return_data['captures']}")
+                    _print_verbose(
+                        f"远程返回: 捕获变量 {return_data['captures']}")
 
                 # 处理会话状态
                 if ('session_state' in return_data and
                         return_data['session_state']):
-                    print(f"远程关键字会话状态: {return_data['session_state']}")
+                    _print_verbose(
+                        f"远程返回: 会话状态 {return_data['session_state']}")
 
                 # 处理响应数据
                 if 'response' in return_data and return_data['response']:
@@ -279,13 +331,13 @@ class RemoteKeywordClient:
         # 处理变量注入
         variables = side_effects.get('variables', {})
         if variables:
-            print(f"远程关键字注入变量: {variables}")
+            _print_verbose(f"远程返回: 注入变量 {variables}")
             self._inject_variables(variables)
 
         # 处理上下文更新
         context_updates = side_effects.get('context_updates', {})
         if context_updates:
-            print(f"远程关键字上下文更新: {context_updates}")
+            _print_verbose(f"远程返回: 上下文更新 {context_updates}")
             self._update_context(context_updates)
 
     def _inject_variables(self, variables):
@@ -383,7 +435,7 @@ class RemoteKeywordClient:
             context_variables = context.get_all_context_variables()
 
             if not context_variables:
-                print("没有上下文变量需要同步")
+                _print_verbose("远程同步: 没有上下文变量需要同步")
                 return
 
             # 使用统一的序列化工具进行变量过滤
@@ -409,13 +461,15 @@ class RemoteKeywordClient:
                         self.server, 'sync_variables_from_client',
                         variables_to_sync, self.api_key)
                     if result.get('status') == 'success':
-                        print(f"✅ 实时同步 {len(variables_to_sync)} 个上下文变量到远程服务器")
+                        print(
+                            f"✅ 同步变量 {len(variables_to_sync)} 项 -> {self.alias}"
+                        )
                     else:
                         print(f"❌ 实时同步变量失败: {result.get('error', '未知错误')}")
                 except Exception as e:
                     print(f"❌ 调用远程变量同步接口失败: {str(e)}")
             else:
-                print("没有需要实时同步的变量")
+                _print_verbose("远程同步: 没有需要同步的变量")
 
         except Exception as e:
             logger.warning(f"实时变量同步失败: {str(e)}")
@@ -617,10 +671,13 @@ class RemoteKeywordClient:
             for filtered_result in hook_results:
                 if filtered_result is not None:
                     variables = filtered_result
-                    print(f"Hook过滤后变量数量: {len(variables)} (服务器: {self.alias}, 类型: {sync_type})")
+                    _print_verbose(
+                        f"远程同步: Hook过滤后变量 {len(variables)} 项 "
+                        f"(服务器: {self.alias}, 类型: {sync_type})"
+                    )
 
         except Exception as e:
-            print(f"Hook过滤失败，使用原始过滤结果: {e}")
+            _print_verbose(f"远程同步: Hook过滤失败，使用原始过滤结果: {e}")
 
         return variables
 
@@ -645,16 +702,16 @@ class RemoteKeywordManager:
         Returns:
             bool: 是否成功连接
         """
-        print(f"RemoteKeywordManager: 正在注册远程服务器 {url} 别名 {alias}")
+        _print_verbose(f"远程连接: 注册服务器 {alias} ({url})")
         client = RemoteKeywordClient(url=url, api_key=api_key, alias=alias,
                                      sync_config=sync_config)
         success = client.connect()
 
         if success:
-            print(f"RemoteKeywordManager: 成功连接到远程服务器 {url}")
+            _print_verbose(f"远程连接: 注册完成 {alias} ({url})")
             self.clients[alias] = client
         else:
-            print(f"RemoteKeywordManager: 连接远程服务器 {url} 失败")
+            _print_verbose(f"远程连接: 注册失败 {alias} ({url})")
 
         return success
 
