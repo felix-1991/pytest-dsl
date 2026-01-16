@@ -16,7 +16,7 @@ temp_path = ${pk_name} | [生成随机数]
 [打印], 内容: "参数化执行机生成的随机数: ${temp_path}"
 
 # 测试2: 使用不同的执行机名称
-another_path = ${another_pk} | [生成随机数],名称:132
+another_path = ${another_pk} | [生成随机数]
 [打印], 内容: "另一个执行机生成的随机数: ${another_path}"
 
 # 测试3: 在循环中使用参数化执行机

@@ -13,6 +13,7 @@ from pytest_dsl.core.variable_utils import VariableReplacer
 from pytest_dsl.core.execution_tracker import (
     get_or_create_tracker, ExecutionTracker
 )
+from pytest_dsl.remote.log_utils import is_verbose
 
 
 class BreakException(Exception):
@@ -978,6 +979,7 @@ class DSLExecutor:
             from pytest_dsl.remote.keyword_client import remote_keyword_manager
 
             # 获取所有已连接的远程服务器客户端
+            ok_aliases = []
             for alias, client in remote_keyword_manager.clients.items():
                 try:
                     # 应用Hook过滤
@@ -992,7 +994,7 @@ class DSLExecutor:
                         final_variables, client.api_key)
 
                     if result.get('status') == 'success':
-                        print(f"🔄 变量 {var_name} 已同步到远程服务器 {alias}")
+                        ok_aliases.append(alias)
                     else:
                         error_msg = result.get('error', '未知错误')
                         print(f"❌ 变量 {var_name} 同步到远程服务器 {alias} "
@@ -1000,6 +1002,12 @@ class DSLExecutor:
 
                 except Exception as e:
                     print(f"❌ 通知远程服务器 {alias} 变量变化失败: {str(e)}")
+
+            if ok_aliases and is_verbose():
+                print(
+                    f"🔄 变量 {var_name} 已同步到远程服务器: "
+                    f"{', '.join(ok_aliases)}"
+                )
 
         except ImportError:
             # 如果没有导入远程模块，跳过通知

@@ -5,20 +5,18 @@ import difflib
 import os
 
 from pytest_dsl.core.keyword_manager import keyword_manager, Parameter
+from pytest_dsl.remote.log_utils import is_verbose, preview_keys, preview_value
 
 # 配置日志
 logger = logging.getLogger(__name__)
 
 
 def _is_verbose() -> bool:
-    """是否输出详细调试信息（默认关闭）。"""
-    value = os.getenv("PYTEST_DSL_VERBOSE", "").strip().lower()
-    return value in {"1", "true", "yes", "y", "on"}
+    return is_verbose()
 
 
 def _print_verbose(message: str) -> None:
     if _is_verbose():
-        print("开始输出")
         print(message)
 
 
@@ -353,21 +351,56 @@ class RemoteKeywordClient:
             # 获取当前执行器实例（如果存在）
             current_executor = self._get_current_executor()
 
+            global_var_names = []
+            local_var_names = []
+            fallback_global_var_names = []
+
             for var_name, var_value in variables.items():
                 if var_name.startswith('g_'):
                     # 全局变量
                     global_context.set_variable(var_name, var_value)
-                    print(f"✅ 注入全局变量: {var_name} = {var_value}")
+                    global_var_names.append(var_name)
+                    _print_verbose(
+                        f"✅ 注入全局变量: {var_name} = {preview_value(var_value)}"
+                    )
                 else:
                     # 本地变量
                     if current_executor:
                         current_executor.variable_replacer.local_variables[var_name] = var_value
                         current_executor.test_context.set(var_name, var_value)
-                        print(f"✅ 注入本地变量: {var_name} = {var_value}")
+                        local_var_names.append(var_name)
+                        _print_verbose(
+                            f"✅ 注入本地变量: {var_name} = {preview_value(var_value)}"
+                        )
                     else:
                         # 如果没有执行器，至少设置为全局变量
                         global_context.set_variable(var_name, var_value)
-                        print(f"⚠️  注入为全局变量（无执行器上下文）: {var_name} = {var_value}")
+                        fallback_global_var_names.append(var_name)
+                        _print_verbose(
+                            "⚠️  注入为全局变量（无执行器上下文）: "
+                            f"{var_name} = {preview_value(var_value)}"
+                        )
+
+            # 默认输出摘要，避免变量过多刷屏
+            total = len(variables)
+            parts = [f"✅ 变量注入完成: {total} 项"]
+            if global_var_names:
+                parts.append(
+                    f"global={len(global_var_names)} [{', '.join(global_var_names[:10])}"
+                    f"{'...' if len(global_var_names) > 10 else ''}]"
+                )
+            if local_var_names:
+                parts.append(
+                    f"local={len(local_var_names)} [{', '.join(local_var_names[:10])}"
+                    f"{'...' if len(local_var_names) > 10 else ''}]"
+                )
+            if fallback_global_var_names:
+                parts.append(
+                    f"fallback_global={len(fallback_global_var_names)} "
+                    f"[{', '.join(fallback_global_var_names[:10])}"
+                    f"{'...' if len(fallback_global_var_names) > 10 else ''}]"
+                )
+            print(" | ".join(parts))
 
         except Exception as e:
             print(f"❌ 变量注入失败: {str(e)}")
@@ -379,25 +412,29 @@ class RemoteKeywordClient:
             context_updates: 要更新的上下文信息
         """
         try:
-            current_executor = self._get_current_executor()
-
             # 处理会话状态更新
             if 'session_state' in context_updates:
                 session_state = context_updates['session_state']
-                print(f"✅ 更新会话状态: {session_state}")
+                _print_verbose(f"✅ 更新会话状态: {preview_value(session_state)}")
                 # 这里可以根据需要更新会话管理器的状态
 
             # 处理响应数据更新
             if 'response' in context_updates:
-                response_data = context_updates['response']
-                print(f"✅ 更新响应数据: 已接收响应数据")
+                _print_verbose("✅ 更新响应数据: 已接收响应数据")
                 # 可以将响应数据存储到特定位置
 
             # 处理其他上下文更新
             for key, value in context_updates.items():
                 if key not in ['session_state', 'response']:
-                    print(f"✅ 更新上下文: {key} = {value}")
+                    _print_verbose(f"✅ 更新上下文: {key} = {preview_value(value)}")
                     # 可以根据需要处理其他类型的上下文更新
+
+            # 默认输出摘要，避免上下文过大刷屏
+            keys_preview = preview_keys(context_updates, max_keys=20)
+            print(
+                "✅ 上下文更新完成: "
+                f"keys={len(context_updates)} [{keys_preview}]"
+            )
 
         except Exception as e:
             print(f"❌ 上下文更新失败: {str(e)}")
@@ -461,7 +498,7 @@ class RemoteKeywordClient:
                         self.server, 'sync_variables_from_client',
                         variables_to_sync, self.api_key)
                     if result.get('status') == 'success':
-                        print(
+                        _print_verbose(
                             f"✅ 同步变量 {len(variables_to_sync)} 项 -> {self.alias}"
                         )
                     else:
@@ -526,17 +563,19 @@ class RemoteKeywordClient:
                             serializable_variables, self.api_key)
 
                         if result.get('status') == 'success':
-                            print(f"成功传递 {len(serializable_variables)} "
-                                  f"个变量到远程服务器")
+                            _print_verbose(
+                                f"成功传递 {len(serializable_variables)} "
+                                f"个变量到远程服务器 {self.alias}"
+                            )
                         else:
                             print(f"传递变量到远程服务器失败: "
                                   f"{result.get('error', '未知错误')}")
                     except Exception as e:
                         print(f"调用远程变量接口失败: {str(e)}")
                 else:
-                    print("没有可序列化的变量需要传递")
+                    _print_verbose("没有可序列化的变量需要传递")
             else:
-                print("没有需要传递的变量")
+                _print_verbose("没有需要传递的变量")
 
         except Exception as e:
             logger.warning(f"初始变量传递失败: {str(e)}")
@@ -593,7 +632,7 @@ class RemoteKeywordClient:
             # 获取所有YAML变量
             yaml_data = yaml_vars._variables
             if yaml_data:
-                print(f"客户端YAML变量总数: {len(yaml_data)}")
+                _print_verbose(f"客户端YAML变量总数: {len(yaml_data)}")
 
                 # 检查同步配置中是否指定了特定的键
                 sync_keys = self.sync_config.get('yaml_sync_keys', None)
@@ -617,8 +656,12 @@ class RemoteKeywordClient:
                         filtered_specific_vars = XMLRPCSerializer.filter_variables(
                             specific_vars)
                         variables.update(filtered_specific_vars)
-                        for key in filtered_specific_vars:
-                            print(f"传递指定YAML变量: {key}")
+                        # 只输出摘要，避免变量过多刷屏
+                        _print_verbose(
+                            "将同步指定YAML变量: "
+                            f"{len(filtered_specific_vars)} 项 "
+                            f"[{preview_keys(filtered_specific_vars)}]"
+                        )
                 else:
                     # 传递所有YAML变量，但排除敏感信息
                     from pytest_dsl.core.serialization_utils import (
@@ -632,8 +675,12 @@ class RemoteKeywordClient:
                         filtered_yaml_vars, yaml_data, 'initial', 'yaml')
 
                     variables.update(filtered_yaml_vars)
-                    for key in filtered_yaml_vars:
-                        print(f"传递YAML变量: {key}")
+                    # 只输出摘要，避免变量过多刷屏
+                    _print_verbose(
+                        "将同步YAML变量: "
+                        f"{len(filtered_yaml_vars)} 项 "
+                        f"[{preview_keys(filtered_yaml_vars)}]"
+                    )
 
         except Exception as e:
             logger.warning(f"收集YAML变量失败: {str(e)}")

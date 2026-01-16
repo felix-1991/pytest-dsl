@@ -11,6 +11,8 @@ import time
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.remote.hook_manager import hook_manager, HookType
 
+from pytest_dsl.remote.log_utils import is_verbose, preview_keys, preview_value
+
 
 class RemoteKeywordServer:
     """远程关键字服务器，提供关键字的远程调用能力"""
@@ -418,27 +420,27 @@ class RemoteKeywordServer:
             }
 
         try:
-            # 更新共享变量
+            # 将所有同步的变量注入到 shared/yaml_vars/global_context，默认只输出摘要避免刷屏
+            from pytest_dsl.core.yaml_vars import yaml_vars
+            from pytest_dsl.core.global_context import global_context
+
+            global_count = 0
             for name, value in variables.items():
                 self.shared_variables[name] = value
-                print(f"接收到客户端变量: {name}")
-
-            # 将所有同步的变量直接注入到yaml_vars中，实现无缝访问
-            from pytest_dsl.core.yaml_vars import yaml_vars
-
-            for name, value in variables.items():
-                # 直接设置到yaml_vars中，确保所有关键字都能无缝访问
                 yaml_vars._variables[name] = value
-                print(f"✓ 变量 {name} 已注入到yaml_vars，实现无缝访问")
-
-            # 同时处理全局变量到global_context
-            from pytest_dsl.core.global_context import global_context
-            for name, value in variables.items():
                 if name.startswith('g_'):
                     global_context.set_variable(name, value)
-                    print(f"✓ 全局变量 {name} 已注入到global_context")
+                    global_count += 1
 
-            print(f"✅ 总共同步了 {len(variables)} 个变量，全部实现无缝访问")
+                if is_verbose():
+                    print(f"同步变量: {name} = {preview_value(value)}")
+
+            if is_verbose():
+                print(
+                    "✅ 客户端变量同步完成: "
+                    f"total={len(variables)} global={global_count} "
+                    f"keys=[{preview_keys(variables)}]"
+                )
 
             return {
                 'status': 'success',
@@ -497,7 +499,10 @@ class RemoteKeywordServer:
 
         try:
             self.shared_variables[name] = value
-            print(f"设置共享变量: {name} = {value}")
+            if is_verbose():
+                print(f"设置共享变量: {name} = {preview_value(value)}")
+            else:
+                print(f"设置共享变量: {name}")
             return {
                 'status': 'success',
                 'message': f'成功设置变量 {name}'
