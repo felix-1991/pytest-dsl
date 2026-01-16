@@ -566,7 +566,13 @@ class DSLExecutor:
 
         remote_info = node.value
         url = self._replace_variables_in_string(remote_info['url'])
-        alias = remote_info['alias']
+        alias = self._replace_variables_in_string(remote_info['alias'])
+
+        # alias 可能来自 ${...}，确保最终是字符串
+        if alias is None or (isinstance(alias, str) and not alias.strip()):
+            raise Exception("远程服务器别名不能为空")
+        if not isinstance(alias, str):
+            alias = str(alias)
 
         print(f"正在连接远程关键字服务器: {url}, 别名: {alias}")
 
@@ -1533,7 +1539,11 @@ class DSLExecutor:
         from pytest_dsl.remote.keyword_client import remote_keyword_manager
 
         call_info = node.value
-        alias = call_info['alias']
+        alias = self._replace_variables_in_string(call_info['alias'])
+        if alias is None or (isinstance(alias, str) and not alias.strip()):
+            raise Exception("远程调用别名不能为空")
+        if not isinstance(alias, str):
+            alias = str(alias)
         keyword_name = call_info['keyword']
         line_info = self._get_line_info(node)
 

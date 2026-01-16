@@ -42,6 +42,15 @@ result = remote_machine|[生成随机数], 最小值: 1, 最大值: 100
 [打印], 内容: "远程生成的随机数: ${result}"
 ```
 
+别名也支持变量形式（推荐用 `${...}` 明确表示“这是变量”）：
+
+```python
+@name: "远程别名变量示例"
+@remote: "http://remote-server:8270/" as ${remote_alias}
+
+${remote_alias}|[打印], 内容: "通过变量选择远程服务器"
+```
+
 ### 第三步：运行测试
 
 ```bash

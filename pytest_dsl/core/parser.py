@@ -99,7 +99,8 @@ def p_metadata_item(p):
                     | DATE_KEYWORD COLON STRING
                     | DATA_KEYWORD COLON data_source
                     | IMPORT_KEYWORD COLON STRING
-                    | REMOTE_KEYWORD COLON STRING AS ID'''
+                    | REMOTE_KEYWORD COLON STRING AS ID
+                    | REMOTE_KEYWORD COLON STRING AS PLACEHOLDER'''
     if p[1] == '@tags':
         p[0] = Node(p[1], value=p[4])
     elif p[1] == '@data':
@@ -645,7 +646,9 @@ def parse_with_error_handling(content, lexer=None):
 
 def p_remote_keyword_call(p):
     '''remote_keyword_call : ID PIPE LBRACKET ID RBRACKET COMMA parameter_list
-                          | ID PIPE LBRACKET ID RBRACKET'''
+                          | ID PIPE LBRACKET ID RBRACKET
+                          | PLACEHOLDER PIPE LBRACKET ID RBRACKET COMMA parameter_list
+                          | PLACEHOLDER PIPE LBRACKET ID RBRACKET'''
     if len(p) == 8:
         p[0] = Node('RemoteKeywordCall', [p[7]], {
                     'alias': p[1], 'keyword': p[4]})
