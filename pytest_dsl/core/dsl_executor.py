@@ -341,6 +341,9 @@ class DSLExecutor:
             elif expr_node.type == 'ArithmeticExpr':
                 # 处理算术表达式
                 return self._eval_arithmetic_expr(expr_node)
+            elif expr_node.type == 'UnaryExpr':
+                # 处理一元表达式（如负号）
+                return self._eval_unary_expr(expr_node)
             elif expr_node.type == 'LogicalExpr':
                 # 处理逻辑表达式
                 return self._eval_logical_expr(expr_node)
@@ -547,6 +550,28 @@ class DSLExecutor:
                     raise Exception(f"未知的逻辑操作符: {operator}")
         except Exception as e:
             context_info = f"逻辑表达式求值 '{operator}'"
+            self._handle_exception_with_line_info(e, expr_node, context_info)
+
+    def _eval_unary_expr(self, expr_node):
+        """对一元表达式进行求值（当前支持一元负号）"""
+        operator = "未知"
+        try:
+            operator = expr_node.value
+            operand_value = self.eval_expression(expr_node.children[0])
+
+            # 尝试类型转换 - 如果是字符串数字则转为数字
+            if (isinstance(operand_value, str) and
+                    str(operand_value).replace('.', '', 1).isdigit()):
+                operand_value = float(operand_value)
+                if operand_value.is_integer():
+                    operand_value = int(operand_value)
+
+            if operator == '-':
+                return -operand_value
+
+            raise Exception(f"未知的一元操作符: {operator}")
+        except Exception as e:
+            context_info = f"一元表达式求值 '{operator}'"
             self._handle_exception_with_line_info(e, expr_node, context_info)
 
     def _get_variable(self, var_name):

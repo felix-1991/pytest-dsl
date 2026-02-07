@@ -38,6 +38,7 @@ precedence = (
     ('left', 'GT', 'LT', 'GE', 'LE', 'EQ', 'NE'),  # 比较运算符优先级（高于逻辑运算符）
     ('left', 'PLUS', 'MINUS'),  # 加减运算符优先级
     ('left', 'TIMES', 'DIVIDE', 'MODULO'),  # 乘除模运算符优先级
+    ('right', 'UMINUS'),  # 一元负号优先级（高于乘除）
     ('right', 'EQUALS'),
 )
 
@@ -199,10 +200,18 @@ def p_expr_atom(p):
                  | boolean_expr
                  | list_expr
                  | dict_expr
+                 | MINUS expr_atom %prec UMINUS
                  | LPAREN expression RPAREN'''
     if p[1] == '(':
         # 处理括号表达式，直接返回括号内的表达式节点
         p[0] = p[2]
+    elif p[1] == '-':
+        # 一元负号表达式
+        unary_line = getattr(p.slice[1], 'lineno', None)
+        unary_node = Node('UnaryExpr', children=[p[2]], value='-')
+        if unary_line is not None:
+            unary_node.set_position(unary_line)
+        p[0] = unary_node
     elif isinstance(p[1], Node):
         p[0] = p[1]
     else:
