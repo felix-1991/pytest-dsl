@@ -592,12 +592,10 @@ positive_num = 10
 abs_positive = [绝对值], 数值: ${positive_num}
 [打印], 内容: "10的绝对值: ${abs_positive}"  # 输出: 10的绝对值: 10
 
-# 注意：DSL解析器不支持负数字面量，负数需要通过YAML配置传递
-# 以下示例展示概念，实际使用时需要在YAML配置中定义负数值
-[打印], 内容: "负数绝对值示例需要通过YAML配置传递"
-# 示例：如果在YAML中定义了 negative_value: -15
-# abs_negative = [绝对值], 数值: ${negative_value}
-# [打印], 内容: "负数的绝对值: ${abs_negative}"
+# 负数的绝对值
+negative_num = -15
+abs_negative = [绝对值], 数值: ${negative_num}
+[打印], 内容: "负数的绝对值: ${abs_negative}"  # 输出: 负数的绝对值: 15
 ```
 
 **参数：**
@@ -605,17 +603,10 @@ abs_positive = [绝对值], 数值: ${positive_num}
 
 **返回值：** 数字的绝对值
 
-**注意：** 由于DSL解析器不支持负数字面量，负数需要通过YAML配置文件传递。例如：
-
-```yaml
-# config/negative_numbers.yaml
-negative_value: -15
-negative_pi: -3.14159
-```
+**注意：** 负数字面量可直接在DSL中使用（如 `-15`）：
 
 ```python
-# 在DSL中使用
-abs_result = [绝对值], 数值: ${negative_value}
+abs_result = [绝对值], 数值: -15
 [打印], 内容: "绝对值: ${abs_result}"
 ```
 
@@ -634,9 +625,9 @@ price = 19.876
 rounded_price = [四舍五入], 数值: ${price}, 小数位数: 2
 [打印], 内容: "价格四舍五入: ${rounded_price}"  # 输出: 价格四舍五入: 19.88
 
-# 注意：DSL解析器不支持负数字面量，负数小数位数需要通过变量传递
-# 这里展示概念，实际使用时需要在YAML配置中定义负数值
-[打印], 内容: "负数小数位数示例需要通过YAML配置传递"
+# 负数小数位数（-1 表示四舍五入到十位）
+rounded_tens = [四舍五入], 数值: 1234.56, 小数位数: -1
+[打印], 内容: "四舍五入到十位: ${rounded_tens}"  # 输出: 四舍五入到十位: 1230.0
 ```
 
 **参数：**
@@ -645,18 +636,7 @@ rounded_price = [四舍五入], 数值: ${price}, 小数位数: 2
 
 **返回值：** 四舍五入后的数字
 
-**注意：** 负数小数位数（如-1表示四舍五入到十位）需要通过YAML配置传递：
-
-```yaml
-# config/rounding.yaml
-decimal_places_tens: -1
-```
-
-```python
-# 四舍五入到十位
-result = [四舍五入], 数值: 1234.56, 小数位数: ${decimal_places_tens}
-[打印], 内容: "结果: ${result}"  # 输出: 结果: 1230.0
-```
+**注意：** 负数小数位数可直接在DSL中使用（如 `-1` 表示四舍五入到十位）。
 
 ### 转换为字符串
 
@@ -1111,14 +1091,15 @@ user_data = {
 
 ```python
 # 不支持的语法
-# 负数字面量（需要通过YAML配置传递）
-# negative_value = -15  # ❌ 不支持
-
 # 空列表字面量（需要通过YAML配置传递）  
 # empty_list = []  # ❌ 不支持
 
 # 复杂的布尔表达式（建议分步断言）
 # [断言], 条件: "${score1} >= 80 and ${score2} >= 80"  # ❌ 不推荐
+
+# 支持的语法
+negative_value = -15  # ✅ 支持
+decimal_places_tens = -1  # ✅ 支持
 
 # 推荐的替代方案
 [断言], 条件: "${score1} >= 80", 消息: "第一个分数应>=80"
