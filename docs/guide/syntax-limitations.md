@@ -6,20 +6,7 @@
 
 ### 不支持的语法
 
-#### 1. 直接遍历数组
-```python
-# ❌ 不支持
-for item in ${array} do
-    [打印], 内容: ${item}
-end
-
-# ❌ 不支持
-for user in ${users} do
-    [打印], 内容: ${user.name}
-end
-```
-
-#### 2. 带索引的数组遍历
+#### 1. 带索引的数组遍历（enumerate）
 ```python
 # ❌ 不支持
 for i, item in enumerate(${array}) do
@@ -27,20 +14,15 @@ for i, item in enumerate(${array}) do
 end
 ```
 
-#### 3. 字典遍历
+#### 2. `dict.items()` 风格遍历
 ```python
-# ❌ 不支持
-for key in ${dict} do
-    [打印], 内容: "${key}: ${dict[key]}"
-end
-
 # ❌ 不支持
 for key, value in ${dict.items()} do
     [打印], 内容: "${key}: ${value}"
 end
 ```
 
-#### 4. while 循环
+#### 3. while 循环
 ```python
 # ❌ 不支持
 while ${condition} do
@@ -50,7 +32,23 @@ end
 
 ### 支持的替代方案
 
-#### 1. 使用索引遍历数组
+#### 1. 直接遍历数组/列表
+```python
+# ✅ 支持
+for item in ${array} do
+    [打印], 内容: ${item}
+end
+```
+
+#### 2. 直接遍历字典键
+```python
+# ✅ 支持（单变量时遍历键）
+for key in ${dict} do
+    [打印], 内容: "${key}: ${dict[key]}"
+end
+```
+
+#### 3. 使用索引遍历数组
 ```python
 # ✅ 支持
 array = ["item1", "item2", "item3"]
@@ -61,7 +59,7 @@ for i in range(0, ${array_length}) do
 end
 ```
 
-#### 2. 遍历对象数组
+#### 4. 遍历对象数组
 ```python
 # ✅ 支持
 users = [
@@ -75,7 +73,7 @@ for i in range(0, ${users_length}) do
 end
 ```
 
-#### 3. 遍历字典键
+#### 5. 手动键列表遍历（兼容方案）
 ```python
 # ✅ 支持
 user_info = {"name": "张三", "age": 30, "city": "北京"}
@@ -89,7 +87,7 @@ for i in range(0, ${keys_length}) do
 end
 ```
 
-#### 4. 使用 for + break 模拟 while
+#### 6. 使用 for + break 模拟 while
 ```python
 # ✅ 支持 - 模拟 while 循环
 max_attempts = 10
@@ -375,7 +373,7 @@ end
 
 以下功能可能在未来版本中支持：
 
-1. **增强的循环语法** - 支持直接遍历数组和字典
+1. **while 循环语法** - 原生支持 `while ... do ... end`
 2. **函数调用支持** - 在占位符中支持内置函数调用
 3. **算术表达式** - 在占位符中支持复杂的算术运算
 4. **类型系统** - 提供更好的类型检查和转换

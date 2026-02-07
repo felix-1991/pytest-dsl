@@ -511,7 +511,7 @@ A: 创建资源文件（`.resource`），详见[资源文件](./resource-files)�
 
 ### Q: 支持哪些数据格式？
 
-A: 支持CSV、JSON、Excel等格式的数据驱动测试（**仅pytest方式**），详见[数据驱动测试](./data-driven)章节。
+A: 当前稳定支持CSV格式的数据驱动测试（**仅pytest方式**）。JSON、Excel等格式仍在规划中，详见[数据驱动测试](./data-driven)章节。
 
 ---
 

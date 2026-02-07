@@ -52,10 +52,11 @@ end
 
 ```python
 @data: "test_data.csv" using csv        # CSV数据驱动
-@data: "test_data.json" using json      # JSON数据驱动
 ```
 
-`using`后跟数据格式标识符（不需要引号），如`csv`、`json`。
+`using`后跟数据格式标识符（不需要引号）。当前稳定支持 `csv`。
+
+> 注意：`@data` 仅在 pytest 集成路径（`auto_dsl`）下生效；直接使用 `pytest-dsl xxx.dsl` 运行时不会按数据集参数化执行。
 
 ### 资源导入标签
 

@@ -1,12 +1,14 @@
 # 数据驱动测试
 
-数据驱动测试是pytest-dsl的核心特性之一，允许您使用外部数据源（如CSV、JSON、Excel等）来驱动测试执行，实现同一测试逻辑在不同数据集上的重复执行。
+数据驱动测试是pytest-dsl的核心特性之一，允许您使用外部数据源（当前稳定支持 CSV）来驱动测试执行，实现同一测试逻辑在不同数据集上的重复执行。
 
 ::: warning 重要提示
 **数据驱动测试只有在使用pytest集成方式运行时才会生效！**
 
 使用`pytest-dsl`命令直接运行包含`@data`指令的DSL文件时，数据驱动功能不会工作，测试只会执行一次。
 要使用数据驱动功能，必须通过`auto_dsl`装饰器和pytest来运行测试。
+
+当前稳定支持的数据源格式为 `csv`（`@data: "...csv" using csv`）。
 :::
 
 ## 什么是数据驱动测试
@@ -97,7 +99,9 @@ invalid_user,wrong_pass,401,用户名或密码错误
 [打印], 内容: "用户 ${username} 测试完成"
 ```
 
-### JSON数据源
+### JSON数据源（规划中，当前不支持）
+
+以下内容为目标用法示例，当前版本不能直接运行：
 
 JSON格式适合复杂的嵌套数据结构。
 
@@ -162,7 +166,9 @@ end
 [打印], 内容: "测试 '${test_name}' 完成"
 ```
 
-### Excel数据源
+### Excel数据源（规划中，当前不支持）
+
+以下内容为目标用法示例，当前版本不能直接运行：
 
 Excel格式适合大量数据和复杂的数据组织。
 
@@ -214,12 +220,14 @@ end
 
 ## 高级数据驱动功能
 
-### 多数据源组合
+### 多数据源组合（规划中，当前不支持）
+
+当前版本仅支持单个 `@data` 数据源。以下内容为目标用法示例：
 
 可以在同一测试中使用多个数据源：
 
 ```python
-@name: "多数据源测试"
+@name: "多数据源测试（规划示例）"
 @data: "users.csv" using csv
 @data: "scenarios.json" using json
 
@@ -333,7 +341,7 @@ function 验证响应数据 (实际数据, 期望数据) do
 end
 ```
 
-**测试文件：** `test_parameterized.dsl`
+**测试文件：** `test_parameterized.dsl`（规划示例）
 ```python
 @name: "参数化数据驱动测试"
 @import: "data_driven_utils.resource"
@@ -453,7 +461,7 @@ end
 
 ## 数据驱动测试的最佳实践
 
-### 1. 数据文件组织
+### 1. 数据文件组织（当前建议以 CSV 为主）
 
 ```
 data/
@@ -462,23 +470,19 @@ data/
 │   ├── regular_users.csv
 │   └── guest_users.csv
 ├── scenarios/
-│   ├── login_scenarios.json
-│   ├── api_scenarios.json
-│   └── error_scenarios.json
-├── configurations/
-│   ├── dev_config.xlsx
-│   ├── test_config.xlsx
-│   └── prod_config.xlsx
+│   ├── login_scenarios.csv
+│   ├── api_scenarios.csv
+│   └── error_scenarios.csv
 └── fixtures/
-    ├── sample_data.json
+    ├── sample_data.csv
     └── reference_data.csv
 ```
 
 ### 2. 数据文件命名规范
 
 - 使用描述性名称：`user_registration_test_data.csv`
-- 包含环境信息：`api_test_data_dev.json`
-- 版本控制：`test_data_v2.1.xlsx`
+- 包含环境信息：`api_test_data_dev.csv`
+- 版本控制：`test_data_v2.1.csv`
 - 分类组织：`auth/login_test_data.csv`
 
 ### 3. 数据质量保证
@@ -536,7 +540,9 @@ end
 
 ## 复杂场景示例
 
-### 端到端电商测试流程
+### 端到端电商测试流程（规划中，当前不支持）
+
+以下内容为目标用法示例，当前版本不能直接运行：
 
 **数据文件：** `ecommerce_flow_data.json`
 ```json
