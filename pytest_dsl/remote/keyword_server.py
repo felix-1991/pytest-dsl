@@ -7,11 +7,20 @@ import signal
 import atexit
 import threading
 import time
+import socketserver
 
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.remote.hook_manager import hook_manager, HookType
 
 from pytest_dsl.remote.log_utils import is_verbose, preview_keys, preview_value
+
+
+class ThreadedXMLRPCServer(socketserver.ThreadingMixIn,
+                           xmlrpc.server.SimpleXMLRPCServer):
+    """支持并发处理请求的XML-RPC服务器。"""
+
+    daemon_threads = True
+    allow_reuse_address = True
 
 
 class RemoteKeywordServer:
@@ -121,7 +130,7 @@ class RemoteKeywordServer:
     def start(self):
         """启动远程关键字服务器"""
         try:
-            self.server = xmlrpc.server.SimpleXMLRPCServer(
+            self.server = ThreadedXMLRPCServer(
                 (self.host, self.port), allow_none=True)
         except OSError as e:
             if "Address already in use" in str(e):
