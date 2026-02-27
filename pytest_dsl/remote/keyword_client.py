@@ -11,6 +11,36 @@ from pytest_dsl.remote.log_utils import is_verbose, preview_keys, preview_value
 logger = logging.getLogger(__name__)
 
 
+class _TimeoutMixin:
+    """为xmlrpc transport注入连接超时。"""
+
+    def __init__(self, *args, timeout=None, **kwargs):
+        self._timeout = timeout
+        super().__init__(*args, **kwargs)
+
+    def make_connection(self, host):
+        conn = super().make_connection(host)
+        if self._timeout is not None:
+            conn.timeout = self._timeout
+        return conn
+
+
+class TimeoutTransport(_TimeoutMixin, xmlrpc.client.Transport):
+    """HTTP transport with timeout support."""
+
+
+class TimeoutSafeTransport(_TimeoutMixin, xmlrpc.client.SafeTransport):
+    """HTTPS transport with timeout support."""
+
+
+def _create_server_proxy(url, timeout):
+    if str(url).lower().startswith('https://'):
+        transport = TimeoutSafeTransport(timeout=timeout)
+    else:
+        transport = TimeoutTransport(timeout=timeout)
+    return xmlrpc.client.ServerProxy(url, allow_none=True, transport=transport)
+
+
 def _is_verbose() -> bool:
     return is_verbose()
 
@@ -24,9 +54,10 @@ class RemoteKeywordClient:
     """远程关键字客户端，用于连接远程关键字服务器并执行关键字"""
 
     def __init__(self, url='http://localhost:8270/', api_key=None, alias=None,
-                 sync_config=None):
+                 sync_config=None, timeout=None):
         self.url = url
-        self.server = xmlrpc.client.ServerProxy(url, allow_none=True)
+        self.timeout = float(timeout) if timeout is not None else 60.0
+        self.server = _create_server_proxy(url, self.timeout)
         self.keyword_cache = {}
         self.param_mappings = {}  # 存储每个关键字的参数映射
         self.api_key = api_key
@@ -64,7 +95,10 @@ class RemoteKeywordClient:
         except Exception as e:
             error_msg = f"连接远程关键字服务器失败: {str(e)}"
             logger.error(error_msg)
-            print(f"远程连接失败: {self.alias} ({self.url})，原因: {error_msg}")
+            print(
+                f"远程连接失败: {self.alias} ({self.url}, timeout={self.timeout}s)，"
+                f"原因: {error_msg}"
+            )
             return False
 
     def _register_remote_keyword(self, name):
@@ -250,12 +284,18 @@ class RemoteKeywordClient:
         # 执行远程调用
         # 检查是否需要传递API密钥
         from pytest_dsl.core.serialization_utils import XMLRPCSerializer
-        if self.api_key:
-            result = XMLRPCSerializer.safe_xmlrpc_call(
-                self.server, 'run_keyword', name, mapped_kwargs, self.api_key)
-        else:
-            result = XMLRPCSerializer.safe_xmlrpc_call(
-                self.server, 'run_keyword', name, mapped_kwargs)
+        try:
+            if self.api_key:
+                result = XMLRPCSerializer.safe_xmlrpc_call(
+                    self.server, 'run_keyword', name, mapped_kwargs, self.api_key)
+            else:
+                result = XMLRPCSerializer.safe_xmlrpc_call(
+                    self.server, 'run_keyword', name, mapped_kwargs)
+        except Exception as e:
+            raise Exception(
+                "远程关键字调用失败: "
+                f"{self.alias}|{name} ({self.url}, timeout={self.timeout}s): {e}"
+            ) from e
 
         _print_verbose(f"远程调用: 结果 {result}")
 
@@ -737,7 +777,7 @@ class RemoteKeywordManager:
         self.clients = {}  # 别名 -> 客户端实例
 
     def register_remote_server(self, url, alias, api_key=None,
-                               sync_config=None):
+                               sync_config=None, timeout=None):
         """注册远程关键字服务器
 
         Args:
@@ -745,13 +785,14 @@ class RemoteKeywordManager:
             alias: 服务器别名
             api_key: API密钥(可选)
             sync_config: 变量同步配置(可选)
+            timeout: XML-RPC调用超时时间(秒)
 
         Returns:
             bool: 是否成功连接
         """
         _print_verbose(f"远程连接: 注册服务器 {alias} ({url})")
         client = RemoteKeywordClient(url=url, api_key=api_key, alias=alias,
-                                     sync_config=sync_config)
+                                     sync_config=sync_config, timeout=timeout)
         success = client.connect()
 
         if success:

@@ -297,11 +297,13 @@ def load_remote_servers_from_yaml(variable_source=None):
                 alias = server_config.get('alias')
                 api_key = server_config.get('api_key')
                 sync_config = server_config.get('sync_config')
+                timeout = server_config.get('timeout')
 
                 if url and alias:
                     print(f"自动连接远程服务器: {alias} -> {url}")
                     success = remote_keyword_manager.register_remote_server(
-                        url, alias, api_key=api_key, sync_config=sync_config
+                        url, alias, api_key=api_key, sync_config=sync_config,
+                        timeout=timeout
                     )
                     if success:
                         print(f"✓ 远程服务器 {alias} 连接成功")

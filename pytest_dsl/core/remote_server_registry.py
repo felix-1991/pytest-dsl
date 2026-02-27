@@ -62,7 +62,8 @@ class RemoteServerRegistry:
                         api_key: Optional[str] = None,
                         sync_global_vars: bool = True,
                         sync_custom_vars: bool = True,
-                        exclude_patterns: Optional[List[str]] = None) -> bool:
+                        exclude_patterns: Optional[List[str]] = None,
+                        timeout: Optional[float] = None) -> bool:
         """注册单个远程服务器
 
         Args:
@@ -72,6 +73,7 @@ class RemoteServerRegistry:
             sync_global_vars: 是否同步全局变量
             sync_custom_vars: 是否同步自定义变量（通过变量提供者）
             exclude_patterns: 要排除的变量名模式列表
+            timeout: XML-RPC调用超时时间（秒）
 
         Returns:
             bool: 是否连接成功
@@ -92,7 +94,7 @@ class RemoteServerRegistry:
 
         # 尝试连接
         success = self._connect_to_server(
-            url, alias, api_key, sync_config, variables_to_sync)
+            url, alias, api_key, sync_config, variables_to_sync, timeout)
 
         # 调用连接回调
         for callback in self._connection_callbacks:
@@ -107,7 +109,8 @@ class RemoteServerRegistry:
                 'url': url,
                 'alias': alias,
                 'api_key': api_key,
-                'sync_config': sync_config
+                'sync_config': sync_config,
+                'timeout': timeout
             })
 
         return success
@@ -151,6 +154,7 @@ class RemoteServerRegistry:
             sync_global_vars = server_config.get('sync_global_vars', True)
             sync_custom_vars = server_config.get('sync_custom_vars', True)
             exclude_patterns = server_config.get('exclude_patterns')
+            timeout = server_config.get('timeout')
 
             success = self.register_server(
                 url=url,
@@ -158,7 +162,8 @@ class RemoteServerRegistry:
                 api_key=api_key,
                 sync_global_vars=sync_global_vars,
                 sync_custom_vars=sync_custom_vars,
-                exclude_patterns=exclude_patterns
+                exclude_patterns=exclude_patterns,
+                timeout=timeout
             )
 
             results[alias] = {
@@ -190,7 +195,8 @@ class RemoteServerRegistry:
                            alias: str,
                            api_key: Optional[str],
                            sync_config: Dict[str, Any],
-                           variables: Dict[str, Any]) -> bool:
+                           variables: Dict[str, Any],
+                           timeout: Optional[float] = None) -> bool:
         """连接到远程服务器"""
         try:
             # 导入远程关键字管理器
@@ -205,7 +211,8 @@ class RemoteServerRegistry:
                 url=url,
                 alias=alias,
                 api_key=api_key,
-                sync_config=extended_sync_config
+                sync_config=extended_sync_config,
+                timeout=timeout
             )
 
             if success:

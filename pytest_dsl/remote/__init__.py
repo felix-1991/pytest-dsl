@@ -14,7 +14,8 @@ from .variable_bridge import VariableBridge
 # 导出便捷函数
 
 
-def register_remote_server(url, alias, api_key=None, sync_config=None):
+def register_remote_server(url, alias, api_key=None, sync_config=None,
+                           timeout=None):
     """注册远程关键字服务器的便捷函数
 
     Args:
@@ -22,11 +23,13 @@ def register_remote_server(url, alias, api_key=None, sync_config=None):
         alias: 服务器别名  
         api_key: API密钥(可选)
         sync_config: 变量同步配置(可选)
+        timeout: XML-RPC调用超时时间(秒)
 
     Returns:
         bool: 是否成功连接
     """
-    return remote_keyword_manager.register_remote_server(url, alias, api_key, sync_config)
+    return remote_keyword_manager.register_remote_server(
+        url, alias, api_key, sync_config, timeout)
 
 
 def register_multiple_servers(servers_config):
@@ -45,10 +48,11 @@ def register_multiple_servers(servers_config):
             alias = server_config.get('alias')
             api_key = server_config.get('api_key')
             sync_config = server_config.get('sync_config')
+            timeout = server_config.get('timeout')
 
             if url and alias:
                 success = register_remote_server(
-                    url, alias, api_key, sync_config)
+                    url, alias, api_key, sync_config, timeout)
                 results[alias] = success
 
     return results
