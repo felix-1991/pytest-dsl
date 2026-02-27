@@ -531,6 +531,9 @@ pytest-dsl-server --host 0.0.0.0 --port 8270
 
 # 带API密钥的安全启动
 pytest-dsl-server --host 0.0.0.0 --port 8270 --api-key your_secret_key
+
+# 控制最大并发请求数（默认20）
+pytest-dsl-server --host 0.0.0.0 --port 8270 --max-concurrency 50
 ```
 
 #### 使用远程关键字
@@ -557,6 +560,7 @@ remote_servers:
     url: "http://server1:8270/"
     alias: "server1"
     api_key: "your_api_key"
+    timeout: 60
     sync_config:
       sync_global_vars: true
       sync_yaml_vars: true

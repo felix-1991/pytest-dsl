@@ -26,11 +26,15 @@ class ThreadedXMLRPCServer(socketserver.ThreadingMixIn,
 class RemoteKeywordServer:
     """远程关键字服务器，提供关键字的远程调用能力"""
 
-    def __init__(self, host='localhost', port=8270, api_key=None):
+    def __init__(self, host='localhost', port=8270, api_key=None,
+                 max_concurrency=20):
         self.host = host
         self.port = port
         self.server = None
         self.api_key = api_key
+        self.max_concurrency = int(max_concurrency) if max_concurrency else 20
+        self._concurrency_limiter = threading.BoundedSemaphore(
+            self.max_concurrency)
 
         # 变量存储
         self.shared_variables = {}  # 存储共享变量
@@ -216,6 +220,18 @@ class RemoteKeywordServer:
                 'traceback': []
             }
 
+        # 并发限流，避免线程无限增长导致进程不稳定
+        if not self._concurrency_limiter.acquire(blocking=False):
+            return {
+                'status': 'FAIL',
+                'error': (
+                    f'服务器繁忙：并发请求已达上限 '
+                    f'({self.max_concurrency})，请稍后重试'
+                ),
+                'traceback': []
+            }
+
+        start_time = time.time()
         try:
             # 确保参数是字典格式
             if not isinstance(args_dict, dict):
@@ -312,6 +328,11 @@ class RemoteKeywordServer:
                 'error': str(e),
                 'traceback': traceback.format_exception(exc_type, exc_value, exc_tb)
             }
+        finally:
+            elapsed_ms = (time.time() - start_time) * 1000
+            if elapsed_ms >= 1000:
+                print(f"关键字执行耗时: {name} {elapsed_ms:.1f}ms")
+            self._concurrency_limiter.release()
 
     def get_keyword_arguments(self, name):
         """获取关键字的参数信息"""
@@ -594,6 +615,8 @@ def main():
     parser.add_argument('--port', type=int, default=8270, help='服务器端口')
     parser.add_argument('--api-key', help='API密钥，用于认证')
     parser.add_argument('--extensions', help='扩展模块路径，多个路径用逗号分隔')
+    parser.add_argument('--max-concurrency', type=int, default=20,
+                        help='最大并发请求数（默认: 20）')
 
     args = parser.parse_args()
 
@@ -608,7 +631,8 @@ def main():
 
     # 创建并启动服务器（服务器初始化时会自动加载标准关键字）
     server = RemoteKeywordServer(
-        host=args.host, port=args.port, api_key=args.api_key)
+        host=args.host, port=args.port, api_key=args.api_key,
+        max_concurrency=args.max_concurrency)
     server.start()
 
 

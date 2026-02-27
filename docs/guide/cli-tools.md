@@ -324,6 +324,9 @@ pytest-dsl-server --host 0.0.0.0 --port 8270
 # 带API密钥启动
 pytest-dsl-server --host 0.0.0.0 --port 8270 --api-key your_secret_key
 
+# 设置最大并发请求数
+pytest-dsl-server --host 0.0.0.0 --port 8270 --max-concurrency 50
+
 # 加载扩展
 pytest-dsl-server --extensions extensions/
 

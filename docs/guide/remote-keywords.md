@@ -68,6 +68,7 @@ pytest-dsl-server [OPTIONS]
   --host TEXT        服务器监听地址 (默认: localhost)
   --port INTEGER     服务器监听端口 (默认: 8270)
   --api-key TEXT     API密钥，用于客户端认证
+  --max-concurrency INTEGER  最大并发请求数 (默认: 20)
   --extensions TEXT  扩展模块路径，多个路径用逗号分隔
   --help            显示帮助信息
 ```
@@ -130,6 +131,7 @@ remote_servers:
     url: "http://server1:8270/"
     alias: "server1"
     api_key: "your_api_key"
+    timeout: 60
     sync_config:
       sync_global_vars: true
       sync_yaml_vars: true
@@ -402,8 +404,8 @@ A: 检查以下几点：
 4. 确认API密钥是否匹配
 
 ```bash
-# 测试连接
-curl http://remote-server:8270/health
+# 测试端口连通性
+nc -zv remote-server 8270
 ```
 
 #### Q: 变量传递不正确
@@ -435,7 +437,20 @@ A: 调整超时设置或检查网络状况：
 remote_servers:
   slow_server:
     url: "http://slow-server:8270/"
+    alias: "slow_server"
     timeout: 60  # 增加超时时间
+```
+
+说明：
+- `remote_servers.*.timeout` 会用于远程 XML-RPC 调用超时控制。
+- 未配置时默认超时为 60 秒。
+
+#### Q: 返回“服务器繁忙：并发请求已达上限”
+
+A: 服务端达到并发上限，调大并发或降低并发请求量：
+
+```bash
+pytest-dsl-server --host 0.0.0.0 --port 8270 --max-concurrency 50
 ```
 
 ### 调试技巧
@@ -445,7 +460,7 @@ remote_servers:
 pytest test_runner.py -v -s
 
 # 启动远程服务器
-pytest-dsl-server --host 0.0.0.0 --port 8270
+pytest-dsl-server --host 0.0.0.0 --port 8270 --max-concurrency 20
 ```
 
 ## 限制和注意事项
