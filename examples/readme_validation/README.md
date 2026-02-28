@@ -45,11 +45,26 @@ pytest-dsl hello.dsl
 pytest-dsl api_basic.dsl
 ```
 
-### 批量运行所有示例
+### 批量运行所有示例（一键校验）
 
 ```bash
 # 使用验证脚本
 python run_all_tests.py
+```
+
+`run_all_tests.py` 默认会执行三层校验：
+
+1. DSL 语法校验（当前目录全部 `.dsl`，以及 `../test_new_for_loops.dsl`）
+2. 语法基线用例校验（`syntax_cases/pass` 必须可解析，`syntax_cases/fail` 必须解析失败）
+3. README 示例执行校验（自动启动本地 mock HTTP，离线替代 jsonplaceholder）
+4. 远程关键字冒烟校验（自动启动本地 `pytest_dsl.remote.keyword_server`，覆盖 `@remote` 与 `remote_servers` 两种方式）
+
+可选参数：
+
+```bash
+python run_all_tests.py --syntax-only
+python run_all_tests.py --skip-exec
+python run_all_tests.py --skip-remote
 ```
 
 ### 使用pytest运行（包括数据驱动测试）
@@ -106,15 +121,15 @@ pytest test_runner.py -v
 ## 验证结果
 
 最近一次验证结果：
-- ✅ 通过: 13
+- ✅ 通过: 50
 - ❌ 失败: 0
-- 📊 总计: 13
+- 📊 总计: 50
 
 🎉 所有README.md示例都验证通过！
 
 ## 注意事项
 
-1. 这些示例使用了真实的API端点（jsonplaceholder.typicode.com）进行测试
+1. `run_all_tests.py` 会自动使用本地 mock HTTP，不依赖外网 API
 2. 配置文件中的变量引用已经简化，避免了复杂的嵌套引用问题
 3. 变量访问示例使用了实际可用的YAML配置变量
 4. 所有示例都经过实际运行验证，确保功能正常
@@ -124,7 +139,7 @@ pytest test_runner.py -v
 当主README.md中的示例发生变化时，应该：
 
 1. 更新对应的DSL文件
-2. 运行 `python run_all_tests.py` 验证所有示例
+2. 运行 `python run_all_tests.py` 完整验证（语法 + 执行 + 远程）
 3. 确保所有测试都通过后再提交更改
 
 这样可以确保文档中的示例始终是可运行和正确的。
