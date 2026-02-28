@@ -56,7 +56,7 @@ class RemoteKeywordClient:
     def __init__(self, url='http://localhost:8270/', api_key=None, alias=None,
                  sync_config=None, timeout=None):
         self.url = url
-        self.timeout = float(timeout) if timeout is not None else 60.0
+        self.timeout = float(timeout) if timeout is not None else 600.0
         self.server = _create_server_proxy(url, self.timeout)
         self.keyword_cache = {}
         self.param_mappings = {}  # 存储每个关键字的参数映射
