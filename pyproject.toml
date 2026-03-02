@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytest-dsl"
-version = "0.22.0"
+version = "0.22.1"
 description = "A DSL testing framework based on pytest"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -27,13 +27,20 @@ dependencies = [
     "allure-pytest>=2.9.0",
     "ply>=3.11",
     "filelock>=3.17.0",
-    "PyYAML==6.0.2",
+    "PyYAML>=6.0.0,<7.0.0",
     "jsonpath-ng>=1.5.0",
     "requests>=2.28.0",
     "lxml>=4.9.0",
     "jsonschema>=4.17.0",
     "pytz>=2023.3",
     "Jinja2>=3.0.0",
+    "pywin32>=306; platform_system == 'Windows'",
+]
+
+[project.optional-dependencies]
+wmi = [
+    "pywin32>=306; platform_system == 'Windows'",
+    "wmi>=1.5.1; platform_system == 'Windows'",
 ]
 
 [project.entry-points.pytest11]
@@ -47,4 +54,3 @@ pytest-dsl-list = "pytest_dsl.cli:main_list_keywords"
 [project.urls]
 "Homepage" = "https://github.com/felix-1991/pytest-dsl"
 "Bug Tracker" = "https://github.com/felix-1991/pytest-dsl/issues"
-

@@ -8,6 +8,7 @@ import atexit
 import threading
 import time
 import socketserver
+import platform
 
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.remote.hook_manager import hook_manager, HookType
@@ -232,7 +233,20 @@ class RemoteKeywordServer:
             }
 
         start_time = time.time()
+        com_initialized = False
+        pythoncom_module = None
         try:
+            # WMI 基于 COM，线程化服务端中每个工作线程都要独立初始化 COM。
+            if platform.system().lower() == 'windows':
+                try:
+                    import pythoncom
+                    pythoncom.CoInitialize()
+                    pythoncom_module = pythoncom
+                    com_initialized = True
+                except ImportError:
+                    # 非 pywin32 环境，跳过 COM 初始化。
+                    pass
+
             # 确保参数是字典格式
             if not isinstance(args_dict, dict):
                 args_dict = json.loads(args_dict) if isinstance(
@@ -329,6 +343,12 @@ class RemoteKeywordServer:
                 'traceback': traceback.format_exception(exc_type, exc_value, exc_tb)
             }
         finally:
+            if com_initialized and pythoncom_module is not None:
+                try:
+                    pythoncom_module.CoUninitialize()
+                except Exception:
+                    pass
+
             elapsed_ms = (time.time() - start_time) * 1000
             if elapsed_ms >= 1000:
                 print(f"关键字执行耗时: {name} {elapsed_ms:.1f}ms")
