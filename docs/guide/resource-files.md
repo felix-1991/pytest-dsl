@@ -217,7 +217,7 @@ function 登录获取Token (用户名, 密码, 服务器="default") do
     }
 end
 
-function 带认证的API调用 (方法, 路径, 数据=null, token="") do
+function 带认证的API调用 (方法, 路径, 数据="", token="") do
     # 获取token
     使用的Token = ${token}
     if "${使用的Token}" == "" do
@@ -541,7 +541,7 @@ end
 
 API_VERSION = "v2"
 
-function 版本化API调用 (端点, 数据=null) do
+function 版本化API调用 (端点, 数据="") do
     完整路径 = "/api/${API_VERSION}/${端点}"
     
     [HTTP请求], 客户端: "default", 配置: '''
@@ -682,7 +682,7 @@ function 获取环境配置 (配置键) do
         return ${环境配置[配置键]}
     else
         [打印], 内容: "错误: 配置键 '${配置键}' 在环境 '${当前环境}' 中不存在"
-        return null
+        return ""
     end
 end
 ```
@@ -730,7 +730,7 @@ end
 @date: "2024-01-15"
 
 # 每个关键字都应该有清晰的用途说明
-function 创建新用户 (用户数据, 验证邮箱=True) do
+function 创建新用户 (用户数据, 验证邮箱="True") do
     # 用途: 创建新用户账户
     # 参数: 
     #   - 用户数据: 包含用户信息的字典

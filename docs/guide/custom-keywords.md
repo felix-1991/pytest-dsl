@@ -307,7 +307,7 @@ function 创建测试用户 (用户名, 邮箱) do
         return ${响应["json"]["user_id"]}
     else
         [打印], 内容: "用户创建失败"
-        return null
+        return ""
     end
 end
 

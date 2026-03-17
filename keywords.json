@@ -1,12 +1,14 @@
 {
   "summary": {
-    "total_count": 48,
+    "total_count": 131,
     "category_counts": {
       "builtin": 29,
+      "custom": 83,
       "project_custom": 19
     },
     "source_counts": {
       "builtin:pytest-dsl内置": 29,
+      "custom:pytest-dsl": 83,
       "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/pytest_dsl/examples/custom/resources/common_utils.resource": 2,
       "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/examples/readme_validation/auth.resource": 2,
       "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/examples/auto_resources/resources/simple/test_utils.resource": 4,
@@ -16,26 +18,59 @@
       "project_custom:/Users/chenshuanglin/code/python/pytest-dsl/pytest_dsl/examples/custom/resources/advanced_utils.resource": 1
     },
     "category_name_counts": {
-      "系统/调试": 1,
-      "其他": 36,
-      "系统/等待": 1,
-      "数据/变量": 4,
-      "HTTP": 5,
-      "数据/JSON": 1
+      "系统/调试": 3,
+      "系统/通用": 16,
+      "系统/全局变量": 4,
+      "系统/断言": 4,
+      "系统/数据提取": 1,
+      "系统/接口测试": 1,
+      "UI/浏览器": 12,
+      "UI/导航": 6,
+      "UI/交互": 22,
+      "UI/检查": 2,
+      "UI/断言": 21,
+      "UI/截图": 1,
+      "UI/视频录制": 2,
+      "UI/执行JavaScript": 1,
+      "UI/验证码": 1,
+      "SSH/连接": 2,
+      "SSH/命令": 2,
+      "SSH/信息": 1,
+      "SSH/测试": 1,
+      "SFTP/文件": 3,
+      "SFTP/目录": 5,
+      "SFTP/信息": 1,
+      "用户关键字": 19
     },
     "tag_counts": {
-      "调试": 1,
       "输出": 1,
+      "调试": 1,
       "返回": 1,
       "延迟": 1,
-      "等待": 1,
+      "等待": 2,
+      "获取": 4,
       "时间": 1,
-      "获取": 2,
-      "字符串": 1,
-      "随机": 1,
-      "设置": 1,
+      "字符串": 3,
+      "随机": 2,
+      "数字": 1,
+      "操作": 1,
+      "日志": 1,
+      "命令": 3,
+      "执行": 2,
+      "求和": 1,
+      "数学": 6,
+      "长度": 1,
+      "最大值": 1,
+      "最小值": 1,
+      "绝对值": 1,
+      "四舍五入": 1,
+      "转换": 4,
+      "整数": 1,
+      "浮点数": 1,
+      "布尔": 1,
       "全局": 4,
-      "删除": 1,
+      "设置": 2,
+      "删除": 3,
       "清除": 1,
       "验证": 4,
       "条件": 1,
@@ -44,10 +79,70 @@
       "类型": 1,
       "比较": 1,
       "请求": 1,
-      "接口": 1
+      "接口": 1,
+      "配置": 2,
+      "启动": 1,
+      "关闭": 2,
+      "新建": 1,
+      "页面": 7,
+      "切换": 2,
+      "超时": 1,
+      "查询": 2,
+      "查找": 2,
+      "跳转": 1,
+      "打开": 1,
+      "刷新": 1,
+      "历史": 2,
+      "后退": 1,
+      "前进": 1,
+      "标题": 1,
+      "URL": 1,
+      "交互": 3,
+      "点击": 1,
+      "双击": 1,
+      "右键": 1,
+      "输入": 2,
+      "文本": 2,
+      "清空": 1,
+      "复选框": 3,
+      "勾选": 1,
+      "取消": 1,
+      "选择": 2,
+      "单选框": 1,
+      "下拉框": 1,
+      "逐字符": 1,
+      "键盘": 1,
+      "按键": 1,
+      "悬停": 1,
+      "鼠标": 2,
+      "拖拽": 1,
+      "聚焦": 1,
+      "滚动": 1,
+      "视野": 1,
+      "页面树": 2,
+      "导航栏": 2,
+      "菜单": 2,
+      "空检查": 1,
+      "内容输出": 1,
+      "连接": 2,
+      "登录": 1,
+      "SSH": 6,
+      "批量": 1,
+      "断开": 1,
+      "状态": 1,
+      "测试": 1,
+      "SFTP": 9,
+      "上传": 2,
+      "文件": 4,
+      "下载": 2,
+      "目录": 5,
+      "列表": 1,
+      "创建": 1,
+      "信息": 1
     },
     "combined_stats": {
       "builtin:other": 29,
+      "custom:other": 83,
       "project_custom:other": 19
     }
   },
@@ -104,8 +199,8 @@
       "name": "系统等待",
       "description": "等待操作"
     },
-    "其他": {
-      "name": "其他功能",
+    "用户关键字": {
+      "name": "用户关键字",
       "description": "未分类功能"
     }
   },
@@ -113,7 +208,7 @@
     {
       "name": "HTTP请求",
       "category": "builtin",
-      "category_name": "HTTP",
+      "category_name": "系统/接口测试",
       "tags": [
         "请求",
         "接口"
@@ -172,15 +267,19 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "执行HTTP请求\n\n    根据YAML配置发送HTTP请求，支持客户端配置、会话管理、响应捕获和断言。\n\n    Args:\n        context: 测试上下文\n        client: 客户端名称\n        config: YAML配置\n        session: 会话名称\n        save_response: 保存响应的变量名\n        disable_auth: 禁用客户端配置中的授权机制\n        template: 模板名称\n        assert_retry_count: 断言失败时的重试次数\n        assert_retry_interval: 断言重试间隔时间（秒）\n\n    Returns:\n        捕获的变量字典或响应对象"
+      "documentation": "执行HTTP请求\n\n    根据YAML配置发送HTTP请求，支持客户端配置、会话管理、响应捕获和断言。\n\n    Args:\n        context: 测试上下文\n        client: 客户端名称\n        config: YAML配置\n        session: 会话名称\n        save_response: 保存响应的变量名\n        disable_auth: 禁用客户端配置中的授权机制\n        template: 模板名称\n        assert_retry_count: 断言失败时的重试次数\n        assert_retry_interval: 断言重试间隔时间（秒）\n\n    Returns:\n        捕获的变量字典或响应对象",
+      "returns": {
+        "type": "dict",
+        "description": "包含 result、side_effects、metadata 的 HTTP 执行结果"
+      }
     },
     {
       "name": "JSON提取",
       "category": "builtin",
-      "category_name": "数据/JSON",
+      "category_name": "系统/数据提取",
       "tags": [
-        "JSON",
-        "提取"
+        "提取",
+        "JSON"
       ],
       "source_info": {
         "type": "builtin",
@@ -199,23 +298,22 @@
           "name": "JSONPath",
           "mapping": "jsonpath",
           "description": "JSONPath表达式"
-        },
-        {
-          "name": "变量名",
-          "mapping": "variable",
-          "description": "存储提取值的变量名"
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "从JSON数据中提取值并保存到变量\n\n    Args:\n        json_data: JSON数据（字符串或对象）\n        jsonpath: JSONPath表达式\n        variable: 存储提取值的变量名\n        context: 测试上下文\n\n    Returns:\n        提取的值或包含提取值的字典（远程模式）\n\n    Raises:\n        ValueError: 如果JSONPath无效或找不到匹配项"
+      "documentation": "从JSON数据中提取值\n\n    Args:\n        json_data: JSON数据（字符串或对象）\n        jsonpath: JSONPath表达式\n\n    Returns:\n        提取的值\n\n    Raises:\n        ValueError: 如果JSONPath无效或找不到匹配项",
+      "returns": {
+        "type": "any",
+        "description": "JSONPath 提取出的值或值列表"
+      }
     },
     {
       "name": "JSON断言",
       "category": "builtin",
-      "category_name": "HTTP",
+      "category_name": "系统/断言",
       "tags": [
-        "验证",
-        "JSON"
+        "JSON",
+        "验证"
       ],
       "source_info": {
         "type": "builtin",
@@ -254,12 +352,1021 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "执行JSON断言\n\n    Args:\n        json_data: JSON数据（字符串或对象）\n        jsonpath: JSONPath表达式\n        expected_value: 预期的值\n        operator: 比较操作符，默认为\"==\"\n        message: 断言失败时的错误消息\n\n    Returns:\n        断言结果 (True/False)\n\n    Raises:\n        AssertionError: 如果断言失败\n        ValueError: 如果JSONPath无效或找不到匹配项"
+      "documentation": "执行JSON断言\n\n    Args:\n        json_data: JSON数据（字符串或对象）\n        jsonpath: JSONPath表达式\n        expected_value: 预期的值\n        operator: 比较操作符，默认为\"==\"\n        message: 断言失败时的错误消息\n\n    Returns:\n        断言结果 (True/False)\n\n    Raises:\n        AssertionError: 如果断言失败\n        ValueError: 如果JSONPath无效或找不到匹配项",
+      "returns": {
+        "type": "bool",
+        "description": ""
+      }
+    },
+    {
+      "name": "SFTP上传文件",
+      "category": "custom",
+      "category_name": "SFTP/文件",
+      "tags": [
+        "SFTP",
+        "上传",
+        "文件"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.sftp_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称或主机地址"
+        },
+        {
+          "name": "本地文件",
+          "mapping": "local_path",
+          "description": "本地文件路径"
+        },
+        {
+          "name": "远程文件",
+          "mapping": "remote_path",
+          "description": "远程文件路径"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名"
+        },
+        {
+          "name": "密码",
+          "mapping": "password",
+          "description": "登录密码"
+        },
+        {
+          "name": "私钥路径",
+          "mapping": "private_key_path",
+          "description": "私钥文件路径"
+        },
+        {
+          "name": "保持时间戳",
+          "mapping": "preserve_times",
+          "description": "是否保持文件时间戳",
+          "default": true
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "上传文件到远程服务器\n\n    通过SFTP协议将本地文件上传到远程服务器"
+    },
+    {
+      "name": "SFTP上传目录",
+      "category": "custom",
+      "category_name": "SFTP/目录",
+      "tags": [
+        "SFTP",
+        "上传",
+        "目录"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.sftp_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称或主机地址"
+        },
+        {
+          "name": "本地目录",
+          "mapping": "local_dir",
+          "description": "本地目录路径"
+        },
+        {
+          "name": "远程目录",
+          "mapping": "remote_dir",
+          "description": "远程目录路径"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名"
+        },
+        {
+          "name": "密码",
+          "mapping": "password",
+          "description": "登录密码"
+        },
+        {
+          "name": "私钥路径",
+          "mapping": "private_key_path",
+          "description": "私钥文件路径"
+        },
+        {
+          "name": "排除模式",
+          "mapping": "exclude_patterns",
+          "description": "排除的文件模式列表",
+          "default": []
+        },
+        {
+          "name": "保持时间戳",
+          "mapping": "preserve_times",
+          "description": "是否保持文件时间戳",
+          "default": true
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "上传目录到远程服务器\n\n    递归上传本地目录及其所有内容到远程服务器"
+    },
+    {
+      "name": "SFTP下载文件",
+      "category": "custom",
+      "category_name": "SFTP/文件",
+      "tags": [
+        "SFTP",
+        "文件",
+        "下载"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.sftp_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称或主机地址"
+        },
+        {
+          "name": "远程文件",
+          "mapping": "remote_path",
+          "description": "远程文件路径"
+        },
+        {
+          "name": "本地文件",
+          "mapping": "local_path",
+          "description": "本地文件路径"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名"
+        },
+        {
+          "name": "密码",
+          "mapping": "password",
+          "description": "登录密码"
+        },
+        {
+          "name": "私钥路径",
+          "mapping": "private_key_path",
+          "description": "私钥文件路径"
+        },
+        {
+          "name": "保持时间戳",
+          "mapping": "preserve_times",
+          "description": "是否保持文件时间戳",
+          "default": true
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "从远程服务器下载文件\n\n    通过SFTP协议从远程服务器下载文件到本地"
+    },
+    {
+      "name": "SFTP下载目录",
+      "category": "custom",
+      "category_name": "SFTP/目录",
+      "tags": [
+        "SFTP",
+        "目录",
+        "下载"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.sftp_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称或主机地址"
+        },
+        {
+          "name": "远程目录",
+          "mapping": "remote_dir",
+          "description": "远程目录路径"
+        },
+        {
+          "name": "本地目录",
+          "mapping": "local_dir",
+          "description": "本地目录路径"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名"
+        },
+        {
+          "name": "密码",
+          "mapping": "password",
+          "description": "登录密码"
+        },
+        {
+          "name": "私钥路径",
+          "mapping": "private_key_path",
+          "description": "私钥文件路径"
+        },
+        {
+          "name": "保持时间戳",
+          "mapping": "preserve_times",
+          "description": "是否保持文件时间戳",
+          "default": true
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "从远程服务器下载目录\n\n    递归下载远程目录及其所有内容到本地"
+    },
+    {
+      "name": "SFTP列出目录",
+      "category": "custom",
+      "category_name": "SFTP/目录",
+      "tags": [
+        "SFTP",
+        "列表",
+        "目录"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.sftp_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称或主机地址"
+        },
+        {
+          "name": "远程目录",
+          "mapping": "remote_path",
+          "description": "远程目录路径"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名"
+        },
+        {
+          "name": "密码",
+          "mapping": "password",
+          "description": "登录密码"
+        },
+        {
+          "name": "私钥路径",
+          "mapping": "private_key_path",
+          "description": "私钥文件路径"
+        },
+        {
+          "name": "详细信息",
+          "mapping": "detailed",
+          "description": "是否显示详细信息",
+          "default": false
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "列出远程目录内容\n\n    获取远程目录中的文件和子目录列表"
+    },
+    {
+      "name": "SFTP创建目录",
+      "category": "custom",
+      "category_name": "SFTP/目录",
+      "tags": [
+        "SFTP",
+        "创建",
+        "目录"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.sftp_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称或主机地址"
+        },
+        {
+          "name": "远程目录",
+          "mapping": "remote_path",
+          "description": "要创建的远程目录路径"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名"
+        },
+        {
+          "name": "密码",
+          "mapping": "password",
+          "description": "登录密码"
+        },
+        {
+          "name": "私钥路径",
+          "mapping": "private_key_path",
+          "description": "私钥文件路径"
+        },
+        {
+          "name": "递归创建",
+          "mapping": "recursive",
+          "description": "是否递归创建父目录",
+          "default": true
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "创建远程目录\n\n    在远程服务器上创建新目录，可选择递归创建"
+    },
+    {
+      "name": "SFTP删除文件",
+      "category": "custom",
+      "category_name": "SFTP/文件",
+      "tags": [
+        "SFTP",
+        "文件",
+        "删除"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.sftp_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称或主机地址"
+        },
+        {
+          "name": "远程文件",
+          "mapping": "remote_path",
+          "description": "要删除的远程文件路径"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名"
+        },
+        {
+          "name": "密码",
+          "mapping": "password",
+          "description": "登录密码"
+        },
+        {
+          "name": "私钥路径",
+          "mapping": "private_key_path",
+          "description": "私钥文件路径"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "删除远程文件\n\n    删除远程服务器上的指定文件"
+    },
+    {
+      "name": "SFTP删除目录",
+      "category": "custom",
+      "category_name": "SFTP/目录",
+      "tags": [
+        "SFTP",
+        "目录",
+        "删除"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.sftp_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称或主机地址"
+        },
+        {
+          "name": "远程目录",
+          "mapping": "remote_path",
+          "description": "要删除的远程目录路径"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名"
+        },
+        {
+          "name": "密码",
+          "mapping": "password",
+          "description": "登录密码"
+        },
+        {
+          "name": "私钥路径",
+          "mapping": "private_key_path",
+          "description": "私钥文件路径"
+        },
+        {
+          "name": "递归删除",
+          "mapping": "recursive",
+          "description": "是否递归删除目录内容",
+          "default": false
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "删除远程目录\n\n    删除远程服务器上的指定目录，可选择递归删除"
+    },
+    {
+      "name": "SFTP文件信息",
+      "category": "custom",
+      "category_name": "SFTP/信息",
+      "tags": [
+        "SFTP",
+        "文件",
+        "信息"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.sftp_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称或主机地址"
+        },
+        {
+          "name": "远程文件",
+          "mapping": "remote_path",
+          "description": "远程文件或目录路径"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名"
+        },
+        {
+          "name": "密码",
+          "mapping": "password",
+          "description": "登录密码"
+        },
+        {
+          "name": "私钥路径",
+          "mapping": "private_key_path",
+          "description": "私钥文件路径"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "获取远程文件信息\n\n    获取远程文件或目录的详细信息"
+    },
+    {
+      "name": "SSH执行命令",
+      "category": "custom",
+      "category_name": "SSH/命令",
+      "tags": [
+        "命令",
+        "执行",
+        "SSH"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.ssh_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称（从YAML配置加载）或主机地址"
+        },
+        {
+          "name": "命令",
+          "mapping": "command",
+          "description": "要执行的命令"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口（可选，优先使用配置中的值）"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名（可选，优先使用配置中的值）"
+        },
+        {
+          "name": "密码",
+          "mapping": "password",
+          "description": "登录密码（可选，优先使用配置中的值）"
+        },
+        {
+          "name": "私钥路径",
+          "mapping": "private_key_path",
+          "description": "私钥文件路径（可选，优先使用配置中的值）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "命令超时时间（秒）",
+          "default": 30
+        },
+        {
+          "name": "获取伪终端",
+          "mapping": "get_pty",
+          "description": "是否请求伪终端",
+          "default": false
+        },
+        {
+          "name": "合并错误输出",
+          "mapping": "combine_stderr",
+          "description": "是否合并stderr到stdout",
+          "default": true
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "执行SSH命令\n\n    在远程服务器上执行指定命令并返回结果"
+    },
+    {
+      "name": "SSH批量执行命令",
+      "category": "custom",
+      "category_name": "SSH/命令",
+      "tags": [
+        "命令",
+        "批量",
+        "SSH"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.ssh_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称或主机地址"
+        },
+        {
+          "name": "命令列表",
+          "mapping": "commands",
+          "description": "要执行的命令列表"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名"
+        },
+        {
+          "name": "密码",
+          "mapping": "password",
+          "description": "登录密码"
+        },
+        {
+          "name": "私钥路径",
+          "mapping": "private_key_path",
+          "description": "私钥文件路径"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "每个命令的超时时间（秒）",
+          "default": 30
+        },
+        {
+          "name": "遇错停止",
+          "mapping": "stop_on_error",
+          "description": "遇到错误是否停止执行",
+          "default": true
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "批量执行SSH命令\n\n    依次执行多个命令，可选择遇到错误时是否停止"
+    },
+    {
+      "name": "SSH断开连接",
+      "category": "custom",
+      "category_name": "SSH/连接",
+      "tags": [
+        "断开",
+        "关闭",
+        "SSH"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.ssh_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称或主机地址"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名"
+        },
+        {
+          "name": "强制关闭",
+          "mapping": "force_close",
+          "description": "是否强制关闭连接",
+          "default": false
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "断开SSH连接\n\n    关闭指定的SSH连接，可选择是否强制关闭"
+    },
+    {
+      "name": "SSH测试连接",
+      "category": "custom",
+      "category_name": "SSH/测试",
+      "tags": [
+        "连接",
+        "测试",
+        "SSH"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.ssh_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称或主机地址"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名"
+        },
+        {
+          "name": "密码",
+          "mapping": "password",
+          "description": "登录密码"
+        },
+        {
+          "name": "私钥路径",
+          "mapping": "private_key_path",
+          "description": "私钥文件路径"
+        },
+        {
+          "name": "连接超时",
+          "mapping": "connect_timeout",
+          "description": "连接超时时间（秒）",
+          "default": 10
+        },
+        {
+          "name": "测试命令",
+          "mapping": "test_command",
+          "description": "测试命令",
+          "default": "echo \"connection test\""
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "测试SSH连接\n\n    测试SSH连接是否正常，包括连接和简单命令执行"
+    },
+    {
+      "name": "SSH连接",
+      "category": "custom",
+      "category_name": "SSH/连接",
+      "tags": [
+        "连接",
+        "登录",
+        "SSH"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.ssh_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称（从YAML配置加载）或直接主机地址"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口（可选，优先使用配置中的值）"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名（可选，优先使用配置中的值）"
+        },
+        {
+          "name": "密码",
+          "mapping": "password",
+          "description": "登录密码（可选，优先使用配置中的值）"
+        },
+        {
+          "name": "私钥路径",
+          "mapping": "private_key_path",
+          "description": "私钥文件路径（可选，优先使用配置中的值）"
+        },
+        {
+          "name": "私钥密码",
+          "mapping": "private_key_password",
+          "description": "私钥密码（可选，优先使用配置中的值）"
+        },
+        {
+          "name": "连接超时",
+          "mapping": "connect_timeout",
+          "description": "连接超时时间（秒）（可选，优先使用配置中的值）"
+        },
+        {
+          "name": "使用连接池",
+          "mapping": "use_pool",
+          "description": "是否使用连接池",
+          "default": true
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "建立SSH连接\n\n    支持通过服务器配置名称或直接指定连接参数来建立SSH连接"
+    },
+    {
+      "name": "SSH连接状态",
+      "category": "custom",
+      "category_name": "SSH/信息",
+      "tags": [
+        "查询",
+        "状态",
+        "SSH"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ssh.keywords.ssh_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "服务器",
+          "mapping": "server",
+          "description": "服务器配置名称或主机地址"
+        },
+        {
+          "name": "端口",
+          "mapping": "port",
+          "description": "SSH端口"
+        },
+        {
+          "name": "用户名",
+          "mapping": "username",
+          "description": "登录用户名"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "查询SSH连接状态\n\n    查询指定连接的状态信息，或查询所有连接的状态"
+    },
+    {
+      "name": "上传文件",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords_extended",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "文件输入框元素定位器"
+        },
+        {
+          "name": "文件路径",
+          "mapping": "file_path",
+          "description": "要上传的文件路径"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "上传文件\n\n    Args:\n        selector: 文件输入框定位器\n        file_path: 文件路径\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "停止录制",
+      "category": "custom",
+      "category_name": "UI/视频录制",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.capture_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "保存录制路径的变量名"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "停止录制视频\n\n    Args:\n        variable: 变量名\n\n    Returns:\n        dict: 包含录制路径的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含录制路径的字典"
+      }
+    },
+    {
+      "name": "关闭浏览器",
+      "category": "custom",
+      "category_name": "UI/浏览器",
+      "tags": [
+        "关闭"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.browser_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "浏览器ID",
+          "mapping": "browser_id",
+          "description": "要关闭的浏览器ID，如果不指定则关闭当前浏览器"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "关闭浏览器\n\n    Args:\n        browser_id: 浏览器ID\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "切换到最新页面",
+      "category": "custom",
+      "category_name": "UI/浏览器",
+      "tags": [
+        "切换",
+        "页面"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.browser_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "保存最新页面ID的变量名"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "切换到最新创建的页面\n\n    Args:\n        variable: 变量名\n\n    Returns:\n        dict: 包含最新页面ID的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含最新页面ID的字典"
+      }
+    },
+    {
+      "name": "切换页面",
+      "category": "custom",
+      "category_name": "UI/浏览器",
+      "tags": [
+        "切换",
+        "页面"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.browser_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "页面ID",
+          "mapping": "page_id",
+          "description": "要切换到的页面ID"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "切换页面\n\n    Args:\n        page_id: 页面ID\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
     },
     {
       "name": "创建资源",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -294,10 +1401,10 @@
     {
       "name": "删除全局变量",
       "category": "builtin",
-      "category_name": "数据/变量",
+      "category_name": "系统/全局变量",
       "tags": [
-        "删除",
-        "全局"
+        "全局",
+        "删除"
       ],
       "source_info": {
         "type": "builtin",
@@ -314,13 +1421,331 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "删除全局变量"
+      "documentation": "删除全局变量",
+      "returns": {
+        "type": "dict",
+        "description": "包含 result、captures、session_state、metadata 的结果字典"
+      }
+    },
+    {
+      "name": "刷新页面",
+      "category": "custom",
+      "category_name": "UI/导航",
+      "tags": [
+        "刷新"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.navigation_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "等待条件",
+          "mapping": "wait_until",
+          "description": "等待条件：load, domcontentloaded, networkidle",
+          "default": "load"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "刷新页面\n\n    Args:\n        wait_until: 等待条件\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "前进",
+      "category": "custom",
+      "category_name": "UI/导航",
+      "tags": [
+        "历史",
+        "前进"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.navigation_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "等待条件",
+          "mapping": "wait_until",
+          "description": "等待条件：load, domcontentloaded, networkidle",
+          "default": "load"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "浏览器前进\n\n    Args:\n        wait_until: 等待条件\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "勾选复选框",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "复选框",
+        "勾选"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "复选框元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "勾选复选框\n\n    Args:\n        selector: 复选框定位器\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "双击元素",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "交互",
+        "双击"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "双击元素\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "取消勾选复选框",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "取消",
+        "复选框"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "复选框元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "取消勾选复选框\n\n    Args:\n        selector: 复选框定位器\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "右键点击元素",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "交互",
+        "右键"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "右键点击元素\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "后退",
+      "category": "custom",
+      "category_name": "UI/导航",
+      "tags": [
+        "历史",
+        "后退"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.navigation_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "等待条件",
+          "mapping": "wait_until",
+          "description": "等待条件：load, domcontentloaded, networkidle",
+          "default": "load"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "浏览器后退\n\n    Args:\n        wait_until: 等待条件\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "启动浏览器",
+      "category": "custom",
+      "category_name": "UI/浏览器",
+      "tags": [
+        "配置",
+        "启动"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.browser_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "浏览器",
+          "mapping": "browser_type",
+          "description": "浏览器类型：chromium, firefox, webkit",
+          "default": "chromium"
+        },
+        {
+          "name": "无头模式",
+          "mapping": "headless",
+          "description": "是否以无头模式运行",
+          "default": false
+        },
+        {
+          "name": "慢动作",
+          "mapping": "slow_mo",
+          "description": "操作间隔时间（毫秒），用于调试",
+          "default": 0
+        },
+        {
+          "name": "配置",
+          "mapping": "config",
+          "description": "浏览器启动配置（YAML格式）",
+          "default": "{}"
+        },
+        {
+          "name": "视口宽度",
+          "mapping": "width",
+          "description": "浏览器视口宽度"
+        },
+        {
+          "name": "视口高度",
+          "mapping": "height",
+          "description": "浏览器视口高度"
+        },
+        {
+          "name": "忽略证书错误",
+          "mapping": "ignore_https_errors",
+          "description": "是否忽略HTTPS证书错误",
+          "default": true
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "启动浏览器\n\n    Args:\n        browser_type: 浏览器类型\n        headless: 是否无头模式\n        slow_mo: 慢动作间隔\n        config: 配置字符串\n        width: 视口宽度\n        height: 视口高度\n        ignore_https_errors: 是否忽略HTTPS证书错误\n\n    Returns:\n        dict: 包含浏览器ID和相关信息的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含浏览器ID和相关信息的字典"
+      }
     },
     {
       "name": "四舍五入",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/通用",
+      "tags": [
+        "四舍五入",
+        "数学"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -342,13 +1767,51 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "对数字进行四舍五入\n\n    Args:\n        number: 要四舍五入的数字\n        ndigits: 保留的小数位数，默认为0（整数）\n\n    Returns:\n        四舍五入后的数字"
+      "documentation": "对数字进行四舍五入\n\n    Args:\n        number: 要四舍五入的数字\n        ndigits: 保留的小数位数，默认为0（整数）\n\n    Returns:\n        四舍五入后的数字",
+      "returns": {
+        "type": "any",
+        "description": "四舍五入后的数值"
+      }
+    },
+    {
+      "name": "多条件检查",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "检查条件列表",
+          "mapping": "conditions",
+          "description": "包含多个检查条件的列表"
+        },
+        {
+          "name": "逻辑关系",
+          "mapping": "logic",
+          "description": "AND或OR逻辑关系"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "执行多个条件检查并根据逻辑关系返回结果\n\n    Args:\n        conditions: 检查条件列表，每个条件包含type和参数\n        logic: 逻辑关系，'AND'或'OR'\n\n    Returns:\n        dict: 包含boolean结果的操作结果\n\n    示例:\n        conditions = [\n            {\"type\": \"element_visible\", \"selector\": \"#login-button\"},\n            {\"type\": \"text_contains\", \"selector\": \"#message\", \n             \"expected_text\": \"欢迎\"}\n        ]",
+      "returns": {
+        "type": "dict",
+        "description": "包含boolean结果的操作结果"
+      }
     },
     {
       "name": "字符串操作",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/通用",
+      "tags": [
+        "字符串",
+        "操作"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -382,12 +1845,16 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "字符串操作\n\n    Args:\n        operation: 操作类型，默认为strip（去空格）\n        string: 要操作的字符串\n        param1: 操作参数1，默认为空字符串\n        param2: 操作参数2，默认为空字符串\n\n    Returns:\n        str: 操作结果"
+      "documentation": "字符串操作\n\n    Args:\n        operation: 操作类型，默认为strip（去空格）\n        string: 要操作的字符串\n        param1: 操作参数1，默认为空字符串\n        param2: 操作参数2，默认为空字符串\n\n    Returns:\n        str: 操作结果",
+      "returns": {
+        "type": "any",
+        "description": "通常返回字符串，split 场景可能返回列表"
+      }
     },
     {
       "name": "安全等待",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -416,7 +1883,7 @@
     {
       "name": "带认证的API调用",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -454,12 +1921,120 @@
       "documentation": "自定义关键字执行器"
     },
     {
+      "name": "开始录制",
+      "category": "custom",
+      "category_name": "UI/视频录制",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.capture_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "文件名",
+          "mapping": "filename",
+          "description": "录制文件名，如果不指定则自动生成"
+        },
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "保存录制路径的变量名"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "开始录制视频\n\n    Args:\n        filename: 文件名\n        variable: 变量名\n\n    Returns:\n        dict: 包含录制路径的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含录制路径的字典"
+      }
+    },
+    {
+      "name": "悬停元素",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "悬停",
+        "鼠标"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "悬停在元素上\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "截图",
+      "category": "custom",
+      "category_name": "UI/截图",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.capture_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "文件名",
+          "mapping": "filename",
+          "description": "截图文件名，如果不指定则自动生成"
+        },
+        {
+          "name": "元素定位器",
+          "mapping": "element_selector",
+          "description": "如果指定则只截取该元素"
+        },
+        {
+          "name": "全页面",
+          "mapping": "full_page",
+          "description": "是否截取整个页面（包括滚动区域）",
+          "default": false
+        },
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "保存截图路径的变量名"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "截图\n\n    Args:\n        filename: 文件名\n        element_selector: 元素定位器\n        full_page: 是否全页面截图\n        variable: 变量名\n\n    Returns:\n        dict: 包含截图路径的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含截图路径的字典"
+      }
+    },
+    {
       "name": "打印",
       "category": "builtin",
       "category_name": "系统/调试",
       "tags": [
-        "调试",
-        "输出"
+        "输出",
+        "调试"
       ],
       "source_info": {
         "type": "builtin",
@@ -475,13 +2050,98 @@
           "description": "要打印的文本内容"
         }
       ],
-      "source": "pytest-dsl内置"
+      "source": "pytest-dsl内置",
+      "returns": {
+        "type": "none",
+        "description": ""
+      }
+    },
+    {
+      "name": "打开页面",
+      "category": "custom",
+      "category_name": "UI/导航",
+      "tags": [
+        "跳转",
+        "打开"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.navigation_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "地址",
+          "mapping": "url",
+          "description": "要打开的页面URL"
+        },
+        {
+          "name": "等待条件",
+          "mapping": "wait_until",
+          "description": "等待条件：load, domcontentloaded, networkidle",
+          "default": "load"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        },
+        {
+          "name": "忽略证书错误",
+          "mapping": "ignore_https_errors",
+          "description": "是否忽略HTTPS证书错误",
+          "default": true
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "打开页面\n\n    Args:\n        url: 页面URL\n        wait_until: 等待条件\n        timeout: 超时时间\n        ignore_https_errors: 是否忽略HTTPS证书错误\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "执行JavaScript",
+      "category": "custom",
+      "category_name": "UI/执行JavaScript",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.capture_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "脚本",
+          "mapping": "script",
+          "description": "JavaScript代码"
+        },
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "保存执行结果的变量名"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "执行JavaScript代码\n\n    Args:\n        script: JavaScript代码\n        variable: 变量名\n\n    Returns:\n        dict: 包含执行结果的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含执行结果的字典"
+      }
     },
     {
       "name": "执行命令",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/通用",
+      "tags": [
+        "命令",
+        "执行"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -509,12 +2169,56 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "执行系统命令\n\n    Args:\n        command: 要执行的系统命令\n        timeout: 命令执行超时时间（秒）\n        capture_output: 是否捕获命令输出\n\n    Returns:\n        dict: 包含返回码、标准输出和标准错误的字典"
+      "documentation": "执行系统命令\n\n    Args:\n        command: 要执行的系统命令\n        timeout: 命令执行超时时间（秒）\n        capture_output: 是否捕获命令输出\n\n    Returns:\n        dict: 包含返回码、标准输出和标准错误的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含 returncode、stdout、stderr 的结果字典"
+      }
+    },
+    {
+      "name": "拖拽元素",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "拖拽",
+        "鼠标"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "源定位器",
+          "mapping": "source_selector",
+          "description": "要拖拽的源元素定位器"
+        },
+        {
+          "name": "目标定位器",
+          "mapping": "target_selector",
+          "description": "拖拽目标元素定位器"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "拖拽元素到另一个元素\n\n    Args:\n        source_selector: 源元素定位器\n        target_selector: 目标元素定位器\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
     },
     {
       "name": "拼接字符串",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -541,12 +2245,52 @@
       "documentation": "自定义关键字执行器"
     },
     {
+      "name": "按键操作",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "键盘",
+        "按键"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "按键",
+          "mapping": "key",
+          "description": "按键名称或组合键（如Enter、Ctrl+A等）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "按键操作\n\n    Args:\n        selector: 元素定位器\n        key: 按键名称或组合键\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
       "name": "数据比较",
       "category": "builtin",
-      "category_name": "HTTP",
+      "category_name": "系统/断言",
       "tags": [
-        "验证",
-        "比较"
+        "比较",
+        "验证"
       ],
       "source_info": {
         "type": "builtin",
@@ -580,12 +2324,16 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "比较两个值\n\n    Args:\n        actual: 实际值\n        expected: 预期值\n        operator: 比较操作符，默认为\"==\"\n        message: 断言失败时的错误消息\n\n    Returns:\n        比较结果 (True/False)\n\n    Raises:\n        AssertionError: 如果比较失败"
+      "documentation": "比较两个值\n\n    Args:\n        actual: 实际值\n        expected: 预期值\n        operator: 比较操作符，默认为\"==\"\n        message: 断言失败时的错误消息\n\n    Returns:\n        比较结果 (True/False)\n\n    Raises:\n        AssertionError: 如果比较失败",
+      "returns": {
+        "type": "bool",
+        "description": ""
+      }
     },
     {
       "name": "断言",
       "category": "builtin",
-      "category_name": "HTTP",
+      "category_name": "系统/断言",
       "tags": [
         "验证",
         "条件"
@@ -611,13 +2359,533 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "执行表达式断言\n\n    Args:\n        condition: 断言条件表达式\n        message: 断言失败时的错误消息\n\n    Returns:\n        断言结果 (True/False)\n\n    Raises:\n        AssertionError: 如果断言失败"
+      "documentation": "执行表达式断言\n\n    Args:\n        condition: 断言条件表达式\n        message: 断言失败时的错误消息\n\n    Returns:\n        断言结果 (True/False)\n\n    Raises:\n        AssertionError: 如果断言失败",
+      "returns": {
+        "type": "bool",
+        "description": ""
+      }
+    },
+    {
+      "name": "断言元素可见",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 5
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "断言元素可见\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间（秒）\n        message: 自定义错误消息\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "断言元素启用",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "断言元素启用\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间（秒）\n        message: 自定义错误消息\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "断言元素存在",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 5
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "断言元素存在\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间（秒）\n        message: 自定义错误消息\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "断言元素数量",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "期望数量",
+          "mapping": "expected_count",
+          "description": "期望的元素数量"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "断言元素数量\n\n    Args:\n        selector: 元素定位器\n        expected_count: 期望的元素数量\n        timeout: 超时时间（秒）\n        message: 自定义错误消息\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "断言元素禁用",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "断言元素禁用\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间（秒）\n        message: 自定义错误消息\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "断言元素隐藏",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 5
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "断言元素隐藏\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间（秒）\n        message: 自定义错误消息\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "断言复选框状态",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "复选框定位器"
+        },
+        {
+          "name": "期望状态",
+          "mapping": "expected_checked",
+          "description": "期望的选中状态（True/False）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 5
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "断言复选框状态\n\n    Args:\n        selector: 复选框定位器\n        expected_checked: 期望的选中状态\n        timeout: 超时时间（秒）\n        message: 自定义错误消息\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "断言属性值",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "属性名",
+          "mapping": "attribute_name",
+          "description": "属性名称"
+        },
+        {
+          "name": "期望值",
+          "mapping": "expected_value",
+          "description": "期望的属性值"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 5
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "断言元素属性值\n\n    Args:\n        selector: 元素定位器\n        attribute_name: 属性名称\n        expected_value: 期望的属性值\n        timeout: 超时时间（秒）\n        message: 自定义错误消息\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "断言文本内容",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "期望文本",
+          "mapping": "expected_text",
+          "description": "期望的文本内容"
+        },
+        {
+          "name": "匹配方式",
+          "mapping": "match_type",
+          "description": "完全匹配或包含匹配，匹配方式 - exact(完全匹配) 或 contains(包含匹配)",
+          "default": "exact"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 5
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "断言元素文本内容\n\n    Args:\n        selector: 元素定位器\n        expected_text: 期望的文本内容\n        match_type: 匹配方式 - exact(完全匹配) 或 contains(包含匹配)\n        timeout: 超时时间（秒）\n        message: 自定义错误消息\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "断言输入值",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "输入元素定位器"
+        },
+        {
+          "name": "期望值",
+          "mapping": "expected_value",
+          "description": "期望的输入值"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 5
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "断言输入元素的值\n\n    Args:\n        selector: 输入元素定位器\n        expected_value: 期望的输入值\n        timeout: 超时时间（秒）\n        message: 自定义错误消息\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "断言页面URL",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "期望URL",
+          "mapping": "expected_url",
+          "description": "期望的页面URL"
+        },
+        {
+          "name": "匹配方式",
+          "mapping": "match_type",
+          "description": "完全匹配或包含匹配"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "断言页面URL\n\n    Args:\n        expected_url: 期望的页面URL\n        match_type: 匹配方式 - exact(完全匹配) 或 contains(包含匹配)\n        timeout: 超时时间（秒）\n        message: 自定义错误消息\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "断言页面标题",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "期望标题",
+          "mapping": "expected_title",
+          "description": "期望的页面标题"
+        },
+        {
+          "name": "匹配方式",
+          "mapping": "match_type",
+          "description": "完全匹配或包含匹配"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        },
+        {
+          "name": "消息",
+          "mapping": "message",
+          "description": "断言失败时的错误消息"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "断言页面标题\n\n    Args:\n        expected_title: 期望的页面标题\n        match_type: 匹配方式 - exact(完全匹配) 或 contains(包含匹配)\n        timeout: 超时时间（秒）\n        message: 自定义错误消息\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "新建页面",
+      "category": "custom",
+      "category_name": "UI/浏览器",
+      "tags": [
+        "新建",
+        "页面"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.browser_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "上下文ID",
+          "mapping": "context_id",
+          "description": "浏览器上下文ID，如果不指定则使用当前上下文"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "新建页面\n\n    Args:\n        context_id: 上下文ID\n\n    Returns:\n        dict: 包含新页面ID的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含新页面ID的字典"
+      }
     },
     {
       "name": "日志",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/调试",
+      "tags": [
+        "日志"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -639,12 +2907,96 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "记录日志\n\n    Args:\n        level: 日志级别\n        message: 日志消息内容"
+      "documentation": "记录日志\n\n    Args:\n        level: 日志级别\n        message: 日志消息内容",
+      "returns": {
+        "type": "bool",
+        "description": ""
+      }
+    },
+    {
+      "name": "根据URL查找页面",
+      "category": "custom",
+      "category_name": "UI/浏览器",
+      "tags": [
+        "查找",
+        "页面"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.browser_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "URL",
+          "mapping": "url",
+          "description": "页面URL（支持部分匹配）"
+        },
+        {
+          "name": "精确匹配",
+          "mapping": "exact_match",
+          "description": "是否精确匹配URL",
+          "default": false
+        },
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "保存找到的页面ID的变量名"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "根据页面URL查找页面ID\n\n    Args:\n        url: 要查找的页面URL\n        exact_match: 是否精确匹配\n        variable: 变量名\n\n    Returns:\n        dict: 包含找到的页面ID的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含找到的页面ID的字典"
+      }
+    },
+    {
+      "name": "根据标题查找页面",
+      "category": "custom",
+      "category_name": "UI/浏览器",
+      "tags": [
+        "查找",
+        "页面"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.browser_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "标题",
+          "mapping": "title",
+          "description": "页面标题（支持部分匹配）"
+        },
+        {
+          "name": "精确匹配",
+          "mapping": "exact_match",
+          "description": "是否精确匹配标题",
+          "default": false
+        },
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "保存找到的页面ID的变量名"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "根据页面标题查找页面ID\n\n    Args:\n        title: 要查找的页面标题\n        exact_match: 是否精确匹配\n        variable: 变量名\n\n    Returns:\n        dict: 包含找到的页面ID的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含找到的页面ID的字典"
+      }
     },
     {
       "name": "格式化消息",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -671,10 +3023,314 @@
       "documentation": "自定义关键字执行器"
     },
     {
+      "name": "检查元素属性值",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "属性名",
+          "mapping": "attribute_name",
+          "description": "属性名称"
+        },
+        {
+          "name": "期望值",
+          "mapping": "expected_value",
+          "description": "期望的属性值"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "检查元素属性值是否匹配\n\n    Args:\n        selector: 元素定位器\n        attribute_name: 属性名称\n        expected_value: 期望的属性值\n        timeout: 超时时间（秒）\n\n    Returns:\n        dict: 包含boolean结果的操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "包含boolean结果的操作结果"
+      }
+    },
+    {
+      "name": "检查元素是否可见",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "检查元素是否可见\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间（秒）\n\n    Returns:\n        dict: 包含boolean结果的操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "包含boolean结果的操作结果"
+      }
+    },
+    {
+      "name": "检查元素是否启用",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "检查元素是否启用\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间（秒）\n\n    Returns:\n        dict: 包含boolean结果的操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "包含boolean结果的操作结果"
+      }
+    },
+    {
+      "name": "检查元素是否存在",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "检查元素是否存在\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间（秒）\n\n    Returns:\n        dict: 包含boolean结果的操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "包含boolean结果的操作结果"
+      }
+    },
+    {
+      "name": "检查元素是否选中",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords_extended",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "检查元素是否选中（复选框或单选框）\n\n    Args:\n        selector: 元素定位器\n\n    Returns:\n        dict: 包含布尔值结果的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含布尔值结果的字典"
+      }
+    },
+    {
+      "name": "检查导航栏是否为空",
+      "category": "custom",
+      "category_name": "UI/检查",
+      "tags": [
+        "页面树",
+        "导航栏",
+        "菜单",
+        "空检查"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "容器定位器（CSS选择器、XPath等）"
+        },
+        {
+          "name": "内容类型",
+          "mapping": "content_type",
+          "description": "内容类型：auto-自动检测，menu-菜单，page_tree-页面树",
+          "default": "auto"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "检查导航栏是否为空（支持菜单和页面树）\n\n    Args:\n        selector: 容器定位器\n        content_type: 内容类型（auto/menu/page_tree）\n        timeout: 超时时间\n\n    Returns:\n        bool: 如果导航栏为空返回True，否则返回False",
+      "returns": {
+        "type": "bool",
+        "description": "如果导航栏为空返回True，否则返回False"
+      }
+    },
+    {
+      "name": "检查文本是否包含",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "期望文本",
+          "mapping": "expected_text",
+          "description": "期望包含的文本"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "检查元素文本是否包含指定内容\n\n    Args:\n        selector: 元素定位器\n        expected_text: 期望包含的文本\n        timeout: 超时时间（秒）\n\n    Returns:\n        dict: 包含boolean结果的操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "包含boolean结果的操作结果"
+      }
+    },
+    {
+      "name": "检查页面URL是否包含",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "期望URL片段",
+          "mapping": "url_fragment",
+          "description": "期望包含的URL片段"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "检查页面URL是否包含指定片段\n\n    Args:\n        url_fragment: 期望包含的URL片段\n        timeout: 超时时间（秒）\n\n    Returns:\n        dict: 包含boolean结果的操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "包含boolean结果的操作结果"
+      }
+    },
+    {
+      "name": "检查页面标题是否包含",
+      "category": "custom",
+      "category_name": "UI/断言",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.assertion_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "期望标题片段",
+          "mapping": "title_fragment",
+          "description": "期望包含的标题片段"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "检查页面标题是否包含指定片段\n\n    Args:\n        title_fragment: 期望包含的标题片段\n        timeout: 超时时间（秒）\n\n    Returns:\n        dict: 包含boolean结果的操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "包含boolean结果的操作结果"
+      }
+    },
+    {
       "name": "求和",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/通用",
+      "tags": [
+        "求和",
+        "数学"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -696,12 +3352,16 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "计算数字列表的总和\n\n    Args:\n        data: 要求和的数字列表\n        start: 求和的起始值，默认为0\n\n    Returns:\n        数字总和"
+      "documentation": "计算数字列表的总和\n\n    Args:\n        data: 要求和的数字列表\n        start: 求和的起始值，默认为0\n\n    Returns:\n        数字总和",
+      "returns": {
+        "type": "any",
+        "description": "求和结果，类型取决于输入数据"
+      }
     },
     {
       "name": "清理字符串",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -724,7 +3384,7 @@
     {
       "name": "清理测试环境",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -746,12 +3406,47 @@
       "documentation": "自定义关键字执行器"
     },
     {
+      "name": "清空文本",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "清空",
+        "文本"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "清空文本\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
       "name": "清除所有全局变量",
       "category": "builtin",
-      "category_name": "数据/变量",
+      "category_name": "系统/全局变量",
       "tags": [
-        "清除",
-        "全局"
+        "全局",
+        "清除"
       ],
       "source_info": {
         "type": "builtin",
@@ -762,12 +3457,120 @@
       },
       "parameters": [],
       "source": "pytest-dsl内置",
-      "documentation": "清除所有全局变量"
+      "documentation": "清除所有全局变量",
+      "returns": {
+        "type": "dict",
+        "description": "包含 result、captures、session_state、metadata 的结果字典"
+      }
+    },
+    {
+      "name": "滚动元素到视野",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "滚动",
+        "视野"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        },
+        {
+          "name": "滚动容器",
+          "mapping": "scroll_container",
+          "description": "可选，指定滚动容器的定位器"
+        },
+        {
+          "name": "像素数",
+          "mapping": "scroll_step",
+          "description": "可选，每次滚动的像素数",
+          "default": 10
+        },
+        {
+          "name": "最大滚动次数",
+          "mapping": "max_attempts",
+          "description": "可选，最大滚动次数",
+          "default": 20
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "滚动元素到视野中\n\n    Args:\n        selector (str): 元素定位器（必填）\n        timeout (int): 超时时间（秒）\n        scroll_container (str): 可选，滚动容器的定位器\n        scroll_step (int): 每次滚动的像素数\n        max_attempts (int): 最大滚动次数\n\n    Returns:\n        bool: 是否滚动成功\n\n    Raises:\n        ValueError: 当必要参数缺失时\n        Exception: 当滚动操作失败时",
+      "returns": {
+        "type": "bool",
+        "description": "是否滚动成功"
+      }
+    },
+    {
+      "name": "点击元素",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "交互",
+        "点击"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        },
+        {
+          "name": "强制点击",
+          "mapping": "force",
+          "description": "是否强制点击（忽略元素状态检查）",
+          "default": false
+        },
+        {
+          "name": "索引",
+          "mapping": "index",
+          "description": "元素索引（当有多个匹配元素时）"
+        },
+        {
+          "name": "可见性",
+          "mapping": "visible_only",
+          "description": "是否只点击可见元素",
+          "default": false
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "点击元素\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间\n        force: 是否强制点击\n        index: 元素索引（当有多个匹配元素时）\n        visible_only: 是否只点击可见元素\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
     },
     {
       "name": "生成报告消息",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -796,7 +3599,7 @@
     {
       "name": "生成测试数据",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -825,7 +3628,7 @@
     {
       "name": "生成随机字符串",
       "category": "builtin",
-      "category_name": "其他",
+      "category_name": "系统/通用",
       "tags": [
         "字符串",
         "随机"
@@ -852,13 +3655,20 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "生成指定长度和类型的随机字符串\n\n    Args:\n        length: 字符串长度\n        type: 字符类型\n\n    Returns:\n        str: 生成的随机字符串"
+      "documentation": "生成指定长度和类型的随机字符串\n\n    Args:\n        length: 字符串长度\n        type: 字符类型\n\n    Returns:\n        str: 生成的随机字符串",
+      "returns": {
+        "type": "str",
+        "description": ""
+      }
     },
     {
       "name": "生成随机数",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/通用",
+      "tags": [
+        "数字",
+        "随机"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -887,12 +3697,16 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "生成指定范围内的随机数\n\n    Args:\n        min: 随机数的最小值\n        max: 随机数的最大值\n        decimals: 小数位数，0表示整数\n\n    Returns:\n        int/float: 生成的随机数"
+      "documentation": "生成指定范围内的随机数\n\n    Args:\n        min: 随机数的最小值\n        max: 随机数的最大值\n        decimals: 小数位数，0表示整数\n\n    Returns:\n        int/float: 生成的随机数",
+      "returns": {
+        "type": "any",
+        "description": "根据小数位数返回 int 或 float"
+      }
     },
     {
       "name": "用户登出",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -916,7 +3730,7 @@
     {
       "name": "用户登录",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -950,7 +3764,7 @@
     {
       "name": "登录获取Token",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -984,7 +3798,7 @@
     {
       "name": "等待",
       "category": "builtin",
-      "category_name": "系统/等待",
+      "category_name": "系统/通用",
       "tags": [
         "延迟",
         "等待"
@@ -1005,12 +3819,128 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "等待指定的时间\n\n    Args:\n        seconds: 等待的秒数，默认为1秒"
+      "documentation": "等待指定的时间\n\n    Args:\n        seconds: 等待的秒数，默认为1秒",
+      "returns": {
+        "type": "none",
+        "description": ""
+      }
+    },
+    {
+      "name": "等待元素出现",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords_extended",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "状态",
+          "mapping": "state",
+          "description": "等待状态：visible, hidden, attached, detached"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        },
+        {
+          "name": "失败时抛异常",
+          "mapping": "raise_on_timeout",
+          "description": "等待超时时是否抛出异常，默认为false"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "等待元素出现或达到指定状态\n\n    Args:\n        selector: 元素定位器\n        state: 等待状态\n        timeout: 超时时间\n        raise_on_timeout: 超时时是否抛出异常\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "等待文本出现",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords_extended",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "文本",
+          "mapping": "text",
+          "description": "要等待的文本内容"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        },
+        {
+          "name": "失败时抛异常",
+          "mapping": "raise_on_timeout",
+          "description": "等待超时时是否抛出异常，默认为false"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "等待文本在页面中出现\n\n    Args:\n        text: 要等待的文本\n        timeout: 超时时间\n        raise_on_timeout: 超时时是否抛出异常\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "等待新页面",
+      "category": "custom",
+      "category_name": "UI/浏览器",
+      "tags": [
+        "等待",
+        "页面"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.browser_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "等待超时时间（秒）",
+          "default": 30
+        },
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "保存新页面ID的变量名"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "等待新页面出现（用于处理新窗口/标签页）\n\n    Args:\n        timeout: 超时时间\n        variable: 变量名\n\n    Returns:\n        dict: 包含新页面ID的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含新页面ID的字典"
+      }
     },
     {
       "name": "简单计算",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -1044,7 +3974,7 @@
     {
       "name": "简单问候",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -1067,10 +3997,10 @@
     {
       "name": "类型断言",
       "category": "builtin",
-      "category_name": "HTTP",
+      "category_name": "系统/断言",
       "tags": [
-        "验证",
-        "类型"
+        "类型",
+        "验证"
       ],
       "source_info": {
         "type": "builtin",
@@ -1098,13 +4028,20 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "断言值的类型\n\n    Args:\n        value: 要检查的值\n        type: 预期的类型 (string, number, boolean, list, object, null)\n        message: 断言失败时的错误消息\n\n    Returns:\n        断言结果 (True/False)\n\n    Raises:\n        AssertionError: 如果断言失败"
+      "documentation": "断言值的类型\n\n    Args:\n        value: 要检查的值\n        type: 预期的类型 (string, number, boolean, list, object, null)\n        message: 断言失败时的错误消息\n\n    Returns:\n        断言结果 (True/False)\n\n    Raises:\n        AssertionError: 如果断言失败",
+      "returns": {
+        "type": "bool",
+        "description": ""
+      }
     },
     {
       "name": "绝对值",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/通用",
+      "tags": [
+        "绝对值",
+        "数学"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -1120,12 +4057,122 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "计算数字的绝对值\n\n    Args:\n        number: 要计算绝对值的数字\n\n    Returns:\n        数字的绝对值"
+      "documentation": "计算数字的绝对值\n\n    Args:\n        number: 要计算绝对值的数字\n\n    Returns:\n        数字的绝对值",
+      "returns": {
+        "type": "any",
+        "description": "输入数字的绝对值"
+      }
+    },
+    {
+      "name": "聚焦元素",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "聚焦"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "聚焦元素\n\n    Args:\n        selector: 元素定位器\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "获取元素属性",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords_extended",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "属性",
+          "mapping": "attribute",
+          "description": "要获取的属性名称"
+        },
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "保存属性值的变量名"
+        },
+        {
+          "name": "默认值",
+          "mapping": "default_value",
+          "description": "当属性不存在或为None时的默认值"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "获取元素属性值\n\n    Args:\n        selector: 元素定位器\n        attribute: 属性名称\n        variable: 变量名\n        default_value: 当属性不存在或为None时的默认值\n\n    Returns:\n        dict: 包含属性值的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含属性值的字典"
+      }
+    },
+    {
+      "name": "获取元素文本",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords_extended",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器"
+        },
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "保存文本内容的变量名"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "获取元素文本内容\n\n    Args:\n        selector: 元素定位器\n        variable: 变量名\n\n    Returns:\n        dict: 包含文本内容的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含文本内容的字典"
+      }
     },
     {
       "name": "获取全局变量",
       "category": "builtin",
-      "category_name": "数据/变量",
+      "category_name": "系统/全局变量",
       "tags": [
         "获取",
         "全局"
@@ -1145,15 +4192,42 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "获取全局变量"
+      "documentation": "获取全局变量",
+      "returns": {
+        "type": "dict",
+        "description": "包含 result、captures、session_state、metadata 的结果字典"
+      }
+    },
+    {
+      "name": "获取当前地址",
+      "category": "custom",
+      "category_name": "UI/导航",
+      "tags": [
+        "获取",
+        "URL"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.navigation_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [],
+      "source": "pytest-dsl",
+      "documentation": "获取当前页面URL\n\n    Returns:\n        dict: 包含当前URL的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含当前URL的字典"
+      }
     },
     {
       "name": "获取当前时间",
       "category": "builtin",
-      "category_name": "其他",
+      "category_name": "系统/通用",
       "tags": [
-        "时间",
-        "获取"
+        "获取",
+        "时间"
       ],
       "source_info": {
         "type": "builtin",
@@ -1177,13 +4251,20 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "获取当前时间\n\n    Args:\n        format: 时间格式，如果设置为'timestamp'则返回时间戳\n        timezone: 时区，默认为Asia/Shanghai\n\n    Returns:\n        str/float: 格式化的时间字符串或时间戳"
+      "documentation": "获取当前时间\n\n    Args:\n        format: 时间格式，如果设置为'timestamp'则返回时间戳\n        timezone: 时区，默认为Asia/Shanghai\n\n    Returns:\n        str/float: 格式化的时间字符串或时间戳",
+      "returns": {
+        "type": "any",
+        "description": "时间戳整数或格式化后的时间字符串"
+      }
     },
     {
       "name": "获取最大值",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/通用",
+      "tags": [
+        "数学",
+        "最大值"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -1204,13 +4285,20 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "获取最大值\n\n    Args:\n        data: 要比较的数据\n        default: 当数据为空时的默认值\n\n    Returns:\n        最大值"
+      "documentation": "获取最大值\n\n    Args:\n        data: 要比较的数据\n        default: 当数据为空时的默认值\n\n    Returns:\n        最大值",
+      "returns": {
+        "type": "any",
+        "description": "输入数据中的最大值或默认值"
+      }
     },
     {
       "name": "获取最小值",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/通用",
+      "tags": [
+        "数学",
+        "最小值"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -1231,12 +4319,42 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "获取最小值\n\n    Args:\n        data: 要比较的数据\n        default: 当数据为空时的默认值\n\n    Returns:\n        最小值"
+      "documentation": "获取最小值\n\n    Args:\n        data: 要比较的数据\n        default: 当数据为空时的默认值\n\n    Returns:\n        最小值",
+      "returns": {
+        "type": "any",
+        "description": "输入数据中的最小值或默认值"
+      }
+    },
+    {
+      "name": "获取视口大小",
+      "category": "custom",
+      "category_name": "UI/浏览器",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.capture_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "保存视口大小的变量名"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "获取视口大小\n\n    Args:\n        variable: 变量名\n\n    Returns:\n        dict: 包含视口大小的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含视口大小的字典"
+      }
     },
     {
       "name": "获取资源",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -1270,8 +4388,11 @@
     {
       "name": "获取长度",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/通用",
+      "tags": [
+        "长度",
+        "数学"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -1287,12 +4408,68 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "获取对象的长度\n\n    Args:\n        obj: 要获取长度的对象\n\n    Returns:\n        int: 对象的长度"
+      "documentation": "获取对象的长度\n\n    Args:\n        obj: 要获取长度的对象\n\n    Returns:\n        int: 对象的长度",
+      "returns": {
+        "type": "int",
+        "description": ""
+      }
+    },
+    {
+      "name": "获取页面列表",
+      "category": "custom",
+      "category_name": "UI/浏览器",
+      "tags": [
+        "查询",
+        "页面"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.browser_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "保存页面列表的变量名"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "获取页面列表\n\n    Args:\n        variable: 变量名\n\n    Returns:\n        dict: 包含页面列表的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含页面列表的字典"
+      }
+    },
+    {
+      "name": "获取页面标题",
+      "category": "custom",
+      "category_name": "UI/导航",
+      "tags": [
+        "获取",
+        "标题"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.navigation_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [],
+      "source": "pytest-dsl",
+      "documentation": "获取页面标题\n\n    Returns:\n        dict: 包含页面标题的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含页面标题的字典"
+      }
     },
     {
       "name": "计算长度",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -1315,10 +4492,10 @@
     {
       "name": "设置全局变量",
       "category": "builtin",
-      "category_name": "数据/变量",
+      "category_name": "系统/全局变量",
       "tags": [
-        "设置",
-        "全局"
+        "全局",
+        "设置"
       ],
       "source_info": {
         "type": "builtin",
@@ -1340,13 +4517,163 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "设置全局变量"
+      "documentation": "设置全局变量",
+      "returns": {
+        "type": "dict",
+        "description": "包含 result、captures、session_state、metadata 的结果字典"
+      }
+    },
+    {
+      "name": "设置复选框状态",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "设置",
+        "复选框"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "复选框元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "选中状态",
+          "mapping": "checked",
+          "description": "是否选中复选框",
+          "default": true
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "设置复选框状态\n\n    Args:\n        selector: 复选框定位器\n        checked: 是否选中\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "设置等待超时",
+      "category": "custom",
+      "category_name": "UI/浏览器",
+      "tags": [
+        "超时",
+        "配置"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.browser_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "默认等待超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "设置默认等待超时时间\n\n    Args:\n        timeout: 超时时间（秒）\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "设置视口大小",
+      "category": "custom",
+      "category_name": "UI/浏览器",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.capture_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "宽度",
+          "mapping": "width",
+          "description": "视口宽度"
+        },
+        {
+          "name": "高度",
+          "mapping": "height",
+          "description": "视口高度"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "设置视口大小\n\n    Args:\n        width: 视口宽度\n        height: 视口高度\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "识别文字验证码",
+      "category": "custom",
+      "category_name": "UI/验证码",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.captcha_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "图片源",
+          "mapping": "image_source",
+          "description": "图片来源：文件路径、元素定位器、base64数据或变量名"
+        },
+        {
+          "name": "源类型",
+          "mapping": "source_type",
+          "description": "源类型：file/element/base64/variable，默认auto自动判断"
+        },
+        {
+          "name": "变量名",
+          "mapping": "variable",
+          "description": "保存识别结果的变量名"
+        },
+        {
+          "name": "预处理",
+          "mapping": "preprocess",
+          "description": "是否进行图片预处理：去噪、二值化等"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "识别文字验证码\n\n    Args:\n        image_source: 图片源\n        source_type: 源类型 (file/element/base64/variable/auto)\n        variable: 变量名\n        preprocess: 是否预处理\n\n    Returns:\n        dict: 包含识别结果的字典",
+      "returns": {
+        "type": "dict",
+        "description": "包含识别结果的字典"
+      }
     },
     {
       "name": "转换为字符串",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/通用",
+      "tags": [
+        "转换",
+        "字符串"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -1362,13 +4689,20 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "将值转换为字符串\n\n    Args:\n        value: 要转换的值\n\n    Returns:\n        str: 转换后的字符串"
+      "documentation": "将值转换为字符串\n\n    Args:\n        value: 要转换的值\n\n    Returns:\n        str: 转换后的字符串",
+      "returns": {
+        "type": "str",
+        "description": ""
+      }
     },
     {
       "name": "转换为布尔值",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/通用",
+      "tags": [
+        "转换",
+        "布尔"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -1384,13 +4718,20 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "将值转换为布尔值\n\n    Args:\n        value: 要转换的值\n\n    Returns:\n        bool: 转换后的布尔值"
+      "documentation": "将值转换为布尔值\n\n    Args:\n        value: 要转换的值\n\n    Returns:\n        bool: 转换后的布尔值",
+      "returns": {
+        "type": "bool",
+        "description": ""
+      }
     },
     {
       "name": "转换为整数",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/通用",
+      "tags": [
+        "转换",
+        "整数"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -1412,13 +4753,20 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "将值转换为整数\n\n    Args:\n        value: 要转换的值\n        base: 数字进制（当值为字符串时），默认为10\n\n    Returns:\n        int: 转换后的整数"
+      "documentation": "将值转换为整数\n\n    Args:\n        value: 要转换的值\n        base: 数字进制（当值为字符串时），默认为10\n\n    Returns:\n        int: 转换后的整数",
+      "returns": {
+        "type": "int",
+        "description": ""
+      }
     },
     {
       "name": "转换为浮点数",
       "category": "builtin",
-      "category_name": "其他",
-      "tags": [],
+      "category_name": "系统/通用",
+      "tags": [
+        "浮点数",
+        "转换"
+      ],
       "source_info": {
         "type": "builtin",
         "name": "pytest-dsl内置",
@@ -1434,12 +4782,105 @@
         }
       ],
       "source": "pytest-dsl内置",
-      "documentation": "将值转换为浮点数\n\n    Args:\n        value: 要转换的值\n\n    Returns:\n        float: 转换后的浮点数"
+      "documentation": "将值转换为浮点数\n\n    Args:\n        value: 要转换的值\n\n    Returns:\n        float: 转换后的浮点数",
+      "returns": {
+        "type": "float",
+        "description": ""
+      }
+    },
+    {
+      "name": "输入文本",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "输入",
+        "文本"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "文本",
+          "mapping": "text",
+          "description": "要输入的文本内容"
+        },
+        {
+          "name": "清空输入框",
+          "mapping": "clear",
+          "description": "输入前是否清空输入框",
+          "default": true
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "输入文本\n\n    Args:\n        selector: 元素定位器\n        text: 要输入的文本\n        clear: 是否清空输入框\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "输出导航栏内容",
+      "category": "custom",
+      "category_name": "UI/检查",
+      "tags": [
+        "页面树",
+        "导航栏",
+        "菜单",
+        "内容输出"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "容器定位器（CSS选择器、XPath等）"
+        },
+        {
+          "name": "内容类型",
+          "mapping": "content_type",
+          "description": "内容类型：auto-自动检测，menu-菜单，page_tree-页面树",
+          "default": "auto"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "输出导航栏内容（支持菜单和页面树）\n\n    Args:\n        selector: 容器定位器\n        content_type: 内容类型（auto/menu/page_tree）\n        timeout: 超时时间\n\n    Returns:\n        list: 导航栏列表",
+      "returns": {
+        "type": "list",
+        "description": "导航栏列表"
+      }
     },
     {
       "name": "返回结果",
       "category": "builtin",
-      "category_name": "其他",
+      "category_name": "系统/调试",
       "tags": [
         "返回"
       ],
@@ -1457,12 +4898,199 @@
           "description": "要返回的结果值"
         }
       ],
-      "source": "pytest-dsl内置"
+      "source": "pytest-dsl内置",
+      "returns": {
+        "type": "any",
+        "description": "透传输入的结果值"
+      }
+    },
+    {
+      "name": "选择下拉选项",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "选择",
+        "下拉框"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "下拉框元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "选项值",
+          "mapping": "value",
+          "description": "要选择的选项值"
+        },
+        {
+          "name": "选项标签",
+          "mapping": "label",
+          "description": "要选择的选项标签文本"
+        },
+        {
+          "name": "选项索引",
+          "mapping": "index",
+          "description": "要选择的选项索引（从0开始）"
+        },
+        {
+          "name": "多选",
+          "mapping": "multiple",
+          "description": "是否多选（值用逗号分隔）",
+          "default": false
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "选择下拉框选项\n\n    Args:\n        selector: 下拉框定位器\n        value: 选项值\n        label: 选项标签\n        index: 选项索引\n        multiple: 是否多选\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "选择单选框",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "选择",
+        "单选框"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "单选框元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "选择单选框\n\n    Args:\n        selector: 单选框定位器\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "选择选项",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords_extended",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "下拉框元素定位器"
+        },
+        {
+          "name": "值",
+          "mapping": "value",
+          "description": "要选择的选项值"
+        },
+        {
+          "name": "标签",
+          "mapping": "label",
+          "description": "要选择的选项标签文本"
+        },
+        {
+          "name": "索引",
+          "mapping": "index",
+          "description": "要选择的选项索引（从0开始）"
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）"
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "选择下拉框选项\n\n    Args:\n        selector: 下拉框定位器\n        value: 选项值\n        label: 选项标签\n        index: 选项索引\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
+    },
+    {
+      "name": "逐字符输入",
+      "category": "custom",
+      "category_name": "UI/交互",
+      "tags": [
+        "逐字符",
+        "输入"
+      ],
+      "source_info": {
+        "type": "internal",
+        "name": "pytest-dsl",
+        "display_name": "pytest-dsl",
+        "module": "pytest_dsl_ui.keywords.element_keywords",
+        "plugin_module": ""
+      },
+      "parameters": [
+        {
+          "name": "定位器",
+          "mapping": "selector",
+          "description": "元素定位器（CSS选择器、XPath、文本等）"
+        },
+        {
+          "name": "文本",
+          "mapping": "text",
+          "description": "要输入的文本内容"
+        },
+        {
+          "name": "延迟",
+          "mapping": "delay",
+          "description": "字符间延迟时间（毫秒）",
+          "default": 100
+        },
+        {
+          "name": "超时时间",
+          "mapping": "timeout",
+          "description": "超时时间（秒）",
+          "default": 30
+        }
+      ],
+      "source": "pytest-dsl",
+      "documentation": "逐字符输入文本（适用于有特殊键盘处理的情况）\n\n    Args:\n        selector: 元素定位器\n        text: 要输入的文本\n        delay: 字符间延迟\n        timeout: 超时时间\n\n    Returns:\n        dict: 操作结果",
+      "returns": {
+        "type": "dict",
+        "description": "操作结果"
+      }
     },
     {
       "name": "验证测试结果",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -1496,7 +5124,7 @@
     {
       "name": "验证邮箱格式",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",
@@ -1519,7 +5147,7 @@
     {
       "name": "验证非空",
       "category": "project_custom",
-      "category_name": "其他",
+      "category_name": "用户关键字",
       "tags": [],
       "source_info": {
         "type": "internal",

@@ -106,27 +106,49 @@ class RemoteKeywordClient:
         # 获取关键字参数信息
         try:
             from pytest_dsl.core.serialization_utils import XMLRPCSerializer
-            param_names = XMLRPCSerializer.safe_xmlrpc_call(
-                self.server, 'get_keyword_arguments', name)
-            doc = XMLRPCSerializer.safe_xmlrpc_call(
-                self.server, 'get_keyword_documentation', name)
-
-            # 尝试获取参数详细信息（包括默认值）
-            param_details = []
+            contract = {}
             try:
-                param_details = XMLRPCSerializer.safe_xmlrpc_call(
-                    self.server, 'get_keyword_parameter_details', name)
+                contract = XMLRPCSerializer.safe_xmlrpc_call(
+                    self.server, 'get_keyword_contract', name)
             except Exception as e:
                 _print_verbose(
-                    f"远程关键字: {name} 参数详情获取失败，使用基础参数: {e}")
-                # 如果新方法不可用，使用旧的方式
+                    f"远程关键字: {name} 契约获取失败，回退旧接口: {e}")
+
+            param_names = []
+            doc = ""
+            param_details = []
+            returns = None
+
+            if contract:
+                param_details = contract.get('parameters', [])
+                doc = contract.get('documentation', '')
+                returns = contract.get('returns')
+                param_names = [param['name'] for param in param_details]
+            else:
+                param_names = XMLRPCSerializer.safe_xmlrpc_call(
+                    self.server, 'get_keyword_arguments', name)
+                doc = XMLRPCSerializer.safe_xmlrpc_call(
+                    self.server, 'get_keyword_documentation', name)
+
+                # 尝试获取参数详细信息（包括默认值）
+                try:
+                    param_details = XMLRPCSerializer.safe_xmlrpc_call(
+                        self.server, 'get_keyword_parameter_details', name)
+                except Exception as e:
+                    _print_verbose(
+                        f"远程关键字: {name} 参数详情获取失败，使用基础参数: {e}")
+
                 for param_name in param_names:
-                    param_details.append({
-                        'name': param_name,
-                        'mapping': param_name,
-                        'description': f'远程关键字参数: {param_name}',
-                        'default': None
-                    })
+                    if not any(
+                        detail.get('name') == param_name
+                        for detail in param_details
+                    ):
+                        param_details.append({
+                            'name': param_name,
+                            'mapping': param_name,
+                            'description': f'远程关键字参数: {param_name}',
+                            'default': None
+                        })
 
             _print_verbose(f"远程关键字注册: {name} 参数: {param_details}")
 
@@ -175,6 +197,7 @@ class RemoteKeywordClient:
                     p['mapping']: p['default'] for p in parameters
                     if p['default'] is not None
                 },  # 添加默认值支持
+                'returns': returns,
                 'remote': True,  # 标记为远程关键字
                 'alias': self.alias,
                 'original_name': name
@@ -184,7 +207,8 @@ class RemoteKeywordClient:
             self.keyword_cache[name] = {
                 'parameters': param_names,  # 注意这里只缓存原始参数，不包括步骤名称
                 'doc': doc,
-                'param_details': param_details  # 缓存详细参数信息
+                'param_details': param_details,  # 缓存详细参数信息
+                'returns': returns
             }
             # 保存参数映射
             self.param_mappings[name] = param_mapping

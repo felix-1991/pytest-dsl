@@ -160,6 +160,7 @@ class RemoteKeywordServer:
         self.server.register_function(self.get_keyword_arguments)
         self.server.register_function(self.get_keyword_parameter_details)
         self.server.register_function(self.get_keyword_documentation)
+        self.server.register_function(self.get_keyword_contract)
         self.server.register_function(self.authenticate)
 
         # 注册变量同步方法
@@ -394,6 +395,30 @@ class RemoteKeywordServer:
 
         func = keyword_info['func']
         return inspect.getdoc(func) or ""
+
+    def get_keyword_contract(self, name):
+        """获取关键字的完整元数据契约"""
+        keyword_info = keyword_manager.get_keyword_info(name)
+        if not keyword_info:
+            return {}
+
+        param_details = []
+        for param in keyword_info['parameters']:
+            param_details.append({
+                'name': param.name,
+                'mapping': param.mapping,
+                'description': param.description,
+                'default': param.default
+            })
+
+        return {
+            'name': name,
+            'parameters': param_details,
+            'returns': keyword_info.get('returns'),
+            'documentation': self.get_keyword_documentation(name),
+            'category': keyword_info.get('category'),
+            'tags': sorted(list(keyword_info.get('tags', [])))
+        }
 
     def _process_keyword_result(self, result, test_context):
         """处理关键字执行结果，确保可序列化并提取上下文变量

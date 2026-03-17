@@ -228,7 +228,7 @@ end
 test_data = [1, 2, 3]
 
 # 好的做法：在遍历前检查类型
-if ${test_data} != null do
+if ${test_data} do
     for item in test_data do
         [打印], 内容: "处理: ${item}"
     end

@@ -1,5 +1,6 @@
-from typing import Dict, Any, Callable, List, Optional, Set
+from typing import Dict, Any, Callable, List, Optional, Set, Union, get_args, get_origin
 import functools
+import inspect
 import allure
 
 
@@ -10,6 +11,18 @@ class Parameter:
         self.mapping = mapping
         self.description = description
         self.default = default
+
+
+class ReturnSpec:
+    def __init__(self, type: str, description: str = ""):
+        self.type = type
+        self.description = description
+
+    def to_dict(self) -> Dict[str, str]:
+        return {
+            'type': self.type,
+            'description': self.description
+        }
 
 
 class KeywordManager:
@@ -46,7 +59,8 @@ class KeywordManager:
     def register(self, name: str, parameters: List[Dict],
                  source_info: Optional[Dict] = None,
                  category: Optional[str] = None,
-                 tags: Optional[List[str]] = None):
+                 tags: Optional[List[str]] = None,
+                 returns: Optional[Union[str, Dict[str, str]]] = None):
         """关键字注册装饰器
 
         Args:
@@ -55,6 +69,7 @@ class KeywordManager:
             source_info: 来源信息
             category: 功能分类（支持多级，如：UI/浏览器、HTTP/请求等）
             tags: 自定义标签列表
+            returns: 返回值信息，支持字符串简写或包含type/description的字典
         """
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
@@ -91,7 +106,8 @@ class KeywordManager:
                 'func': wrapper,
                 'mapping': mapping,
                 'parameters': param_list,
-                'defaults': defaults  # 存储默认值
+                'defaults': defaults,  # 存储默认值
+                'returns': self._normalize_returns(returns, func)
             }
 
             # 添加来源信息
@@ -112,6 +128,143 @@ class KeywordManager:
             self._keywords[name] = keyword_info
             return wrapper
         return decorator
+
+    def _normalize_returns(self,
+                           returns: Optional[Union[str, Dict[str, str]]],
+                           func: Callable) -> Optional[Dict[str, str]]:
+        """标准化关键字返回值元数据"""
+        normalized = self._normalize_explicit_returns(returns)
+        if normalized:
+            return normalized
+
+        annotation_type = self._infer_return_type_from_annotation(func)
+        if annotation_type:
+            return {
+                'type': annotation_type,
+                'description': ''
+            }
+
+        return self._infer_returns_from_docstring(func)
+
+    def _normalize_explicit_returns(self,
+                                    returns: Optional[Union[str, Dict[str, str]]]
+                                    ) -> Optional[Dict[str, str]]:
+        """标准化显式声明的返回值元数据"""
+        if returns is None:
+            return None
+
+        if isinstance(returns, str):
+            returns_type = returns.strip()
+            return {
+                'type': returns_type,
+                'description': ''
+            } if returns_type else None
+
+        if isinstance(returns, dict):
+            returns_type = str(returns.get('type', '')).strip()
+            description = str(returns.get('description', '')).strip()
+            if not returns_type:
+                return None
+            return {
+                'type': returns_type,
+                'description': description
+            }
+
+        raise TypeError("returns 必须是字符串、字典或 None")
+
+    def _infer_return_type_from_annotation(self, func: Callable) -> Optional[str]:
+        """从函数注解推断返回值类型"""
+        try:
+            signature = inspect.signature(func)
+        except (TypeError, ValueError):
+            return None
+
+        annotation = signature.return_annotation
+        if annotation in (inspect.Signature.empty, None):
+            return None
+
+        return self._annotation_to_type_string(annotation)
+
+    def _annotation_to_type_string(self, annotation: Any) -> str:
+        """将Python类型注解转换为轻量字符串类型表示"""
+        if isinstance(annotation, str):
+            return annotation.strip()
+
+        if annotation is None or annotation is type(None):
+            return 'none'
+
+        origin = get_origin(annotation)
+        args = get_args(annotation)
+
+        if origin is Union:
+            non_none_args = [arg for arg in args if arg is not type(None)]
+            if len(non_none_args) == 1 and len(args) == 2:
+                return self._annotation_to_type_string(non_none_args[0])
+            return 'any'
+
+        if origin in (list, List):
+            if args:
+                return f"list[{self._annotation_to_type_string(args[0])}]"
+            return 'list'
+
+        if origin in (dict, Dict):
+            if len(args) == 2:
+                key_type = self._annotation_to_type_string(args[0])
+                value_type = self._annotation_to_type_string(args[1])
+                return f"dict[{key_type}, {value_type}]"
+            return 'dict'
+
+        builtin_mapping = {
+            str: 'str',
+            int: 'int',
+            float: 'float',
+            bool: 'bool',
+            list: 'list',
+            dict: 'dict',
+            tuple: 'tuple',
+            set: 'set',
+            Any: 'any'
+        }
+        if annotation in builtin_mapping:
+            return builtin_mapping[annotation]
+
+        if hasattr(annotation, '__name__'):
+            return annotation.__name__
+
+        return str(annotation)
+
+    def _infer_returns_from_docstring(self, func: Callable) -> Optional[Dict[str, str]]:
+        """从docstring的Returns段落中弱解析返回信息"""
+        doc = inspect.getdoc(func) or ""
+        if not doc:
+            return None
+
+        lines = doc.splitlines()
+        for index, line in enumerate(lines):
+            if line.strip() != 'Returns:':
+                continue
+
+            for follow_line in lines[index + 1:]:
+                stripped = follow_line.strip()
+                if not stripped:
+                    continue
+
+                if ':' in stripped:
+                    possible_type, possible_desc = stripped.split(':', 1)
+                    possible_type = possible_type.strip()
+                    possible_desc = possible_desc.strip()
+                    if possible_type:
+                        return {
+                            'type': possible_type,
+                            'description': possible_desc
+                        }
+
+                return {
+                    'type': 'any',
+                    'description': stripped
+                }
+
+        return None
 
     def _normalize_category(self, category: str) -> str:
         """标准化功能分类名称，支持多级分类"""
@@ -153,7 +306,9 @@ class KeywordManager:
     def register_with_source(self, name: str, parameters: List[Dict],
                              source_type: str, source_name: str,
                              category: Optional[str] = None,
-                             tags: Optional[List[str]] = None, **kwargs):
+                             tags: Optional[List[str]] = None,
+                             returns: Optional[Union[str, Dict[str, str]]] = None,
+                             **kwargs):
         """带来源信息的关键字注册装饰器
 
         Args:
@@ -170,11 +325,14 @@ class KeywordManager:
             'source_name': source_name,
             **kwargs
         }
-        return self.register(name, parameters, source_info, category, tags)
+        return self.register(
+            name, parameters, source_info, category, tags, returns
+        )
 
     def register_with_category(self, name: str, parameters: List[Dict],
                                category: str,
-                               tags: Optional[List[str]] = None):
+                               tags: Optional[List[str]] = None,
+                               returns: Optional[Union[str, Dict[str, str]]] = None):
         """带功能分类的关键字注册装饰器
 
         Args:
@@ -183,7 +341,7 @@ class KeywordManager:
             category: 功能分类
             tags: 自定义标签列表
         """
-        return self.register(name, parameters, None, category, tags)
+        return self.register(name, parameters, None, category, tags, returns)
 
     def execute(self, keyword_name: str, **params: Any) -> Any:
         """执行关键字"""

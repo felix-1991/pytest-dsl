@@ -803,7 +803,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
 @keyword_manager.register('数据库查询', [
     {'name': '查询语句', 'mapping': 'sql', 'description': 'SQL查询语句'},
     {'name': '数据库', 'mapping': 'database', 'description': '数据库连接名', 'default': 'default'}
-])
+], returns={'type': 'list[dict]', 'description': '查询结果列表'})
 def database_query(**kwargs):
     """执行数据库查询"""
     sql = kwargs.get('sql')
@@ -827,7 +827,7 @@ def database_query(**kwargs):
     {'name': '主题', 'mapping': 'subject', 'description': '邮件主题', 'default': '测试邮件'},
     {'name': '内容', 'mapping': 'content', 'description': '邮件内容', 'default': '这是一封测试邮件'},
     {'name': '优先级', 'mapping': 'priority', 'description': '邮件优先级', 'default': 'normal'}
-])
+], returns='bool')
 def send_email(**kwargs):
     """发送邮件通知"""
     to_email = kwargs.get('to_email')
@@ -884,6 +884,29 @@ def http_request(**kwargs):
     # 执行HTTP请求逻辑
     return {"status": "success", "method": method, "url": url}
 ```
+
+#### 返回值元数据
+
+建议为 Python 自定义关键字显式声明 `returns`，这样 `list_keywords`、HTML 文档和远程关键字同步都能稳定拿到返回类型，而不必依赖 docstring 的 `Returns:` 文本推断。
+
+```python
+@keyword_manager.register(
+    '生成Token',
+    [
+        {'name': '用户ID', 'mapping': 'user_id', 'description': '用户标识'}
+    ],
+    returns={'type': 'str', 'description': '生成后的访问令牌'}
+)
+def generate_token(**kwargs):
+    return 'token-123'
+```
+
+支持两种写法：
+
+- `returns='str'`
+- `returns={'type': 'list[dict]', 'description': '查询结果列表'}`
+
+如果没有显式写 `returns`，pytest-dsl 会按“函数返回注解 -> docstring 的 `Returns:` -> 无返回元数据”的顺序尝试推断。
 
 #### 在DSL中使用默认值
 

@@ -351,7 +351,7 @@ end
 [执行用户操作], 操作类型: ${operation}, 用户数据: ${user_data}, 期望结果: ${expected}
 
 # 如果有响应验证数据，进行验证
-if "response_validation" in locals() and ${response_validation} != null do
+if "${response_validation}" != "" do
     [验证响应数据], 实际数据: ${captured_response}, 期望数据: ${response_validation}
 end
 ```
@@ -583,7 +583,7 @@ end
 token = [用户登录], 用户名: ${user.username}, 密码: ${user.password}
 
 # 2. 添加商品到购物车
-购物车ID = null
+购物车ID = ""
 for 商品 in ${products} do
     购物车ID = [添加到购物车], 商品ID: ${商品.id}, 数量: ${商品.quantity}, token: ${token}
 end

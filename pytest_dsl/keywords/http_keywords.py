@@ -260,7 +260,11 @@ def _normalize_retry_config(config, assert_retry_count=None,
      'description': '断言失败时的重试次数', 'default': 0},
     {'name': '断言重试间隔', 'mapping': 'assert_retry_interval',
      'description': '断言重试间隔时间（秒）', 'default': 1}
-], category='系统/接口测试', tags=['接口', '请求'])
+], category='系统/接口测试', tags=['接口', '请求'],
+    returns={
+        'type': 'dict',
+        'description': '包含 result、side_effects、metadata 的 HTTP 执行结果'
+    })
 def http_request(context, **kwargs):
     """执行HTTP请求
 

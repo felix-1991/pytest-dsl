@@ -10,7 +10,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
 
 @keyword_manager.register('打印', [
     {'name': '内容', 'mapping': 'content', 'description': '要打印的文本内容'}
-], category='系统/调试', tags=['输出', '调试'])
+], category='系统/调试', tags=['输出', '调试'], returns='none')
 def print_content(**kwargs):
     content = kwargs.get('content')
     print(f"内容: {content}")
@@ -18,7 +18,8 @@ def print_content(**kwargs):
 
 @keyword_manager.register('返回结果', [
     {'name': '结果', 'mapping': 'result', 'description': '要返回的结果值'}
-], category='系统/调试', tags=['返回'])
+], category='系统/调试', tags=['返回'],
+    returns={'type': 'any', 'description': '透传输入的结果值'})
 def return_result(**kwargs):
     return kwargs.get('result')
 
@@ -26,7 +27,7 @@ def return_result(**kwargs):
 @keyword_manager.register('等待', [
     {'name': '秒数', 'mapping': 'seconds',
      'description': '等待的秒数，可以是小数', 'default': 1}
-], category='系统/通用', tags=['等待', '延迟'])
+], category='系统/通用', tags=['等待', '延迟'], returns='none')
 def wait_seconds(**kwargs):
     """等待指定的时间
 
@@ -49,7 +50,8 @@ def wait_seconds(**kwargs):
      'description': '时间格式，例如 "%Y-%m-%d %H:%M:%S"', 'default': 'timestamp'},
     {'name': '时区', 'mapping': 'timezone',
      'description': '时区，例如 "Asia/Shanghai"', 'default': 'Asia/Shanghai'}
-], category='系统/通用', tags=['时间', '获取'])
+], category='系统/通用', tags=['时间', '获取'],
+    returns={'type': 'any', 'description': '时间戳整数或格式化后的时间字符串'})
 def get_current_time(**kwargs):
     """获取当前时间
 
@@ -103,7 +105,7 @@ def get_current_time(**kwargs):
     {'name': '类型', 'mapping': 'type',
      'description': '字符类型：字母(letters)、数字(digits)、字母数字(alphanumeric)、全部(all)',
      'default': 'alphanumeric'}
-], category='系统/通用', tags=['随机', '字符串'])
+], category='系统/通用', tags=['随机', '字符串'], returns='str')
 def generate_random_string(**kwargs):
     """生成指定长度和类型的随机字符串
 
@@ -150,7 +152,8 @@ def generate_random_string(**kwargs):
      'description': '随机数的最大值', 'default': 100},
     {'name': '小数位数', 'mapping': 'decimals',
      'description': '小数位数，0表示整数', 'default': 0}
-], category='系统/通用', tags=['随机', '数字'])
+], category='系统/通用', tags=['随机', '数字'],
+    returns={'type': 'any', 'description': '根据小数位数返回 int 或 float'})
 def generate_random_number(**kwargs):
     """生成指定范围内的随机数
 
@@ -193,7 +196,8 @@ def generate_random_number(**kwargs):
      'description': '操作参数1，根据操作类型不同而不同', 'default': ''},
     {'name': '参数2', 'mapping': 'param2',
      'description': '操作参数2，根据操作类型不同而不同', 'default': ''}
-], category='系统/通用', tags=['字符串', '操作'])
+], category='系统/通用', tags=['字符串', '操作'],
+    returns={'type': 'any', 'description': '通常返回字符串，split 场景可能返回列表'})
 def string_operation(**kwargs):
     """字符串操作
 
@@ -265,7 +269,7 @@ def string_operation(**kwargs):
      'description': '日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL',
      'default': 'INFO'},
     {'name': '消息', 'mapping': 'message', 'description': '日志消息内容'}
-], category='系统/调试', tags=['日志'])
+], category='系统/调试', tags=['日志'], returns='bool')
 def log_message(**kwargs):
     """记录日志
 
@@ -298,7 +302,8 @@ def log_message(**kwargs):
      'description': '命令执行超时时间（秒）', 'default': 60},
     {'name': '捕获输出', 'mapping': 'capture_output',
      'description': '是否捕获命令输出', 'default': True}
-], category='系统/通用', tags=['命令', '执行'])
+], category='系统/通用', tags=['命令', '执行'],
+    returns={'type': 'dict', 'description': '包含 returncode、stdout、stderr 的结果字典'})
 def execute_command(**kwargs):
     """执行系统命令
 
@@ -372,7 +377,8 @@ def execute_command(**kwargs):
 @keyword_manager.register('求和', [
     {'name': '数据', 'mapping': 'data', 'description': '要求和的数字列表或可迭代对象'},
     {'name': '起始值', 'mapping': 'start', 'description': '求和的起始值', 'default': 0}
-], category='系统/通用', tags=['数学', '求和'])
+], category='系统/通用', tags=['数学', '求和'],
+    returns={'type': 'any', 'description': '求和结果，类型取决于输入数据'})
 def sum_values(**kwargs):
     """计算数字列表的总和
 
@@ -412,7 +418,7 @@ def sum_values(**kwargs):
 
 @keyword_manager.register('获取长度', [
     {'name': '对象', 'mapping': 'obj', 'description': '要获取长度的对象（字符串、列表、字典等）'}
-], category='系统/通用', tags=['数学', '长度'])
+], category='系统/通用', tags=['数学', '长度'], returns='int')
 def get_length(**kwargs):
     """获取对象的长度
 
@@ -451,7 +457,8 @@ def get_length(**kwargs):
     {'name': '数据', 'mapping': 'data', 'description': '要比较的数据列表或多个参数'},
     {'name': '默认值', 'mapping': 'default',
      'description': '当数据为空时的默认值', 'default': None}
-], category='系统/通用', tags=['数学', '最大值'])
+], category='系统/通用', tags=['数学', '最大值'],
+    returns={'type': 'any', 'description': '输入数据中的最大值或默认值'})
 def get_max_value(**kwargs):
     """获取最大值
 
@@ -503,7 +510,8 @@ def get_max_value(**kwargs):
     {'name': '数据', 'mapping': 'data', 'description': '要比较的数据列表或多个参数'},
     {'name': '默认值', 'mapping': 'default',
      'description': '当数据为空时的默认值', 'default': None}
-], category='系统/通用', tags=['数学', '最小值'])
+], category='系统/通用', tags=['数学', '最小值'],
+    returns={'type': 'any', 'description': '输入数据中的最小值或默认值'})
 def get_min_value(**kwargs):
     """获取最小值
 
@@ -553,7 +561,8 @@ def get_min_value(**kwargs):
 
 @keyword_manager.register('绝对值', [
     {'name': '数值', 'mapping': 'number', 'description': '要计算绝对值的数字'}
-], category='系统/通用', tags=['数学', '绝对值'])
+], category='系统/通用', tags=['数学', '绝对值'],
+    returns={'type': 'any', 'description': '输入数字的绝对值'})
 def get_absolute_value(**kwargs):
     """计算数字的绝对值
 
@@ -592,7 +601,8 @@ def get_absolute_value(**kwargs):
     {'name': '数值', 'mapping': 'number', 'description': '要四舍五入的数字'},
     {'name': '小数位数', 'mapping': 'ndigits',
      'description': '保留的小数位数', 'default': 0}
-], category='系统/通用', tags=['数学', '四舍五入'])
+], category='系统/通用', tags=['数学', '四舍五入'],
+    returns={'type': 'any', 'description': '四舍五入后的数值'})
 def round_number(**kwargs):
     """对数字进行四舍五入
 
@@ -634,7 +644,7 @@ def round_number(**kwargs):
 
 @keyword_manager.register('转换为字符串', [
     {'name': '值', 'mapping': 'value', 'description': '要转换为字符串的值'}
-], category='系统/通用', tags=['转换', '字符串'])
+], category='系统/通用', tags=['转换', '字符串'], returns='str')
 def convert_to_string(**kwargs):
     """将值转换为字符串
 
@@ -671,7 +681,7 @@ def convert_to_string(**kwargs):
     {'name': '值', 'mapping': 'value', 'description': '要转换为整数的值'},
     {'name': '进制', 'mapping': 'base',
      'description': '数字进制（当值为字符串时）', 'default': 10}
-], category='系统/通用', tags=['转换', '整数'])
+], category='系统/通用', tags=['转换', '整数'], returns='int')
 def convert_to_integer(**kwargs):
     """将值转换为整数
 
@@ -716,7 +726,7 @@ def convert_to_integer(**kwargs):
 
 @keyword_manager.register('转换为浮点数', [
     {'name': '值', 'mapping': 'value', 'description': '要转换为浮点数的值'}
-], category='系统/通用', tags=['转换', '浮点数'])
+], category='系统/通用', tags=['转换', '浮点数'], returns='float')
 def convert_to_float(**kwargs):
     """将值转换为浮点数
 
@@ -754,7 +764,7 @@ def convert_to_float(**kwargs):
 
 @keyword_manager.register('转换为布尔值', [
     {'name': '值', 'mapping': 'value', 'description': '要转换为布尔值的值'}
-], category='系统/通用', tags=['转换', '布尔'])
+], category='系统/通用', tags=['转换', '布尔'], returns='bool')
 def convert_to_boolean(**kwargs):
     """将值转换为布尔值
 

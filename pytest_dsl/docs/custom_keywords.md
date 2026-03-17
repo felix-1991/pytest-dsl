@@ -41,7 +41,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
 
 @keyword_manager.register('打印消息', [
     {'name': '消息', 'mapping': 'message', 'description': '要打印的消息内容'},
-])
+], returns='bool')
 def print_message(**kwargs):
     """打印一条消息到控制台
     
@@ -60,7 +60,7 @@ def print_message(**kwargs):
 @keyword_manager.register('生成随机数', [
     {'name': '最小值', 'mapping': 'min_value', 'description': '随机数范围最小值'},
     {'name': '最大值', 'mapping': 'max_value', 'description': '随机数范围最大值'},
-])
+], returns={'type': 'int', 'description': '生成的随机整数'})
 def generate_random(**kwargs):
     """生成指定范围内的随机整数
     
@@ -94,6 +94,24 @@ def generate_random(**kwargs):
 - `name`: 中文参数名，用在 DSL 文件中调用该关键字时使用
 - `mapping`: 英文参数名，映射到函数参数名
 - `description`: 参数描述，用于生成文档
+
+## 返回值元数据
+
+推荐给自定义关键字显式声明 `returns`，这样关键字查询 API、HTML 文档和远程关键字注册都能直接感知返回类型。
+
+```python
+@keyword_manager.register('获取Token', [
+    {'name': '用户', 'mapping': 'user', 'description': '用户名'}
+], returns='str')
+def get_token(**kwargs):
+    return 'token-123'
+```
+
+也支持带说明的完整写法：
+
+```python
+returns={'type': 'list[dict]', 'description': '查询结果列表'}
+```
 
 ## 使用上下文
 

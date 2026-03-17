@@ -94,6 +94,17 @@ class KeywordInfo:
         return ""
 
     @property
+    def returns(self) -> Optional[Dict[str, str]]:
+        """获取结构化返回值信息"""
+        returns = self.info.get('returns')
+        if returns:
+            return {
+                'type': returns.get('type', ''),
+                'description': returns.get('description', '')
+            }
+        return None
+
+    @property
     def file_location(self) -> Optional[str]:
         """获取文件位置（仅适用于项目自定义关键字）"""
         if (self.category == 'project_custom' and
@@ -242,6 +253,11 @@ class KeywordFormatter:
             if doc_lines:
                 lines.append(f"  说明: {doc_lines[0]}")
 
+        if keyword_info.returns:
+            lines.append(f"  返回类型: {keyword_info.returns['type']}")
+            if keyword_info.returns.get('description'):
+                lines.append(f"  返回说明: {keyword_info.returns['description']}")
+
         # 来源信息
         source_info = keyword_info.source_info
         if source_info.get('module'):
@@ -280,6 +296,9 @@ class KeywordFormatter:
         # 函数文档
         if keyword_info.documentation:
             keyword_data['documentation'] = keyword_info.documentation
+
+        if keyword_info.returns:
+            keyword_data['returns'] = keyword_info.returns
 
         return keyword_data
 

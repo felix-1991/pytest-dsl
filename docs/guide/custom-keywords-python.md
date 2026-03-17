@@ -23,7 +23,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
 @keyword_manager.register('关键字名称', [
     {'name': '参数显示名', 'mapping': 'param_name', 'description': '参数描述'},
     {'name': '可选参数', 'mapping': 'optional_param', 'description': '可选参数', 'default': '默认值'}
-], category='功能分类', tags=['标签1', '标签2'])
+], category='功能分类', tags=['标签1', '标签2'], returns='str')
 def keyword_function(**kwargs):
     """关键字功能描述"""
     # 获取参数
@@ -51,8 +51,37 @@ def keyword_function(**kwargs):
 
 - `category`: 功能分类（支持多级分类，如：`'数据/JSON'`、`'UI/浏览器'`、`'系统/调试'`等）
 - `tags`: 标签列表（可选，用于更细粒度的关键字标记）
+- `returns`: 返回值元数据（可选，推荐填写）
 
 您也可以创建自定义分类，如：`'业务逻辑/用户管理'`、`'测试工具/报告生成'` 等。
+
+### 返回值元数据
+
+推荐给 Python 自定义关键字显式声明 `returns`。这样关键字查询 API、HTML 文档和远程关键字注册都能直接感知返回类型，不需要再从 docstring 的 `Returns:` 文本里猜。
+
+支持两种写法：
+
+```python
+@keyword_manager.register('生成Token', [...], returns='str')
+def generate_token(**kwargs):
+    return 'token-123'
+```
+
+```python
+@keyword_manager.register(
+    '数据库查询',
+    [...],
+    returns={'type': 'list[dict]', 'description': '查询结果列表'}
+)
+def database_query(**kwargs):
+    return [{'id': 1, 'name': 'demo'}]
+```
+
+推荐规则：
+
+- 返回值明确时优先写 `returns`
+- 返回值不稳定时写 `returns='any'`
+- 如果没写 `returns`，框架会尝试从函数返回注解或 docstring 的 `Returns:` 自动推断
 
 ## 快速入门示例
 
@@ -87,7 +116,7 @@ from pytest_dsl.core.keyword_manager import keyword_manager
     {'name': '文本内容', 'mapping': 'text', 'description': '要处理的文本'},
     {'name': '操作类型', 'mapping': 'operation', 'description': '处理类型：upper/lower/title'},
     {'name': '去除空格', 'mapping': 'strip_spaces', 'description': '是否去除首尾空格', 'default': True}
-], category='数据/文本', tags=['文本处理', '字符串'])
+], category='数据/文本', tags=['文本处理', '字符串'], returns='str')
 def text_processor(**kwargs):
     """文本处理关键字"""
     text = kwargs.get('text', '')
@@ -113,7 +142,7 @@ def text_processor(**kwargs):
 @keyword_manager.register('生成随机字符串', [
     {'name': '长度', 'mapping': 'length', 'description': '字符串长度', 'default': 8},
     {'name': '类型', 'mapping': 'char_type', 'description': '字符类型：letters/digits/mixed', 'default': 'mixed'}
-], category='数据/生成', tags=['随机', '字符串', '生成'])
+], category='数据/生成', tags=['随机', '字符串', '生成'], returns='str')
 def generate_random_string(**kwargs):
     """生成随机字符串"""
     import random
@@ -169,7 +198,8 @@ from pytest_dsl.core.keyword_manager import keyword_manager
     {'name': '超时', 'mapping': 'timeout', 'description': '超时时间（秒）', 'default': 30},
     {'name': '重试次数', 'mapping': 'retries', 'description': '重试次数', 'default': 3},
     {'name': '验证SSL', 'mapping': 'verify_ssl', 'description': '是否验证SSL证书', 'default': True}
-], category='HTTP', tags=['HTTP', '请求', 'API'])
+], category='HTTP', tags=['HTTP', '请求', 'API'],
+    returns={'type': 'dict', 'description': '标准化的HTTP响应结果字典'})
 def http_request(**kwargs):
     """HTTP请求关键字，支持重试和错误处理"""
     url = kwargs.get('url')
@@ -230,7 +260,7 @@ def http_request(**kwargs):
     {'name': '期望状态码', 'mapping': 'expected_status', 'description': '期望的状态码', 'default': 200},
     {'name': 'JSON路径', 'mapping': 'json_path', 'description': 'JSONPath表达式', 'default': None},
     {'name': '期望值', 'mapping': 'expected_value', 'description': '期望的值', 'default': None}
-], category='HTTP', tags=['断言', 'API', '验证'])
+], category='HTTP', tags=['断言', 'API', '验证'], returns='bool')
 def api_assert(**kwargs):
     """API响应断言"""
     response = kwargs.get('response')

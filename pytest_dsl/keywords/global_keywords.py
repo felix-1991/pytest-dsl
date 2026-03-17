@@ -9,7 +9,8 @@ from pytest_dsl.core.global_context import global_context
         {"name": "值", "mapping": "value", "description": "全局变量的值"}
     ],
     category='系统/全局变量',
-    tags=['全局', '设置']
+    tags=['全局', '设置'],
+    returns={'type': 'dict', 'description': '包含 result、captures、session_state、metadata 的结果字典'}
 )
 def set_global_variable(name, value, context):
     """设置全局变量"""
@@ -33,7 +34,8 @@ def set_global_variable(name, value, context):
         {"name": "变量名", "mapping": "name", "description": "全局变量的名称"}
     ],
     category='系统/全局变量',
-    tags=['全局', '获取']
+    tags=['全局', '获取'],
+    returns={'type': 'dict', 'description': '包含 result、captures、session_state、metadata 的结果字典'}
 )
 def get_global_variable(name, context):
     """获取全局变量"""
@@ -59,7 +61,8 @@ def get_global_variable(name, context):
         {"name": "变量名", "mapping": "name", "description": "全局变量的名称"}
     ],
     category='系统/全局变量',
-    tags=['全局', '删除']
+    tags=['全局', '删除'],
+    returns={'type': 'dict', 'description': '包含 result、captures、session_state、metadata 的结果字典'}
 )
 def delete_global_variable(name, context):
     """删除全局变量"""
@@ -81,7 +84,8 @@ def delete_global_variable(name, context):
     name="清除所有全局变量",
     parameters=[],
     category='系统/全局变量',
-    tags=['全局', '清除']
+    tags=['全局', '清除'],
+    returns={'type': 'dict', 'description': '包含 result、captures、session_state、metadata 的结果字典'}
 )
 def clear_all_global_variables(context):
     """清除所有全局变量"""

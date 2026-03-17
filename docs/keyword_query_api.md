@@ -98,6 +98,10 @@ pytest_dsl.list_keywords(
           "description": "请求配置"
         }
       ],
+      "returns": {
+        "type": "dict",
+        "description": "包含 result、side_effects、metadata 的 HTTP 执行结果"
+      },
       "documentation": "发送HTTP请求并返回响应"
     }
   ]
@@ -138,6 +142,7 @@ for keyword_info in http_keywords:
 - `category`: 关键字类别
 - `source_info`: 来源信息
 - `parameters`: 参数列表
+- `returns`: 结构化返回值信息，包含 `type` 和可选的 `description`
 - `documentation`: 文档字符串
 - `file_location`: 文件位置（仅项目自定义关键字）
 - `remote_info`: 远程信息（仅远程关键字）
@@ -162,6 +167,10 @@ if keyword_info:
         print(f"参数: {param['name']} - {param['description']}")
         if 'default' in param:
             print(f"  默认值: {param['default']}")
+
+    if keyword_info.returns:
+        print(f"返回类型: {keyword_info.returns['type']}")
+        print(f"返回说明: {keyword_info.returns.get('description', '')}")
     
     # 文档
     if keyword_info.documentation:
@@ -242,6 +251,15 @@ def generate_keyword_docs():
                     if param.get('default') is not None:
                         line += f" (默认: `{param['default']}`)"
                     markdown.append(line + "\n")
+
+            if keyword.get('returns'):
+                markdown.append(
+                    f"**返回类型:** `{keyword['returns']['type']}`\n"
+                )
+                if keyword['returns'].get('description'):
+                    markdown.append(
+                        f"**返回说明:** {keyword['returns']['description']}\n"
+                    )
             
             markdown.append("\n")
     

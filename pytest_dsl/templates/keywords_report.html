@@ -47,6 +47,16 @@
                     <strong>说明:</strong> {{ keyword.documentation }}
                 </div>
             {% endif %}
+
+            {% if keyword.returns %}
+                <div class="documentation">
+                    <strong>返回类型:</strong> {{ keyword.returns.type }}
+                    {% if keyword.returns.description %}
+                        <br>
+                        <strong>返回说明:</strong> {{ keyword.returns.description }}
+                    {% endif %}
+                </div>
+            {% endif %}
         </div>
     </div>
 {% endmacro %}

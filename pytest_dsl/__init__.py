@@ -18,7 +18,7 @@ __version__ = "0.22.1"
 from pytest_dsl.core.dsl_executor import DSLExecutor
 
 # 关键字管理器
-from pytest_dsl.core.keyword_manager import keyword_manager, KeywordManager
+from pytest_dsl.core.keyword_manager import keyword_manager, KeywordManager, ReturnSpec
 
 # Hook系统
 from pytest_dsl.core.hookspecs import hookimpl, hookspec, DSLHookSpecs
@@ -107,7 +107,7 @@ __all__ = [
     'DSLExecutor', 'Executor',
 
     # 关键字管理
-    'keyword_manager', 'KeywordManager',
+    'keyword_manager', 'KeywordManager', 'ReturnSpec',
     'custom_keyword_manager',
 
     # 关键字加载器
@@ -203,7 +203,8 @@ def execute_dsl(content: str, context: dict = None,
 
 def register_keyword(name: str, parameters: list = None,
                      source_type: str = "external",
-                     source_name: str = "user_defined"):
+                     source_name: str = "user_defined",
+                     returns=None):
     """注册关键字的装饰器
 
     Args:
@@ -211,6 +212,7 @@ def register_keyword(name: str, parameters: list = None,
         parameters: 参数列表
         source_type: 来源类型
         source_name: 来源名称
+        returns: 返回值信息
 
     Returns:
         装饰器函数
@@ -222,7 +224,8 @@ def register_keyword(name: str, parameters: list = None,
         name=name,
         parameters=parameters,
         source_type=source_type,
-        source_name=source_name
+        source_name=source_name,
+        returns=returns
     )
 
 
