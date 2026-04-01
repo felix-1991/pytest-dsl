@@ -12,76 +12,90 @@ pytest-dsl - 基于pytest的DSL测试框架
 - 自定义关键字支持
 """
 
-__version__ = "0.22.1"
+__version__ = "0.23.0"
 
 # 核心执行器
-from pytest_dsl.core.dsl_executor import DSLExecutor
-
-# 关键字管理器
-from pytest_dsl.core.keyword_manager import keyword_manager, KeywordManager, ReturnSpec
-
-# Hook系统
-from pytest_dsl.core.hookspecs import hookimpl, hookspec, DSLHookSpecs
-from pytest_dsl.core.hook_manager import hook_manager, DSLHookManager
-from pytest_dsl.core.hookable_keyword_manager import hookable_keyword_manager
-
-# DSL格式校验
-from pytest_dsl.core.validator import (
-    DSLValidator,
-    DSLValidationError,
-    validate_dsl,
-    check_dsl_syntax
-)
-
 # 自动装饰器
 from pytest_dsl.core.auto_decorator import auto_dsl
+from pytest_dsl.core.context import TestContext
+
+# 自定义关键字管理器
+from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
+from pytest_dsl.core.dsl_executor import DSLExecutor
+from pytest_dsl.core.global_context import global_context
+from pytest_dsl.core.hook_manager import DSLHookManager, hook_manager
+from pytest_dsl.core.hookable_keyword_manager import hookable_keyword_manager
+
+# Hook系统
+from pytest_dsl.core.hookspecs import DSLHookSpecs, hookimpl, hookspec
+
+# 关键字加载器
+from pytest_dsl.core.keyword_loader import (
+    KeywordLoader,
+    categorize_keyword,
+    get_keyword_source_info,
+    group_keywords_by_source,
+    keyword_loader,
+    load_all_keywords,
+    scan_project_custom_keywords,
+)
+
+# 关键字管理器
+from pytest_dsl.core.keyword_manager import KeywordManager, ReturnSpec, keyword_manager
+
+# 关键字工具
+from pytest_dsl.core.keyword_utils import (
+    KeywordFormatter,
+    KeywordInfo,
+    KeywordLister,
+    KeywordListOptions,
+    generate_html_report,
+    get_keyword_info,
+    keyword_lister,
+    list_keywords,
+    search_keywords,
+)
+from pytest_dsl.core.lexer import get_lexer
 
 # 核心工具类
 from pytest_dsl.core.parser import Node, get_parser
-from pytest_dsl.core.lexer import get_lexer
-from pytest_dsl.core.context import TestContext
-from pytest_dsl.core.global_context import global_context
+
+# 远程服务器注册器
+from pytest_dsl.core.remote_server_registry import (
+    RemoteServerRegistry,
+    create_config_file_variable_provider,
+    create_database_variable_provider,
+    register_remote_server_with_variables,
+    remote_server_registry,
+)
+
+# DSL格式校验
+from pytest_dsl.core.validator import (
+    DSLValidationError,
+    DSLValidator,
+    check_dsl_syntax,
+    validate_dsl,
+)
 
 # 变量工具
 from pytest_dsl.core.variable_utils import VariableReplacer
 
-# 自定义关键字管理器
-from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
-
-# 远程服务器注册器
-from pytest_dsl.core.remote_server_registry import (
-    remote_server_registry, RemoteServerRegistry,
-    register_remote_server_with_variables,
-    create_database_variable_provider,
-    create_config_file_variable_provider
-)
-
 # 远程服务器配置加载器
 from pytest_dsl.core.yaml_loader import (
     load_remote_servers_from_yaml,
-    register_remote_servers_from_config
-)
-
-# 关键字加载器
-from pytest_dsl.core.keyword_loader import (
-    keyword_loader, KeywordLoader,
-    load_all_keywords, categorize_keyword, get_keyword_source_info,
-    group_keywords_by_source, scan_project_custom_keywords
-)
-
-# 关键字工具
-from pytest_dsl.core.keyword_utils import (
-    KeywordInfo, KeywordListOptions, KeywordFormatter, KeywordLister,
-    keyword_lister, list_keywords, get_keyword_info, search_keywords,
-    generate_html_report
+    register_remote_servers_from_config,
 )
 
 # 远程关键字功能
 try:
     from pytest_dsl.remote import (
-        remote_keyword_manager, RemoteKeywordManager, RemoteKeywordClient,
-        register_remote_server, register_multiple_servers
+        RemoteKeywordClient,
+        RemoteKeywordManager,
+        register_multiple_servers,
+        register_remote_server,
+        remote_keyword_manager,
     )
+
     _REMOTE_AVAILABLE = True
 except ImportError:
     # 如果远程功能依赖不可用，设置为None
@@ -101,53 +115,70 @@ KeywordLoader = KeywordLoader
 # 导出所有公共接口
 __all__ = [
     # 版本信息
-    '__version__',
-
+    "__version__",
     # 核心执行器
-    'DSLExecutor', 'Executor',
-
+    "DSLExecutor",
+    "Executor",
     # 关键字管理
-    'keyword_manager', 'KeywordManager', 'ReturnSpec',
-    'custom_keyword_manager',
-
+    "keyword_manager",
+    "KeywordManager",
+    "ReturnSpec",
+    "custom_keyword_manager",
     # 关键字加载器
-    'keyword_loader', 'KeywordLoader',
-    'load_all_keywords', 'categorize_keyword', 'get_keyword_source_info',
-    'group_keywords_by_source', 'scan_project_custom_keywords',
-
+    "keyword_loader",
+    "KeywordLoader",
+    "load_all_keywords",
+    "categorize_keyword",
+    "get_keyword_source_info",
+    "group_keywords_by_source",
+    "scan_project_custom_keywords",
     # 关键字工具
-    'KeywordInfo', 'KeywordListOptions', 'KeywordFormatter', 'KeywordLister',
-    'keyword_lister', 'list_keywords', 'get_keyword_info', 'search_keywords',
-    'generate_html_report',
-
+    "KeywordInfo",
+    "KeywordListOptions",
+    "KeywordFormatter",
+    "KeywordLister",
+    "keyword_lister",
+    "list_keywords",
+    "get_keyword_info",
+    "search_keywords",
+    "generate_html_report",
     # Hook系统
-    'hookimpl', 'hookspec', 'DSLHookSpecs',
-    'hook_manager', 'DSLHookManager', 'HookManager', 'hookable_keyword_manager',
-
+    "hookimpl",
+    "hookspec",
+    "DSLHookSpecs",
+    "hook_manager",
+    "DSLHookManager",
+    "HookManager",
+    "hookable_keyword_manager",
     # DSL校验
-    'DSLValidator', 'Validator',
-    'DSLValidationError',
-    'validate_dsl',
-    'check_dsl_syntax',
-
+    "DSLValidator",
+    "Validator",
+    "DSLValidationError",
+    "validate_dsl",
+    "check_dsl_syntax",
     # 自动装饰器
-    'auto_dsl',
-
+    "auto_dsl",
     # 核心组件
-    'Node', 'get_parser', 'get_lexer',
-    'TestContext', 'global_context',
-    'VariableReplacer',
-
+    "Node",
+    "get_parser",
+    "get_lexer",
+    "TestContext",
+    "global_context",
+    "VariableReplacer",
     # 远程关键字功能（如果可用）
-    'remote_keyword_manager', 'RemoteKeywordManager', 'RemoteKeywordClient',
-    'register_remote_server', 'register_multiple_servers',
-
+    "remote_keyword_manager",
+    "RemoteKeywordManager",
+    "RemoteKeywordClient",
+    "register_remote_server",
+    "register_multiple_servers",
     # 远程服务器注册器
-    'remote_server_registry', 'RemoteServerRegistry',
-    'register_remote_server_with_variables',
-    'create_database_variable_provider', 
-    'create_config_file_variable_provider',
-    'load_remote_servers_from_yaml', 'register_remote_servers_from_config',
+    "remote_server_registry",
+    "RemoteServerRegistry",
+    "register_remote_server_with_variables",
+    "create_database_variable_provider",
+    "create_config_file_variable_provider",
+    "load_remote_servers_from_yaml",
+    "register_remote_servers_from_config",
 ]
 
 # 快捷函数
@@ -179,8 +210,7 @@ def parse_dsl(content: str) -> Node:
     return parser.parse(content, lexer=lexer)
 
 
-def execute_dsl(content: str, context: dict = None,
-                enable_hooks: bool = True) -> any:
+def execute_dsl(content: str, context: dict = None, enable_hooks: bool = True) -> any:
     """执行DSL内容的便捷函数
 
     Args:
@@ -201,10 +231,13 @@ def execute_dsl(content: str, context: dict = None,
     return executor.execute(ast)
 
 
-def register_keyword(name: str, parameters: list = None,
-                     source_type: str = "external",
-                     source_name: str = "user_defined",
-                     returns=None):
+def register_keyword(
+    name: str,
+    parameters: list = None,
+    source_type: str = "external",
+    source_name: str = "user_defined",
+    returns=None,
+):
     """注册关键字的装饰器
 
     Args:
@@ -225,7 +258,7 @@ def register_keyword(name: str, parameters: list = None,
         parameters=parameters,
         source_type=source_type,
         source_name=source_name,
-        returns=returns
+        returns=returns,
     )
 
 
@@ -234,12 +267,12 @@ def check_version_compatibility():
     """检查版本兼容性"""
     try:
         import sys
+
         if sys.version_info < (3, 7):
             import warnings
+
             warnings.warn(
-                "pytest-dsl 需要 Python 3.7 或更高版本",
-                UserWarning,
-                stacklevel=2
+                "pytest-dsl 需要 Python 3.7 或更高版本", UserWarning, stacklevel=2
             )
     except Exception:
         pass
@@ -259,4 +292,5 @@ try:
     hook_manager.initialize()
 except Exception as e:
     import warnings
+
     warnings.warn(f"Hook管理器初始化失败: {e}", UserWarning, stacklevel=2)
