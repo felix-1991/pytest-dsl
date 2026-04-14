@@ -196,9 +196,6 @@ end
 # 运行测试
 pytest-dsl tests/user_api_test.dsl
 
-# 带详细输出
-pytest-dsl tests/user_api_test.dsl -v
-
 # 带配置文件运行
 pytest-dsl tests/user_api_test.dsl --yaml-vars config/dev.yaml
 ```

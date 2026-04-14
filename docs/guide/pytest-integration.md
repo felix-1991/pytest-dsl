@@ -108,9 +108,12 @@ class TestIntegration:
 @data: users.yaml
 @name: "用户API测试"
 
-user_id = [获取当前数据], 字段: "user_id"
-response = [HTTP请求], 地址: "https://api.example.com/users/{user_id}"
-[断言状态码], 响应: response, 期望: 200
+# user_id 由数据驱动数据集直接注入
+[HTTP请求], 客户端: "default", 保存响应: "response", 配置: '''
+    method: GET
+    url: https://api.example.com/users/${user_id}
+'''
+[断言], 条件: "${response.status_code} == 200", 消息: "状态码应为 200"
 ```
 
 自动转换为：
@@ -133,49 +136,35 @@ def test_data_driven_test(self, test_data):
 
 # 初始化测试环境
 base_url = "https://api.example.com"
-auth_token = [获取认证令牌], 用户名: "test_user", 密码: "test_pass"
-
-# 设置全局变量
-[设置上下文变量], 名称: "base_url", 值: base_url
-[设置上下文变量], 名称: "auth_token", 值: auth_token
+auth_token = "test-token"
 ```
 
 ## 传统集成方式
 
-除了 `auto_dsl` 装饰器，您也可以使用传统的 `run_dsl_file()` 函数：
-
-### 基本用法
-
-```python
-import pytest
-from pytest_dsl import run_dsl_file
-
-def test_hello_world():
-    """使用DSL文件进行测试"""
-    result = run_dsl_file("hello.dsl")
-    assert result.success
-
-def test_api_basic():
-    """API测试示例"""
-    result = run_dsl_file("api_basic.dsl")
-    assert result.success
-```
-
-### 参数化测试
+当前版本没有公开的 `run_dsl_file()` 便捷函数。
+如果不使用 `auto_dsl`，推荐在 pytest 用例里通过 `subprocess` 调用 `pytest-dsl` CLI：
 
 ```python
+import subprocess
 import pytest
-from pytest_dsl import run_dsl_file
+
 
 @pytest.mark.parametrize("dsl_file", [
     "hello.dsl",
-    "api_basic.dsl", 
-    "builtin_keywords.dsl"
+    "api_basic.dsl",
+    "builtin_keywords.dsl",
 ])
 def test_dsl_files(dsl_file):
-    """参数化测试多个DSL文件"""
-    result = run_dsl_file(dsl_file)
-    assert result.success, f"DSL文件 {dsl_file} 执行失败"
+    completed = subprocess.run(
+        ["pytest-dsl", dsl_file],
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, (
+        f"DSL文件 {dsl_file} 执行失败\n"
+        f"stdout:\n{completed.stdout}\n"
+        f"stderr:\n{completed.stderr}"
+    )
 ```
 
 ## Fixture 集成

@@ -31,16 +31,16 @@ features:
     details: 完美兼容pytest生态，可渐进式迁移现有测试项目
   - icon: 📊
     title: 丰富报告
-    details: 集成Allure测试报告，提供专业级的测试结果展示
+    details: 可结合pytest生态生成 HTML、Allure 等测试报告
   - icon: 🛡️
     title: 企业级特性
-    details: 支持环境隔离、变量管理、安全认证等企业级功能
+    details: 支持 YAML 变量管理、认证配置、远程扩展等工程化能力
   - icon: 🖥️
     title: UI测试支持
-    details: 内置Web UI测试关键字，支持浏览器自动化和界面交互测试
+    details: 可通过 pytest-dsl-ui 扩展包接入 Web UI 测试能力
   - icon: 🔨
     title: 开发工具
-    details: VS Code插件提供语法高亮、智能补全和错误检查，提升开发体验
+    details: 提供配套 VS Code 扩展和文档工具链，增强编辑体验
 ---
 
 ## 快速体验
@@ -61,7 +61,7 @@ uv pip install pytest-dsl
 
 ### VS Code 插件安装
 
-在VS Code扩展商店搜索 `pytest-dsl` 或直接安装：
+pytest-dsl 提供独立的 VS Code 扩展，可在扩展商店搜索 `pytest-dsl` 或直接安装：
 
 ::: code-group
 
@@ -78,7 +78,7 @@ code --install-extension felix-1991.pytest-dsl-support
 
 ### UI测试支持
 
-安装UI测试扩展包：
+UI 测试能力由独立扩展包提供，需要额外安装：
 
 ```bash
 pip install pytest-dsl-ui
@@ -170,7 +170,7 @@ class TestDSL:
 ### 🖥️ Web UI测试
 
 ```python
-# 使用UI关键字进行浏览器自动化测试
+# 通过 pytest-dsl-ui 扩展包提供的 UI 关键字进行浏览器自动化测试
 [打开浏览器], 浏览器类型: "chrome", 无头模式: false
 
 [访问页面], URL: "https://example.com"
@@ -228,7 +228,7 @@ token = [用户登录], 用户名: "admin"
 
 ### VSCode扩展功能
 
-pytest-dsl提供了专业的VSCode扩展，让开发体验更加流畅：
+以下能力来自独立的 VS Code 扩展，而非当前仓库主包直接内置：
 
 #### 📊 智能关键字管理
 - **关键字浏览器** - 侧边栏显示所有可用关键字

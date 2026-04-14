@@ -485,7 +485,8 @@ function 获取配置值 (配置路径, 默认值="") do
     [打印], 内容: "获取配置值: ${配置路径}"
     
     # 示例：假设配置已加载到全局变量中
-    配置值 = [获取全局变量], 变量名: ${配置路径}
+    config_result = [获取全局变量], 变量名: ${配置路径}
+    配置值 = ${config_result["result"]}
     
     if "${配置值}" == "" and "${默认值}" != "" do
         return ${默认值}
@@ -498,7 +499,8 @@ function 切换环境 (目标环境) do
     [打印], 内容: "切换环境: ${目标环境}"
     
     # 保存当前环境
-    当前环境 = [获取全局变量], 变量名: "current_environment"
+    env_result = [获取全局变量], 变量名: "current_environment"
+    当前环境 = ${env_result["result"]}
     [设置全局变量], 变量名: "previous_environment", 值: ${当前环境}
     
     # 加载新环境配置

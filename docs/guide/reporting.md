@@ -9,29 +9,36 @@ pytest-dsl 支持多种测试报告格式，帮助您更好地了解测试执行
 默认情况下，pytest-dsl 会在控制台输出测试执行信息：
 
 ```bash
-# 详细模式
-pytest-dsl hello.dsl -v
+# 执行单个 DSL 文件
+pytest-dsl hello.dsl
 
-# 静默模式
-pytest-dsl hello.dsl -q
-
-# 显示执行步骤
-pytest-dsl hello.dsl --show-steps
+# 加载 YAML 变量后执行
+pytest-dsl hello.dsl --yaml-vars config/dev.yaml
 ```
+
+`pytest-dsl` 当前只支持基础执行参数，不支持 `-v`、`-q`、`--show-steps` 这类 pytest 参数。
+如需 HTML、JUnit、Allure 等报告能力，请使用后文的 pytest 集成方式。
 
 ### 执行结果对象
 
 通过编程方式运行时，可以获取详细的执行结果：
 
 ```python
-from pytest_dsl import run_dsl_file
+import subprocess
+import time
 
-result = run_dsl_file("hello.dsl")
+start = time.time()
+completed = subprocess.run(
+    ["pytest-dsl", "hello.dsl"],
+    capture_output=True,
+    text=True,
+)
+duration = time.time() - start
 
-print(f"执行成功: {result.success}")
-print(f"执行时间: {result.duration}")
-print(f"执行步骤数: {result.step_count}")
-print(f"错误信息: {result.error_message}")
+print(f"执行成功: {completed.returncode == 0}")
+print(f"执行时间: {duration:.2f}s")
+print(f"标准输出: {completed.stdout}")
+print(f"错误输出: {completed.stderr}")
 ```
 
 ## HTML 报告
@@ -48,18 +55,17 @@ pip install pytest-html
 
 ```python
 # test_reports.py
-import pytest
-from pytest_dsl import run_dsl_file
+import subprocess
 
 def test_api_suite():
     """API测试套件"""
-    result = run_dsl_file("api_basic.dsl")
-    assert result.success
+    completed = subprocess.run(["pytest-dsl", "api_basic.dsl"])
+    assert completed.returncode == 0
 
 def test_auth_suite():
     """认证测试套件"""
-    result = run_dsl_file("auth_test.dsl")
-    assert result.success
+    completed = subprocess.run(["pytest-dsl", "auth_test.dsl"])
+    assert completed.returncode == 0
 ```
 
 运行并生成报告：
@@ -74,9 +80,10 @@ pytest test_reports.py --html=report.html --self-contained-html
 
 ```python
 # report_generator.py
-from pytest_dsl import run_dsl_file
 import datetime
 import json
+import subprocess
+import time
 
 class DSLReportGenerator:
     def __init__(self):
@@ -85,12 +92,17 @@ class DSLReportGenerator:
     def run_test_suite(self, dsl_files):
         """运行测试套件并收集结果"""
         for dsl_file in dsl_files:
-            result = run_dsl_file(dsl_file)
+            start = time.time()
+            completed = subprocess.run(
+                ["pytest-dsl", dsl_file],
+                capture_output=True,
+                text=True,
+            )
             self.results.append({
                 "file": dsl_file,
-                "success": result.success,
-                "duration": result.duration,
-                "error": result.error_message,
+                "success": completed.returncode == 0,
+                "duration": time.time() - start,
+                "error": completed.stderr.strip(),
                 "timestamp": datetime.datetime.now().isoformat()
             })
     
@@ -195,7 +207,7 @@ pip install allure-pytest
 ```python
 # test_allure_integration.py
 import allure
-from pytest_dsl import run_dsl_file
+import subprocess
 
 @allure.feature("API测试")
 @allure.story("用户管理")
@@ -203,8 +215,8 @@ from pytest_dsl import run_dsl_file
 def test_user_api():
     """用户API测试"""
     with allure.step("执行用户查询"):
-        result = run_dsl_file("get_user.dsl")
-        assert result.success
+        completed = subprocess.run(["pytest-dsl", "get_user.dsl"])
+        assert completed.returncode == 0
     
     with allure.step("验证响应数据"):
         # 可以添加额外的验证步骤
@@ -215,31 +227,38 @@ def test_user_api():
 def test_auth_login():
     """登录认证测试"""
     with allure.step("执行登录测试"):
-        result = run_dsl_file("auth_test.dsl")
-        assert result.success
+        completed = subprocess.run(["pytest-dsl", "auth_test.dsl"])
+        assert completed.returncode == 0
 ```
 
 ### 添加测试数据和附件
 
 ```python
 import allure
-from pytest_dsl import run_dsl_file
+import subprocess
+import time
 
 def test_with_attachments():
     """带附件的测试"""
     # 添加测试数据
     allure.attach("用户ID: 123", name="测试数据", attachment_type=allure.attachment_type.TEXT)
     
-    result = run_dsl_file("detailed_test.dsl")
+    start = time.time()
+    completed = subprocess.run(
+        ["pytest-dsl", "detailed_test.dsl"],
+        capture_output=True,
+        text=True,
+    )
+    duration = time.time() - start
     
     # 添加执行结果作为附件
     allure.attach(
-        f"执行时间: {result.duration}s\n错误信息: {result.error_message}",
+        f"执行时间: {duration:.2f}s\n错误信息: {completed.stderr}",
         name="执行结果",
         attachment_type=allure.attachment_type.TEXT
     )
     
-    assert result.success
+    assert completed.returncode == 0
 ```
 
 ### 生成 Allure 报告
@@ -263,7 +282,8 @@ allure generate allure-results -o allure-report --clean
 # json_report_generator.py
 import json
 import datetime
-from pytest_dsl import run_dsl_file
+import subprocess
+import time
 
 class JSONReportGenerator:
     def __init__(self):
@@ -276,13 +296,18 @@ class JSONReportGenerator:
     def run_and_report(self, dsl_files):
         """运行测试并生成JSON报告"""
         for dsl_file in dsl_files:
-            result = run_dsl_file(dsl_file)
+            start = time.time()
+            completed = subprocess.run(
+                ["pytest-dsl", dsl_file],
+                capture_output=True,
+                text=True,
+            )
             
             test_data = {
                 "name": dsl_file,
-                "status": "passed" if result.success else "failed",
-                "duration": result.duration,
-                "error_message": result.error_message,
+                "status": "passed" if completed.returncode == 0 else "failed",
+                "duration": time.time() - start,
+                "error_message": completed.stderr.strip(),
                 "timestamp": datetime.datetime.now().isoformat()
             }
             
@@ -324,10 +349,11 @@ if __name__ == "__main__":
 
 ```python
 # comprehensive_reporter.py
-from pytest_dsl import run_dsl_file
 import json
 import datetime
 import csv
+import subprocess
+import time
 
 class ComprehensiveReporter:
     def __init__(self):
@@ -339,14 +365,19 @@ class ComprehensiveReporter:
             group_name = test_group["name"]
             
             for dsl_file in test_group["files"]:
-                result = run_dsl_file(dsl_file)
+                start = time.time()
+                completed = subprocess.run(
+                    ["pytest-dsl", dsl_file],
+                    capture_output=True,
+                    text=True,
+                )
                 
                 self.results.append({
                     "group": group_name,
                     "file": dsl_file,
-                    "success": result.success,
-                    "duration": result.duration,
-                    "error": result.error_message,
+                    "success": completed.returncode == 0,
+                    "duration": time.time() - start,
+                    "error": completed.stderr.strip(),
                     "timestamp": datetime.datetime.now().isoformat()
                 })
     
@@ -441,7 +472,7 @@ if __name__ == "__main__":
 # performance_reporter.py
 import time
 import statistics
-from pytest_dsl import run_dsl_file
+import subprocess
 
 class PerformanceReporter:
     def __init__(self):
@@ -453,13 +484,17 @@ class PerformanceReporter:
         
         for i in range(iterations):
             start_time = time.time()
-            result = run_dsl_file(dsl_file)
+            completed = subprocess.run(
+                ["pytest-dsl", dsl_file],
+                capture_output=True,
+                text=True,
+            )
             end_time = time.time()
             
             execution_time = end_time - start_time
             execution_times.append(execution_time)
             
-            print(f"第{i+1}次执行: {execution_time:.3f}s, 状态: {'成功' if result.success else '失败'}")
+            print(f"第{i+1}次执行: {execution_time:.3f}s, 状态: {'成功' if completed.returncode == 0 else '失败'}")
         
         # 统计分析
         avg_time = statistics.mean(execution_times)

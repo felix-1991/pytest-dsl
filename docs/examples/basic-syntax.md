@@ -228,13 +228,11 @@ pytest-dsl basic_syntax.dsl
 
 ```python
 # test_basic_syntax.py
-import pytest
-from pytest_dsl import run_dsl_file
+from pytest_dsl import auto_dsl
 
-def test_basic_syntax():
-    """测试基本语法功能"""
-    result = run_dsl_file("basic_syntax.dsl")
-    assert result.success
+@auto_dsl(".")
+class TestBasicSyntax:
+    pass
 ```
 
 ## 输出示例
@@ -413,7 +411,10 @@ user = {
 }
 
 # 执行API测试
-[GET], ${api_url}/users/${user_id}
+[HTTP请求], 客户端: "default", 配置: '''
+    method: GET
+    url: ${api_url}/users/${user_id}
+'''
 ```
 
 这个基本语法示例涵盖了pytest-dsl的核心语法特性，为后续的高级功能学习打下基础。 

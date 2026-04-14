@@ -221,7 +221,8 @@ function 带认证的API调用 (方法, 路径, 数据="", token="") do
     # 获取token
     使用的Token = ${token}
     if "${使用的Token}" == "" do
-        使用的Token = [获取全局变量], 变量名: "current_token"
+        token_result = [获取全局变量], 变量名: "current_token"
+        使用的Token = ${token_result["result"]}
     end
     
     # 构建请求头
@@ -561,7 +562,8 @@ end
 
 # 可以通过全局变量配置行为
 function 环境感知操作 (操作类型) do
-    当前环境 = [获取全局变量], 变量名: "current_environment"
+    env_result = [获取全局变量], 变量名: "current_environment"
+    当前环境 = ${env_result["result"]}
     
     if "${当前环境}" == "prod" do
         [打印], 内容: "生产环境模式: ${操作类型}"
@@ -596,14 +598,10 @@ STANDARD_HEADERS = {
 }
 
 # 标准验证流程
+# 这里的“响应”应传入通过 `保存响应` 保存的原始响应对象
 function 标准API验证 (响应) do
     # 团队统一的API响应验证标准
     [断言], 条件: "response.status_code < 400", 消息: "API调用不应返回错误状态"
-    
-    # 标准响应时间验证
-    if response.elapsed.total_seconds() > 5 do
-        [打印], 内容: "警告: API响应时间超过5秒"
-    end
     
     # 标准头部验证
     [断言], 条件: "'Content-Type' in response.headers", 消息: "响应应包含Content-Type头"
@@ -669,7 +667,8 @@ function 切换环境 (环境名称) do
 end
 
 function 获取环境配置 (配置键) do
-    当前环境 = [获取全局变量], 变量名: "current_environment"
+    env_result = [获取全局变量], 变量名: "current_environment"
+    当前环境 = ${env_result["result"]}
     
     if "${当前环境}" == "" do
         [打印], 内容: "警告: 未设置当前环境，使用默认环境 'dev'"

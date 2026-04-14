@@ -174,6 +174,7 @@ g_token = "abc123"
 # 方式2：使用关键字
 [设置全局变量], 变量名: "session_id", 值: "xyz789"
 session_id = [获取全局变量], 变量名: "session_id"
+[打印], 内容: ${session_id["result"]}
 ```
 
 ## 流程控制

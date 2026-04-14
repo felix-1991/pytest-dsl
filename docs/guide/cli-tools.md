@@ -243,8 +243,9 @@ pytest-dsl-list --category project_custom --format html --output docs/custom_key
 # 查找特定关键字是否存在
 pytest-dsl-list --filter "关键字名称" --format text
 
-# 检查所有可用的关键字类别
-pytest-dsl-list --format json | jq '.summary.category_counts'
+# 导出 JSON 再检查所有可用的关键字类别
+pytest-dsl-list --format json --output keywords.json
+jq '.summary.category_counts' keywords.json
 ```
 
 #### 自动化环境生成工件
@@ -386,7 +387,8 @@ echo "文档生成完成！"
 echo "=== 检查关键字状态 ==="
 
 echo "1. 所有关键字统计："
-pytest-dsl-list --format json | jq '.summary'
+pytest-dsl-list --format json --output keywords.json
+jq '.summary' keywords.json
 
 echo "2. 内置关键字："
 pytest-dsl-list --category builtin --format text | head -20

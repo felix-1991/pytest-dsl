@@ -8,7 +8,7 @@
 
 pytest-dsl支持以下Python版本：
 
-- **Python 3.8+** （推荐Python 3.9或更高版本）
+- **Python 3.9+**
 - 支持Windows、macOS、Linux等主流操作系统
 
 ### 依赖检查

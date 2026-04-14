@@ -416,9 +416,11 @@ assert:
 
 # 断言网络响应内容
 [断言响应内容], 响应数据: "api_response", 断言类型: "status_code", 期望值: 200
-[断言响应内容], 响应数据: "api_response", 断言类型: "json_path", JSON路径: "$.data.length", 期望值: 10
+[断言响应内容], 响应数据: "api_response", 断言类型: "json_path", JSON路径: "data.length", 期望值: 10
 [断言响应内容], 响应数据: "api_response", 断言类型: "text_contains", 期望值: "success"
 ```
+
+这里的 `JSON路径` 当前使用简单的点号路径，例如 `data.length`，不是标准 JSONPath 语法。
 
 ## 其他操作
 

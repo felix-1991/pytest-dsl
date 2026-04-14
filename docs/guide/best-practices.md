@@ -254,14 +254,23 @@ class TestAPIEnvironments:
     ])
     def test_api_in_environment(self, env_config):
         """在不同环境中运行API测试"""
-        from pytest_dsl import run_dsl_file
-        
-        result = run_dsl_file(
-            "tests/api/health_check.dsl",
-            variables={"environment": env_config["name"]},
-            config_file=env_config["config"]
+        import subprocess
+
+        completed = subprocess.run(
+            [
+                "pytest-dsl",
+                "tests/api/health_check.dsl",
+                "--yaml-vars",
+                env_config["config"],
+            ],
+            capture_output=True,
+            text=True,
         )
-        assert result.success, f"API测试在{env_config['name']}环境中失败"
+        assert completed.returncode == 0, (
+            f"API测试在{env_config['name']}环境中失败\n"
+            f"stdout:\n{completed.stdout}\n"
+            f"stderr:\n{completed.stderr}"
+        )
 ```
 
 **利用pytest标记和过滤：**
@@ -716,7 +725,8 @@ function 初始化测试环境 (环境名称="test") do
 end
 
 function 获取环境变量 (变量名, 默认值="") do
-    环境变量值 = [获取全局变量], 变量名: ${变量名}
+    env_result = [获取全局变量], 变量名: ${变量名}
+    环境变量值 = ${env_result["result"]}
     
     if "${环境变量值}" == "" and "${默认值}" != "" do
         return ${默认值}
@@ -1103,7 +1113,8 @@ function 收集系统信息 () do
     [打印], 内容: "=== 系统信息收集 ==="
     
     # 收集环境变量
-    当前环境 = [获取全局变量], 变量名: "current_environment"
+    env_result = [获取全局变量], 变量名: "current_environment"
+    当前环境 = ${env_result["result"]}
     [打印], 内容: "当前环境: ${当前环境}"
     
     # 收集版本信息

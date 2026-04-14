@@ -1470,9 +1470,12 @@ def get_config(section, key, default=None):
 处理结果 = [文本处理], 文本内容: "  Hello World  ", 操作类型: "title", 去除空格: True
 
 # HTTP请求
-响应 = [HTTP请求], 地址: "https://api.github.com/users/octocat", 方法: "GET"
-[JSON断言], JSON数据: ${响应}, JSONPath: "$.login", 预期值: "octocat"
-[数据比较], 实际值: ${响应["status_code"]}, 预期值: 200
+[HTTP请求], 客户端: "default", 保存响应: "响应", 配置: '''
+    method: GET
+    url: https://api.github.com/users/octocat
+'''
+[JSON断言], JSON数据: ${响应.text}, JSONPath: "$.login", 预期值: "octocat"
+[数据比较], 实际值: ${响应.status_code}, 预期值: 200
 
 # 文件操作
 [文件操作], 操作类型: "write", 文件路径: "test_output.txt", 内容: "测试内容"
@@ -1484,8 +1487,9 @@ def get_config(section, key, default=None):
 加载数据 = [JSON文件处理], 操作类型: "load", 文件路径: "test_data.json"
 
 # 全局变量操作
-[设置全局变量], 变量名: "test_counter", 变量值: 100
+[设置全局变量], 变量名: "test_counter", 值: 100
 计数器值 = [获取全局变量], 变量名: "test_counter"
+[打印], 内容: ${计数器值["result"]}
 
 # 测试信息
 测试信息 = [获取测试信息]

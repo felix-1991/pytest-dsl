@@ -80,8 +80,11 @@ def http_request(**kwargs):
 # 在DSL中使用
 @name: "Python关键字使用示例"
 
-响应 = [HTTP请求], 地址: "https://api.github.com/users/octocat"
-[数据比较], 实际值: ${响应["status_code"]}, 预期值: 200
+[HTTP请求], 客户端: "default", 保存响应: "响应", 配置: '''
+    method: GET
+    url: https://api.github.com/users/octocat
+'''
+[数据比较], 实际值: ${响应.status_code}, 预期值: 200
 ```
 
 **优势**：
@@ -299,12 +302,17 @@ def http_request(**kwargs):
 function 创建测试用户 (用户名, 邮箱) do
     # 使用Python关键字作为基础能力
     用户数据 = {"username": ${用户名}, "email": ${邮箱}}
-    响应 = [HTTP请求], 地址: "/api/users", 方法: "POST", 数据: ${用户数据}
+    [HTTP请求], 客户端: "default", 保存响应: "响应", 配置: '''
+        method: POST
+        url: /api/users
+        request:
+            json: ${用户数据}
+    '''
     
     # DSL逻辑处理
-    if ${响应["status_code"]} == 201 do
+    if ${响应.status_code} == 201 do
         [打印], 内容: "用户创建成功: ${用户名}"
-        return ${响应["json"]["user_id"]}
+        return ${响应.json()["user_id"]}
     else
         [打印], 内容: "用户创建失败"
         return ""

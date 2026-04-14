@@ -409,6 +409,8 @@ class TestKeywordCompatibility:
 
 ### 远程测试
 
+下面的 DSL 示例使用的是前文定义的示例自定义关键字 `文件操作` 和 `批量数据处理`，不是框架内置关键字。
+
 ```python
 # test_remote_keywords.dsl
 @name: "远程关键字兼容性测试"

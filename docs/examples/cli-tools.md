@@ -130,7 +130,8 @@ pytest-dsl-list --format json --output docs/generated/keywords.json
 
 # 生成关键字统计报告
 echo "5. 生成统计报告..."
-pytest-dsl-list --format json | jq '.summary' > docs/generated/keywords_summary.json
+pytest-dsl-list --format json --output docs/generated/keywords.json
+jq '.summary' docs/generated/keywords.json > docs/generated/keywords_summary.json
 
 echo "文档生成完成！"
 echo "查看生成的文档："
@@ -171,7 +172,8 @@ echo "=== 检查项目关键字状态 ==="
 
 # 检查关键字总数
 echo "1. 关键字统计："
-pytest-dsl-list --format json | jq '.summary'
+pytest-dsl-list --format json --output keywords.json
+jq '.summary' keywords.json
 
 echo ""
 echo "2. 内置关键字列表："
@@ -179,7 +181,8 @@ pytest-dsl-list --category builtin --format text | head -20
 
 echo ""
 echo "3. 项目自定义关键字："
-custom_count=$(pytest-dsl-list --category project_custom --format json | jq '.summary.total_count')
+pytest-dsl-list --category project_custom --format json --output custom_keywords.json
+custom_count=$(jq '.summary.total_count' custom_keywords.json)
 if [ "$custom_count" -gt 0 ]; then
     echo "找到 $custom_count 个自定义关键字："
     pytest-dsl-list --category project_custom --format text
@@ -222,7 +225,8 @@ fi
 # 检查关键字加载
 echo ""
 echo "2. 检查关键字加载："
-total_keywords=$(pytest-dsl-list --format json | jq '.summary.total_count')
+pytest-dsl-list --format json --output keywords.json
+total_keywords=$(jq '.summary.total_count' keywords.json)
 if [ "$total_keywords" -gt 0 ]; then
     echo "✅ 成功加载 $total_keywords 个关键字"
 else
@@ -233,7 +237,8 @@ fi
 # 检查项目自定义关键字
 echo ""
 echo "3. 检查项目自定义关键字："
-custom_keywords=$(pytest-dsl-list --category project_custom --format json | jq '.summary.total_count')
+pytest-dsl-list --category project_custom --format json --output custom_keywords.json
+custom_keywords=$(jq '.summary.total_count' custom_keywords.json)
 echo "📋 找到 $custom_keywords 个项目自定义关键字"
 
 # 检查资源文件

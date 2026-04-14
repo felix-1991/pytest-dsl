@@ -247,7 +247,7 @@ end
 
 # 获取全局变量
 config_value = [获取全局变量], 变量名: "global_config"
-[打印], 内容: ${config_value}
+[打印], 内容: ${config_value["result"]}
 
 # 在不同测试文件间共享
 [设置全局变量], 变量名: "shared_token", 值: "abc123"

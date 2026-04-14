@@ -6,6 +6,9 @@
 
 pytest-dsl 依赖 pytest 运行，能以常规 pytest 方式接入各类 CI/CD 平台。下面给出常见平台的示例配置，按需裁剪使用。
 
+`pytest-dsl` 独立 CLI 目前只支持基础执行参数，例如 `path`、`--yaml-vars`、`--yaml-vars-dir`。
+如果流水线需要 `-v`、`--junit-xml`、`--html` 等 pytest 参数，请改走 pytest 集成入口。
+
 ## GitHub Actions
 
 ### 基本工作流
@@ -26,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.8, 3.9, '3.10', '3.11']
+        python-version: [3.9, '3.10', '3.11', '3.12']
 
     steps:
     - name: 检出代码
@@ -44,7 +47,7 @@ jobs:
 
     - name: 运行DSL测试
       run: |
-        pytest-dsl tests/*.dsl --verbose
+        pytest-dsl tests/
 
     - name: 运行pytest集成测试
       run: |
@@ -101,7 +104,7 @@ jobs:
 
     - name: 运行环境测试
       run: |
-        pytest-dsl tests/ --config=config/${{ matrix.environment }}.yaml
+        pytest-dsl tests/ --yaml-vars config/${{ matrix.environment }}.yaml
 
     - name: 生成Allure报告
       if: always()
@@ -144,22 +147,22 @@ jobs:
 
     - name: 安装依赖
       run: |
-        pip install pytest-dsl pytest-xdist
+        pip install pytest-dsl
 
     - name: 运行测试组
       run: |
         case "${{ matrix.test-group }}" in
           "基础功能")
-            pytest-dsl tests/basic/ -n auto
+            pytest-dsl tests/basic/
             ;;
           "API测试")
-            pytest-dsl tests/api/ -n auto
+            pytest-dsl tests/api/
             ;;
           "认证测试")
-            pytest-dsl tests/auth/ -n auto
+            pytest-dsl tests/auth/
             ;;
           "集成测试")
-            pytest-dsl tests/integration/ -n auto
+            pytest-dsl tests/integration/
             ;;
         esac
 
@@ -198,11 +201,9 @@ test:
   stage: test
   image: python:3.10
   script:
-    - pytest-dsl tests/ --verbose --junit-xml=report.xml
+    - pytest-dsl tests/
   artifacts:
     when: always
-    reports:
-      junit: report.xml
     paths:
       - test-results/
     expire_in: 1 week
@@ -211,11 +212,11 @@ test_multiple_versions:
   stage: test
   parallel:
     matrix:
-      - PYTHON_VERSION: ["3.8", "3.9", "3.10", "3.11"]
+      - PYTHON_VERSION: ["3.9", "3.10", "3.11", "3.12"]
   image: python:${PYTHON_VERSION}
   script:
     - pip install pytest-dsl
-    - pytest-dsl tests/ --verbose
+    - pytest-dsl tests/
 
 generate_reports:
   stage: report
@@ -286,12 +287,12 @@ pipeline {
             steps {
                 sh '''
                     . venv/bin/activate
-                    pytest-dsl tests/basic/ --verbose --junit-xml=basic-results.xml
+                    pytest-dsl tests/basic/
                 '''
             }
             post {
                 always {
-                    junit 'basic-results.xml'
+                    echo '如需 JUnit，请改走 pytest 集成入口'
                 }
             }
         }
@@ -302,7 +303,7 @@ pipeline {
                     steps {
                         sh '''
                             . venv/bin/activate
-                            pytest-dsl tests/api/ --config=config/${TEST_ENV}.yaml
+                            pytest-dsl tests/api/ --yaml-vars config/${TEST_ENV}.yaml
                         '''
                     }
                 }
@@ -313,7 +314,7 @@ pipeline {
                     steps {
                         sh '''
                             . venv/bin/activate
-                            pytest-dsl tests/performance/ --config=config/${TEST_ENV}.yaml
+                            pytest-dsl tests/performance/ --yaml-vars config/${TEST_ENV}.yaml
                         '''
                     }
                 }
@@ -435,12 +436,12 @@ pool:
 
 strategy:
   matrix:
-    Python38:
-      python.version: '3.8'
     Python39:
       python.version: '3.9'
     Python310:
       python.version: '3.10'
+    Python311:
+      python.version: '3.11'
 
 variables:
   pythonVersion: $(python.version)
@@ -457,13 +458,13 @@ steps:
   displayName: '安装依赖'
 
 - script: |
-    pytest-dsl tests/ --junit-xml=TEST-results.xml --html=report.html
+    pytest-dsl tests/
   displayName: '运行DSL测试'
 
 - task: PublishTestResults@2
   condition: always()
   inputs:
-    testResultsFiles: 'TEST-results.xml'
+    testResultsFiles: '**/TEST-*.xml'
     testRunTitle: 'DSL Tests - Python $(pythonVersion)'
 
 - task: PublishHtmlReport@1
@@ -487,7 +488,7 @@ stages:
     steps:
     - script: |
         pip install pytest-dsl
-        pytest-dsl tests/unit/ --verbose
+        pytest-dsl tests/unit/
       displayName: '运行单元测试'
 
   - job: IntegrationTests
@@ -498,7 +499,7 @@ stages:
     steps:
     - script: |
         pip install pytest-dsl
-        pytest-dsl tests/integration/ --verbose
+        pytest-dsl tests/integration/
       displayName: '运行集成测试'
 
 - stage: Deploy
@@ -514,7 +515,7 @@ stages:
         deploy:
           steps:
           - script: |
-              pytest-dsl tests/smoke/ --config=config/staging.yaml
+              pytest-dsl tests/smoke/ --yaml-vars config/staging.yaml
             displayName: '冒烟测试'
 ```
 
@@ -547,13 +548,13 @@ ENV PYTHONPATH=/app
 ENV TEST_ENV=docker
 
 # 运行测试
-CMD ["pytest-dsl", "tests/", "--verbose"]
+CMD ["pytest-dsl", "tests/"]
 ```
 
 ### docker-compose.yml
 
 ```yaml
-version: '3.8'
+version: '3.9'
 
 services:
   test-runner:
@@ -565,7 +566,7 @@ services:
       - api
     volumes:
       - ./test-results:/app/test-results
-    command: pytest-dsl tests/ --output-dir=/app/test-results
+    command: pytest-dsl tests/
 
   api:
     image: nginx:alpine
@@ -592,7 +593,8 @@ services:
 # slack_notifier.py
 import requests
 import json
-from pytest_dsl import run_dsl_file
+import subprocess
+import time
 
 def send_slack_notification(webhook_url, message):
     """发送Slack通知"""
@@ -610,11 +612,16 @@ def run_tests_with_notification(test_files, slack_webhook):
     results = []
     
     for test_file in test_files:
-        result = run_dsl_file(test_file)
+        start = time.time()
+        completed = subprocess.run(
+            ["pytest-dsl", test_file],
+            capture_output=True,
+            text=True,
+        )
         results.append({
             "file": test_file,
-            "success": result.success,
-            "duration": result.duration
+            "success": completed.returncode == 0,
+            "duration": time.time() - start
         })
     
     # 生成报告
@@ -649,7 +656,6 @@ if __name__ == "__main__":
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from pytest_dsl import run_dsl_file
 
 class EmailNotifier:
     def __init__(self, smtp_server, smtp_port, username, password):

@@ -408,7 +408,7 @@ response_data = '{"status": "success", "code": 200, "data": {"id": 123}}'
 
 # 在其他测试中使用
 token = [获取全局变量], 变量名: "api_token"
-[打印], 内容: "当前token: ${token}"
+[打印], 内容: "当前token: ${token['result']}"
 ```
 
 **参数：**
@@ -424,7 +424,7 @@ token = [获取全局变量], 变量名: "api_token"
 ```python
 # 获取全局变量
 current_user = [获取全局变量], 变量名: "current_user"
-[打印], 内容: "当前用户: ${current_user}"
+[打印], 内容: "当前用户: ${current_user['result']}"
 ```
 
 **参数：**
@@ -442,7 +442,7 @@ current_user = [获取全局变量], 变量名: "current_user"
 
 # 使用全局变量
 token = [获取全局变量], 变量名: "temp_token"
-[打印], 内容: "临时token: ${token}"
+[打印], 内容: "临时token: ${token['result']}"
 
 # 删除全局变量
 [删除全局变量], 变量名: "temp_token"

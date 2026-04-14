@@ -1479,7 +1479,7 @@ A: 检查以下几个方面：
 
 1. **确认配置文件已正确加载**：
 ```bash
-pytest-dsl tests/ --yaml-vars config.yaml -v
+pytest-dsl tests/ --yaml-vars config.yaml
 ```
 
 2. **检查环境变量是否设置**：
