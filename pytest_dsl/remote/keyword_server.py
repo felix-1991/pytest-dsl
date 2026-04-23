@@ -452,9 +452,14 @@ class RemoteKeywordServer:
         return self._ensure_serializable(processed_result)
 
     def _ensure_serializable(self, obj):
-        """确保对象可以被序列化为JSON"""
-        if self._is_serializable(obj):
+        """确保对象可以被XML-RPC安全传输"""
+        from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+
+        if obj is None or isinstance(obj, bool):
             return obj
+
+        if isinstance(obj, int):
+            return XMLRPCSerializer.safe_serialize_value(obj)
 
         # 如果不能序列化，尝试转换
         if isinstance(obj, dict):
@@ -464,6 +469,8 @@ class RemoteKeywordServer:
             return serializable_dict
         elif isinstance(obj, (list, tuple)):
             return [self._ensure_serializable(item) for item in obj]
+        elif self._is_serializable(obj):
+            return obj
         elif hasattr(obj, '__dict__'):
             return self._ensure_serializable(obj.__dict__)
         else:

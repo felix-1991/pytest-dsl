@@ -28,6 +28,7 @@ class XMLRPCSerializer:
     MAX_STRING_LENGTH = 10000  # 最大字符串长度
     MAX_INT_VALUE = 2**31 - 1  # XML-RPC int最大值
     MIN_INT_VALUE = -2**31     # XML-RPC int最小值
+    BIGINT_PREFIX = "__bigint__:"
     
     @staticmethod
     def is_serializable(value: Any) -> bool:
@@ -137,11 +138,11 @@ class XMLRPCSerializer:
         elif isinstance(value, int):
             # 检查整数范围
             if value > XMLRPCSerializer.MAX_INT_VALUE:
-                # 超出范围时使用特殊标记，服务器端会自动转换回整数
-                return f"__bigint__:{value}"
+                # 超出范围时使用特殊标记，接收端会自动转换回整数
+                return f"{XMLRPCSerializer.BIGINT_PREFIX}{value}"
             elif value < XMLRPCSerializer.MIN_INT_VALUE:
-                # 超出范围时使用特殊标记，服务器端会自动转换回整数
-                return f"__bigint__:{value}"
+                # 超出范围时使用特殊标记，接收端会自动转换回整数
+                return f"{XMLRPCSerializer.BIGINT_PREFIX}{value}"
             return value
 
         # 处理浮点数
@@ -204,6 +205,42 @@ class XMLRPCSerializer:
             return value
 
         # 其他类型返回原值
+        return value
+
+    @staticmethod
+    def restore_bigints(value: Any) -> Any:
+        """递归还原XML-RPC传输中被标记的大整数。
+
+        XML-RPC只支持32位整数。发送端会把超出范围的整数编码为
+        ``__bigint__:<digits>`` 字符串，接收端在进入业务逻辑前还原。
+        """
+        if isinstance(value, str):
+            if value.startswith(XMLRPCSerializer.BIGINT_PREFIX):
+                bigint_text = value[len(XMLRPCSerializer.BIGINT_PREFIX):]
+                if (bigint_text.isdigit() or
+                        (bigint_text.startswith("-") and
+                         bigint_text[1:].isdigit())):
+                    return int(bigint_text)
+            return value
+
+        if isinstance(value, dict):
+            return {
+                key: XMLRPCSerializer.restore_bigints(item)
+                for key, item in value.items()
+            }
+
+        if isinstance(value, list):
+            return [
+                XMLRPCSerializer.restore_bigints(item)
+                for item in value
+            ]
+
+        if isinstance(value, tuple):
+            return tuple(
+                XMLRPCSerializer.restore_bigints(item)
+                for item in value
+            )
+
         return value
     
     @staticmethod
@@ -469,7 +506,8 @@ class XMLRPCSerializer:
                     raise ValueError(f"参数 '{key}' 无法序列化: {error_msg}")
 
             # 执行调用（使用转换后的参数）
-            return method(*converted_args, **converted_kwargs)
+            result = method(*converted_args, **converted_kwargs)
+            return XMLRPCSerializer.restore_bigints(result)
 
         except xmlrpc.client.ProtocolError as e:
             raise Exception(f"XML-RPC协议错误: {e.errcode} {e.errmsg}")
@@ -488,4 +526,4 @@ class XMLRPCSerializer:
 
 
 # 创建全局序列化器实例，方便直接使用
-xmlrpc_serializer = XMLRPCSerializer() 
+xmlrpc_serializer = XMLRPCSerializer()
