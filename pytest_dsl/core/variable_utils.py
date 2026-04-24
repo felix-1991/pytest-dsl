@@ -100,7 +100,7 @@ class VariableReplacer:
                 pass
         return value
 
-    def replace_in_string(self, value: str) -> Any:
+    def replace_in_string(self, value: str, expression_evaluator=None) -> Any:
         """替换字符串中的变量引用
 
         支持多种访问语法：
@@ -112,6 +112,8 @@ class VariableReplacer:
 
         Args:
             value: 包含变量引用的字符串
+            expression_evaluator: 可选的表达式求值回调。提供时，占位符
+                内容会按 DSL 表达式语法求值，而不是只按变量路径解析。
 
         Returns:
             替换后的字符串或原始对象（如果整个值是单一变量引用）
@@ -132,8 +134,10 @@ class VariableReplacer:
             # 如果整个字符串就是一个变量引用，直接返回变量值（保持原始类型）
             var_ref = full_match.group(1)
             try:
+                if expression_evaluator:
+                    return expression_evaluator(var_ref)
                 return self._parse_variable_path(var_ref)
-            except (KeyError, IndexError, TypeError) as e:
+            except (KeyError, IndexError, TypeError, ValueError) as e:
                 raise KeyError(f"无法解析变量引用 '${{{var_ref}}}': {str(e)}")
 
         # 如果字符串中包含多个变量引用或混合了字面量，进行字符串替换
@@ -145,11 +149,14 @@ class VariableReplacer:
             var_ref = match.group(1)  # 例如: "users[0].name" 或 "data['key']"
 
             try:
-                var_value = self._parse_variable_path(var_ref)
+                if expression_evaluator:
+                    var_value = expression_evaluator(var_ref)
+                else:
+                    var_value = self._parse_variable_path(var_ref)
                 # 替换变量引用，转换为字符串
                 result = result[:match.start()] + str(var_value) + \
                     result[match.end():]
-            except (KeyError, IndexError, TypeError) as e:
+            except (KeyError, IndexError, TypeError, ValueError) as e:
                 raise KeyError(f"无法解析变量引用 '${{{var_ref}}}': {str(e)}")
 
         return result
@@ -267,46 +274,72 @@ class VariableReplacer:
         if access_token.startswith('[') and access_token.endswith(']'):
             # 数组索引或字典键访问
             key_content = access_token[1:-1].strip()
-
-            # 处理字符串键（带引号）
-            if (key_content.startswith('"') and key_content.endswith('"')) or \
-               (key_content.startswith("'") and key_content.endswith("'")):
-                key = key_content[1:-1]  # 去掉引号
-                if isinstance(current_value, dict):
-                    if key not in current_value:
-                        raise KeyError(f"字典中不存在键 '{key}'")
-                    return current_value[key]
-                else:
-                    raise TypeError(
-                        f"无法在 {type(current_value).__name__} 类型上使用字符串键访问")
-
-            # 处理数字索引
-            try:
-                index = int(key_content)
-                if isinstance(current_value, (list, tuple)):
-                    if index >= len(current_value) or index < -len(current_value):
-                        raise IndexError(
-                            f"数组索引 {index} 超出范围，数组长度为 {len(current_value)}")
-                    return current_value[index]
-                elif isinstance(current_value, dict):
-                    # 字典也可以用数字键
-                    str_key = str(index)
-                    if str_key not in current_value and index not in current_value:
-                        raise KeyError(f"字典中不存在键 '{index}' 或 '{str_key}'")
-                    return current_value.get(index, current_value.get(str_key))
-                else:
-                    raise TypeError(
-                        f"无法在 {type(current_value).__name__} 类型上使用索引访问")
-            except ValueError:
-                raise ValueError(f"无效的索引格式: '{key_content}'")
+            key = self._resolve_index_key(key_content)
+            return self.access_by_key(current_value, key)
 
         else:
             # 属性访问（点号语法）
-            if isinstance(current_value, dict) and access_token in current_value:
-                return current_value[access_token]
-            else:
-                raise KeyError(
-                    f"无法访问属性 '{access_token}'，当前值类型是 {type(current_value).__name__}")
+            return self.access_property(current_value, access_token)
+
+    def _resolve_index_key(self, key_content: str):
+        """解析方括号中的索引内容。
+
+        支持数字字面量、字符串键，以及由变量提供的动态索引。
+        """
+        if (key_content.startswith('"') and key_content.endswith('"')) or \
+           (key_content.startswith("'") and key_content.endswith("'")):
+            return key_content[1:-1]
+
+        try:
+            return int(key_content)
+        except ValueError:
+            pass
+
+        var_pattern = r'^[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*$'
+        if re.match(var_pattern, key_content):
+            try:
+                return self.get_variable(key_content)
+            except KeyError:
+                pass
+
+        raise ValueError(f"无效的索引格式: '{key_content}'")
+
+    def access_by_key(self, current_value, key):
+        """使用求值后的索引或键访问集合。"""
+        if isinstance(current_value, (list, tuple)):
+            if not isinstance(key, int):
+                raise TypeError(
+                    f"无法在 {type(current_value).__name__} 类型上使用字符串键访问")
+            if key >= len(current_value) or key < -len(current_value):
+                raise IndexError(
+                    f"数组索引 {key} 超出范围，数组长度为 {len(current_value)}")
+            return current_value[key]
+
+        if isinstance(current_value, dict):
+            if isinstance(key, int):
+                str_key = str(key)
+                if key not in current_value and str_key not in current_value:
+                    raise KeyError(f"字典中不存在键 '{key}' 或 '{str_key}'")
+                return current_value.get(key, current_value.get(str_key))
+
+            if key not in current_value:
+                raise KeyError(f"字典中不存在键 '{key}'")
+            return current_value[key]
+
+        if isinstance(key, int):
+            raise TypeError(
+                f"无法在 {type(current_value).__name__} 类型上使用索引访问")
+
+        raise TypeError(
+            f"无法在 {type(current_value).__name__} 类型上使用字符串键访问")
+
+    def access_property(self, current_value, property_name: str):
+        """使用点号语法访问字典属性。"""
+        if isinstance(current_value, dict) and property_name in current_value:
+            return current_value[property_name]
+
+        raise KeyError(
+            f"无法访问属性 '{property_name}'，当前值类型是 {type(current_value).__name__}")
 
     def replace_in_dict(self, data: Dict[str, Any], visited: Optional[set] = None) -> Dict[str, Any]:
         """递归替换字典中的变量引用

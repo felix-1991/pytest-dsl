@@ -39,6 +39,7 @@ precedence = (
     ('left', 'PLUS', 'MINUS'),  # 加减运算符优先级
     ('left', 'TIMES', 'DIVIDE', 'MODULO'),  # 乘除模运算符优先级
     ('right', 'UMINUS'),  # 一元负号优先级（高于乘除）
+    ('left', 'INDEX_ACCESS'),  # 下标和属性访问优先级（最高）
     ('right', 'EQUALS'),
 )
 
@@ -201,8 +202,18 @@ def p_expr_atom(p):
                  | list_expr
                  | dict_expr
                  | MINUS expr_atom %prec UMINUS
-                 | LPAREN expression RPAREN'''
-    if p[1] == '(':
+                 | LPAREN expression RPAREN
+                 | expr_atom INDEX_LBRACKET expression RBRACKET %prec INDEX_ACCESS
+                 | expr_atom DOT ID %prec INDEX_ACCESS'''
+    if len(p) == 5 and p.slice[2].type == 'INDEX_LBRACKET':
+        access_line = getattr(p.slice[2], 'lineno', None)
+        p[0] = Node('IndexAccessExpr', children=[p[1], p[3]],
+                    line_number=access_line)
+    elif len(p) == 4 and p.slice[2].type == 'DOT':
+        access_line = getattr(p.slice[2], 'lineno', None)
+        p[0] = Node('PropertyAccessExpr', children=[p[1]], value=p[3],
+                    line_number=access_line)
+    elif p[1] == '(':
         # 处理括号表达式，直接返回括号内的表达式节点
         p[0] = p[2]
     elif p[1] == '-':

@@ -1,4 +1,5 @@
 import ply.lex as lex
+import re
 
 # 保留字（关键字）
 reserved = {
@@ -38,6 +39,7 @@ tokens = [
     'LPAREN',
     'RPAREN',
     'LBRACKET',
+    'INDEX_LBRACKET',
     'RBRACKET',
     'LBRACE',    # 左大括号 {，用于字典字面量
     'RBRACE',    # 右大括号 }，用于字典字面量
@@ -64,12 +66,12 @@ tokens = [
     'DIVIDE',    # 除法 /
     'MODULO',    # 模运算 %
     'PIPE',      # 管道符 |，用于远程关键字调用
+    'DOT',       # 点号 .，用于表达式属性访问
 ] + list(reserved.values())
 
 # 正则表达式定义 token
 t_LPAREN = r'\('
 t_RPAREN = r'\)'
-t_LBRACKET = r'\['
 t_RBRACKET = r'\]'
 t_LBRACE = r'\{'
 t_RBRACE = r'\}'
@@ -87,6 +89,21 @@ t_MINUS = r'-'
 t_TIMES = r'\*'
 t_DIVIDE = r'/'
 t_MODULO = r'%'
+t_DOT = r'\.'
+
+
+def t_LBRACKET(t):
+    r'\['
+    if t.lexpos > 0:
+        prev_char = t.lexer.lexdata[t.lexpos - 1]
+        if (prev_char.isalnum() or prev_char == '_' or
+                prev_char in (']', ')', '}')):
+            prefix = t.lexer.lexdata[:t.lexpos]
+            match = re.search(r'[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*$', prefix)
+            preceding_word = match.group(0) if match else None
+            if preceding_word not in reserved:
+                t.type = 'INDEX_LBRACKET'
+    return t
 
 # 增加PLACEHOLDER规则，匹配 ${变量名} 格式，支持点号、数组索引和字典键访问
 # 匹配: ${variable}, ${obj.prop}, ${arr[0]}, ${dict["key"]}, ${obj[0].prop} 等

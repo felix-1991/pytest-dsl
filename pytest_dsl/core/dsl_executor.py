@@ -297,7 +297,8 @@ class DSLExecutor:
                 # 字符串字面量，如果包含变量占位符则进行替换，否则直接返回
                 if '${' in expr_node.value:
                     return self.variable_replacer.replace_in_string(
-                        expr_node.value)
+                        expr_node.value,
+                        expression_evaluator=self._eval_interpolation_expression)
                 else:
                     return expr_node.value
             elif expr_node.type == 'NumberLiteral':
@@ -313,7 +314,8 @@ class DSLExecutor:
             elif expr_node.type == 'PlaceholderRef':
                 # 变量占位符 ${var}，进行变量替换
                 return self.variable_replacer.replace_in_string(
-                    expr_node.value)
+                    expr_node.value,
+                    expression_evaluator=self._eval_interpolation_expression)
             elif expr_node.type == 'KeywordCall':
                 return self.execute(expr_node)
             elif expr_node.type == 'ListExpr':
@@ -344,6 +346,10 @@ class DSLExecutor:
             elif expr_node.type == 'UnaryExpr':
                 # 处理一元表达式（如负号）
                 return self._eval_unary_expr(expr_node)
+            elif expr_node.type == 'IndexAccessExpr':
+                return self._eval_index_access_expr(expr_node)
+            elif expr_node.type == 'PropertyAccessExpr':
+                return self._eval_property_access_expr(expr_node)
             elif expr_node.type == 'LogicalExpr':
                 # 处理逻辑表达式
                 return self._eval_logical_expr(expr_node)
@@ -372,10 +378,12 @@ class DSLExecutor:
                 if match:
                     var_ref = match.group(1)
                     # 使用新的变量路径解析器
-                    return self.variable_replacer._parse_variable_path(var_ref)
+                    return self._eval_interpolation_expression(var_ref)
                 elif '${' in value:
                     # 如果包含变量占位符，则替换字符串中的所有变量引用
-                    return self.variable_replacer.replace_in_string(value)
+                    return self.variable_replacer.replace_in_string(
+                        value,
+                        expression_evaluator=self._eval_interpolation_expression)
                 else:
                     # 对于不包含 ${} 的普通字符串，检查是否为单纯的变量名
                     # 只有当字符串是有效的变量名格式且确实存在该变量时，才当作变量处理
@@ -393,6 +401,33 @@ class DSLExecutor:
             context_info = f"解析表达式值 '{value}'"
             self._handle_exception_with_line_info(
                 e, context_info=context_info)
+
+    def _eval_interpolation_expression(self, expr_text: str):
+        """按 DSL 表达式语法求值字符串占位符内部内容。"""
+        from pytest_dsl.core.lexer import get_lexer
+        from pytest_dsl.core.parser import parse_with_error_handling
+
+        wrapped_dsl = f"__placeholder_value = {expr_text}"
+        ast, errors = parse_with_error_handling(wrapped_dsl, lexer=get_lexer())
+        if errors:
+            messages = "; ".join(error.get('message', str(error))
+                                 for error in errors)
+            raise ValueError(f"无效的占位符表达式 '{expr_text}': {messages}")
+
+        assignment = ast.children[1].children[0]
+        return self.eval_expression(assignment.children[0])
+
+    def _eval_index_access_expr(self, expr_node):
+        """求值下标访问表达式，如 items[i]。"""
+        collection = self.eval_expression(expr_node.children[0])
+        key = self.eval_expression(expr_node.children[1])
+        return self.variable_replacer.access_by_key(collection, key)
+
+    def _eval_property_access_expr(self, expr_node):
+        """求值属性访问表达式，如 users[i].name。"""
+        current_value = self.eval_expression(expr_node.children[0])
+        return self.variable_replacer.access_property(current_value,
+                                                      expr_node.value)
 
     def _eval_comparison_expr(self, expr_node):
         """
