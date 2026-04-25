@@ -10,6 +10,12 @@ from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.core.global_context import global_context
 from pytest_dsl.core.context import TestContext
 from pytest_dsl.core.variable_utils import VariableReplacer
+from pytest_dsl.core.expression_utils import (
+    evaluate_arithmetic_operation,
+    evaluate_comparison_operation,
+    evaluate_logical_operation,
+    evaluate_unary_operation,
+)
 from pytest_dsl.core.execution_tracker import (
     get_or_create_tracker, ExecutionTracker
 )
@@ -429,51 +435,8 @@ class DSLExecutor:
             right_value = self.eval_expression(expr_node.children[1])
             operator = expr_node.value  # 操作符: >, <, >=, <=, ==, !=
 
-            # 尝试类型转换
-            if isinstance(left_value, str) and str(left_value).isdigit():
-                left_value = int(left_value)
-            if isinstance(right_value, str) and str(right_value).isdigit():
-                right_value = int(right_value)
-
-            # 根据操作符执行相应的比较操作
-            if operator == '>':
-                return left_value > right_value
-            elif operator == '<':
-                return left_value < right_value
-            elif operator == '>=':
-                return left_value >= right_value
-            elif operator == '<=':
-                return left_value <= right_value
-            elif operator == '==':
-                return left_value == right_value
-            elif operator == '!=':
-                return left_value != right_value
-            elif operator == 'in':
-                # 成员运算符：检查 left_value 是否在 right_value 中
-                if isinstance(right_value, (list, tuple, set)):
-                    return left_value in right_value
-                elif isinstance(right_value, dict):
-                    return left_value in right_value.keys()
-                elif isinstance(right_value, str):
-                    # 字符串包含检查
-                    return str(left_value) in right_value
-                else:
-                    # 尝试转换为字符串进行包含检查
-                    return str(left_value) in str(right_value)
-            elif operator == 'not in':
-                # 非成员运算符：检查 left_value 是否不在 right_value 中
-                if isinstance(right_value, (list, tuple, set)):
-                    return left_value not in right_value
-                elif isinstance(right_value, dict):
-                    return left_value not in right_value.keys()
-                elif isinstance(right_value, str):
-                    # 字符串不包含检查
-                    return str(left_value) not in right_value
-                else:
-                    # 尝试转换为字符串进行不包含检查
-                    return str(left_value) not in str(right_value)
-            else:
-                raise Exception(f"未知的比较操作符: {operator}")
+            return evaluate_comparison_operation(
+                left_value, right_value, operator)
         except Exception as e:
             context_info = f"比较表达式求值 '{operator}'"
             self._handle_exception_with_line_info(e, expr_node, context_info)
@@ -491,50 +454,8 @@ class DSLExecutor:
             right_value = self.eval_expression(expr_node.children[1])
             operator = expr_node.value  # 操作符: +, -, *, /, %
 
-            # 尝试类型转换 - 如果是字符串数字则转为数字
-            if (isinstance(left_value, str) and
-                    str(left_value).replace('.', '', 1).isdigit()):
-                left_value = float(left_value)
-                # 如果是整数则转为整数
-                if left_value.is_integer():
-                    left_value = int(left_value)
-
-            if (isinstance(right_value, str) and
-                    str(right_value).replace('.', '', 1).isdigit()):
-                right_value = float(right_value)
-                # 如果是整数则转为整数
-                if right_value.is_integer():
-                    right_value = int(right_value)
-
-            # 进行相应的算术运算
-            if operator == '+':
-                # 对于字符串，+是连接操作
-                if isinstance(left_value, str) or isinstance(right_value, str):
-                    return str(left_value) + str(right_value)
-                return left_value + right_value
-            elif operator == '-':
-                return left_value - right_value
-            elif operator == '*':
-                # 如果其中一个是字符串，另一个是数字，则进行字符串重复
-                if (isinstance(left_value, str) and
-                        isinstance(right_value, (int, float))):
-                    return left_value * int(right_value)
-                elif (isinstance(right_value, str) and
-                      isinstance(left_value, (int, float))):
-                    return right_value * int(left_value)
-                return left_value * right_value
-            elif operator == '/':
-                # 除法时检查除数是否为0
-                if right_value == 0:
-                    raise Exception("除法错误: 除数不能为0")
-                return left_value / right_value
-            elif operator == '%':
-                # 模运算时检查除数是否为0
-                if right_value == 0:
-                    raise Exception("模运算错误: 除数不能为0")
-                return left_value % right_value
-            else:
-                raise Exception(f"未知的算术操作符: {operator}")
+            return evaluate_arithmetic_operation(
+                left_value, right_value, operator)
         except Exception as e:
             context_info = f"算术表达式求值 '{operator}'"
             self._handle_exception_with_line_info(e, expr_node, context_info)
@@ -550,26 +471,8 @@ class DSLExecutor:
         try:
             operator = expr_node.value  # 操作符: and, or, not
             
-            if operator == 'not':
-                # 一元逻辑运算符: not
-                operand_value = self.eval_expression(expr_node.children[0])
-                # 将值转换为布尔值
-                return not bool(operand_value)
-            else:
-                # 二元逻辑运算符: and, or
-                left_value = self.eval_expression(expr_node.children[0])
-                right_value = self.eval_expression(expr_node.children[1])
-                
-                # 将值转换为布尔值
-                left_bool = bool(left_value)
-                right_bool = bool(right_value)
-                
-                if operator == 'and':
-                    return left_bool and right_bool
-                elif operator == 'or':
-                    return left_bool or right_bool
-                else:
-                    raise Exception(f"未知的逻辑操作符: {operator}")
+            return evaluate_logical_operation(
+                expr_node.children, operator, self.eval_expression)
         except Exception as e:
             context_info = f"逻辑表达式求值 '{operator}'"
             self._handle_exception_with_line_info(e, expr_node, context_info)
@@ -580,18 +483,7 @@ class DSLExecutor:
         try:
             operator = expr_node.value
             operand_value = self.eval_expression(expr_node.children[0])
-
-            # 尝试类型转换 - 如果是字符串数字则转为数字
-            if (isinstance(operand_value, str) and
-                    str(operand_value).replace('.', '', 1).isdigit()):
-                operand_value = float(operand_value)
-                if operand_value.is_integer():
-                    operand_value = int(operand_value)
-
-            if operator == '-':
-                return -operand_value
-
-            raise Exception(f"未知的一元操作符: {operator}")
+            return evaluate_unary_operation(operand_value, operator)
         except Exception as e:
             context_info = f"一元表达式求值 '{operator}'"
             self._handle_exception_with_line_info(e, expr_node, context_info)

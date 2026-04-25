@@ -7,6 +7,12 @@ import json
 from typing import Any, Dict, List, Optional
 from pytest_dsl.core.global_context import global_context
 from pytest_dsl.core.context import TestContext
+from pytest_dsl.core.expression_utils import (
+    evaluate_arithmetic_operation,
+    evaluate_comparison_operation,
+    evaluate_logical_operation,
+    evaluate_unary_operation,
+)
 from pytest_dsl.core.serialization_utils import XMLRPCSerializer
 
 
@@ -263,9 +269,7 @@ class VariableReplacer:
             return self.access_property(current_value, expr_node.value)
         if expr_node.type == 'UnaryExpr':
             value = self._eval_expression_node(expr_node.children[0])
-            if expr_node.value == '-':
-                return -value
-            raise ValueError(f"未知的一元操作符: {expr_node.value}")
+            return evaluate_unary_operation(value, expr_node.value)
         if expr_node.type == 'ArithmeticExpr':
             return self._eval_arithmetic_expr(expr_node)
         if expr_node.type == 'ComparisonExpr':
@@ -278,70 +282,18 @@ class VariableReplacer:
     def _eval_arithmetic_expr(self, expr_node):
         left_value = self._eval_expression_node(expr_node.children[0])
         right_value = self._eval_expression_node(expr_node.children[1])
-        operator = expr_node.value
-
-        if operator == '+':
-            if isinstance(left_value, str) or isinstance(right_value, str):
-                return str(left_value) + str(right_value)
-            return left_value + right_value
-        if operator == '-':
-            return left_value - right_value
-        if operator == '*':
-            if (isinstance(left_value, str) and
-                    isinstance(right_value, (int, float))):
-                return left_value * int(right_value)
-            if (isinstance(right_value, str) and
-                    isinstance(left_value, (int, float))):
-                return right_value * int(left_value)
-            return left_value * right_value
-        if operator == '/':
-            if right_value == 0:
-                raise ValueError("除法错误: 除数不能为0")
-            return left_value / right_value
-        if operator == '%':
-            if right_value == 0:
-                raise ValueError("模运算错误: 除数不能为0")
-            return left_value % right_value
-
-        raise ValueError(f"未知的算术操作符: {operator}")
+        return evaluate_arithmetic_operation(
+            left_value, right_value, expr_node.value)
 
     def _eval_comparison_expr(self, expr_node):
         left_value = self._eval_expression_node(expr_node.children[0])
         right_value = self._eval_expression_node(expr_node.children[1])
-        operator = expr_node.value
-
-        if operator == '>':
-            return left_value > right_value
-        if operator == '<':
-            return left_value < right_value
-        if operator == '>=':
-            return left_value >= right_value
-        if operator == '<=':
-            return left_value <= right_value
-        if operator == '==':
-            return left_value == right_value
-        if operator == '!=':
-            return left_value != right_value
-        if operator == 'in':
-            return left_value in right_value
-        if operator == 'not in':
-            return left_value not in right_value
-
-        raise ValueError(f"未知的比较操作符: {operator}")
+        return evaluate_comparison_operation(
+            left_value, right_value, expr_node.value)
 
     def _eval_logical_expr(self, expr_node):
-        operator = expr_node.value
-
-        if operator == 'not':
-            return not bool(self._eval_expression_node(expr_node.children[0]))
-        if operator == 'and':
-            return (bool(self._eval_expression_node(expr_node.children[0])) and
-                    bool(self._eval_expression_node(expr_node.children[1])))
-        if operator == 'or':
-            return (bool(self._eval_expression_node(expr_node.children[0])) or
-                    bool(self._eval_expression_node(expr_node.children[1])))
-
-        raise ValueError(f"未知的逻辑操作符: {operator}")
+        return evaluate_logical_operation(
+            expr_node.children, expr_node.value, self._eval_expression_node)
 
     def access_by_key(self, current_value, key):
         """使用求值后的索引或键访问集合。"""

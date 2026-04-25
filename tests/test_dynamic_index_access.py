@@ -76,6 +76,32 @@ def test_variable_replacer_keeps_existing_placeholder_api_with_dynamic_index():
     assert replacer.replace_in_string("${items[i]}") == "苹果"
 
 
+def test_variable_replacer_uses_executor_expression_semantics_for_numeric_strings():
+    replacer = VariableReplacer()
+
+    assert replacer.replace_in_string('${"10" > "2"}') is True
+    assert replacer.replace_in_string('${"2" + 3}') == 5
+    assert replacer.replace_in_string('${"2" - 1}') == 1
+    assert replacer.replace_in_string('${2 in "abc2"}') is True
+
+
+def test_executor_and_variable_replacer_share_placeholder_expression_semantics():
+    ast, errors = parse_with_error_handling(
+        'value = ${"10" > "2"}',
+        lexer=get_lexer()
+    )
+    assert errors == []
+
+    executor = DSLExecutor(enable_hooks=False, enable_tracking=False)
+    expr = ast.children[1].children[0].children[0]
+    replacer = VariableReplacer()
+
+    assert (
+        replacer.replace_in_string('${"10" > "2"}') ==
+        executor.eval_expression(expr)
+    )
+
+
 def test_for_range_loop_can_interpolate_list_item_by_loop_index():
     captured = []
 
