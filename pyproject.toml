@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytest-dsl"
-version = "0.25.0"
+version = "0.26.0"
 description = "A DSL testing framework based on pytest"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -54,3 +54,6 @@ pytest-dsl-list = "pytest_dsl.cli:main_list_keywords"
 [project.urls]
 "Homepage" = "https://github.com/felix-1991/pytest-dsl"
 "Bug Tracker" = "https://github.com/felix-1991/pytest-dsl/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

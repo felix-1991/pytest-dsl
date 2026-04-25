@@ -23,12 +23,22 @@ from pytest_dsl.core.yaml_vars import yaml_vars
 
 class SimpleTestPlatform:
     """简化的测试平台Hook插件"""
-    
+
     def __init__(self, db_path: str = None):
-        self.db_path = db_path or ":memory:"
+        self._owns_db = db_path is None
+        if db_path is None:
+            fd, db_path = tempfile.mkstemp(
+                prefix="simple_platform_", suffix=".db")
+            os.close(fd)
+        self.db_path = db_path
         self._init_database()
         self._init_data()
-    
+
+    def cleanup(self):
+        """清理测试平台临时数据库。"""
+        if self._owns_db and os.path.exists(self.db_path):
+            os.unlink(self.db_path)
+
     def _init_database(self):
         """初始化数据库"""
         conn = sqlite3.connect(self.db_path)
@@ -256,7 +266,9 @@ def test_variable_hooks():
         # 清理
         if hasattr(hook_manager, 'pm') and hook_manager.pm:
             hook_manager.pm.unregister(platform, "simple_platform")
-        
+
+        platform.cleanup()
+
         if 'PYTEST_DSL_ENVIRONMENT' in os.environ:
             del os.environ['PYTEST_DSL_ENVIRONMENT']
     
@@ -307,7 +319,9 @@ def test_case_loading():
         # 清理
         if hasattr(hook_manager, 'pm') and hook_manager.pm:
             hook_manager.pm.unregister(platform, "simple_platform")
-        
+
+        platform.cleanup()
+
         if 'PYTEST_DSL_ENVIRONMENT' in os.environ:
             del os.environ['PYTEST_DSL_ENVIRONMENT']
     
@@ -325,7 +339,9 @@ def test_platform_statistics():
     
     assert stats['test_cases'] > 0
     assert stats['variables'] > 0
-    
+
+    platform.cleanup()
+
     print("✅ 统计功能测试完成")
 
 
@@ -354,4 +370,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()

@@ -78,21 +78,21 @@ class TestEnhancedVariableAccess:
     def test_dot_notation_access(self):
         """测试点号访问（现有功能）"""
         assert self.replacer.replace_in_string("${api.base_url}") == "https://api.example.com"
-        assert self.replacer.replace_in_string("${api.timeout}") == "30"
+        assert self.replacer.replace_in_string("${api.timeout}") == 30
         assert self.replacer.replace_in_string("${api.endpoints.login}") == "/auth/login"
         assert self.replacer.replace_in_string("${test_users.admin.username}") == "admin"
 
     def test_array_index_access(self):
         """测试数组索引访问"""
         # 正向索引
-        assert self.replacer.replace_in_string("${users_array[0].id}") == "1"
+        assert self.replacer.replace_in_string("${users_array[0].id}") == 1
         assert self.replacer.replace_in_string("${users_array[0].name}") == "张三"
-        assert self.replacer.replace_in_string("${users_array[1].id}") == "2"
+        assert self.replacer.replace_in_string("${users_array[1].id}") == 2
         assert self.replacer.replace_in_string("${users_array[1].name}") == "李四"
 
         # 负向索引
-        assert self.replacer.replace_in_string("${users_array[-1].id}") == "2"
-        assert self.replacer.replace_in_string("${users_array[-2].id}") == "1"
+        assert self.replacer.replace_in_string("${users_array[-1].id}") == 2
+        assert self.replacer.replace_in_string("${users_array[-2].id}") == 1
 
     def test_nested_array_access(self):
         """测试嵌套数组访问"""
@@ -106,7 +106,7 @@ class TestEnhancedVariableAccess:
         """测试字符串键访问（双引号）"""
         assert self.replacer.replace_in_string('${config_map["dev-server"]}') == "https://dev.example.com"
         assert self.replacer.replace_in_string('${config_map["api-key"]}') == "test-key-123"
-        assert self.replacer.replace_in_string('${config_map["timeout"]}') == "30"
+        assert self.replacer.replace_in_string('${config_map["timeout"]}') == 30
 
     def test_string_key_access_single_quotes(self):
         """测试字符串键访问（单引号）"""
@@ -118,8 +118,17 @@ class TestEnhancedVariableAccess:
         assert self.replacer.replace_in_string("${strings[0]}") == "hello"
         assert self.replacer.replace_in_string("${strings[1]}") == "world"
         assert self.replacer.replace_in_string("${strings[-1]}") == "test"
-        assert self.replacer.replace_in_string("${numbers[0]}") == "1"
-        assert self.replacer.replace_in_string("${numbers[-1]}") == "100"
+        assert self.replacer.replace_in_string("${numbers[0]}") == 1
+        assert self.replacer.replace_in_string("${numbers[-1]}") == 100
+
+    def test_placeholder_index_uses_expression_syntax(self):
+        """测试占位符索引内容按表达式语法求值"""
+        assert self.replacer.replace_in_string("${strings[1 + 1]}") == "test"
+        assert self.replacer.replace_in_string("水果: ${strings[1 + 1]}") == "水果: test"
+
+    def test_placeholder_index_accepts_nested_placeholder_expression(self):
+        """测试兼容嵌套占位符作为下标表达式"""
+        assert self.replacer.replace_in_string("${numbers[${numbers[0]}]}") == 2
 
     def test_complex_nested_access(self):
         """测试复杂嵌套访问"""

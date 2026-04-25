@@ -3,7 +3,6 @@
 该模块提供了高级的变量替换功能，支持复杂的变量访问语法。
 """
 
-import re
 import json
 from typing import Any, Dict, List, Optional
 from pytest_dsl.core.global_context import global_context
@@ -124,185 +123,225 @@ class VariableReplacer:
         if not isinstance(value, str) or '${' not in value:
             return value
 
-        # 扩展的变量引用模式，支持数组索引和字典键访问
-        # 匹配: ${variable}, ${obj.prop}, ${arr[0]}, ${dict["key"]}, ${obj[0].prop} 等
-        pattern = r'\$\{([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*(?:(?:\.[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)|(?:\[[^\]]+\]))*)\}'
+        matches = self._find_placeholders(value)
+        if not matches:
+            return value
 
         # 检查是否整个字符串就是一个变量引用
-        full_match = re.fullmatch(pattern, value)
-        if full_match:
+        is_single_placeholder = (
+            len(matches) == 1 and
+            matches[0][0] == 0 and
+            matches[0][1] == len(value)
+        )
+        if is_single_placeholder:
             # 如果整个字符串就是一个变量引用，直接返回变量值（保持原始类型）
-            var_ref = full_match.group(1)
+            var_ref = matches[0][2]
             try:
-                if expression_evaluator:
-                    return expression_evaluator(var_ref)
-                return self._parse_variable_path(var_ref)
+                return self._evaluate_placeholder(
+                    var_ref, expression_evaluator)
             except (KeyError, IndexError, TypeError, ValueError) as e:
                 raise KeyError(f"无法解析变量引用 '${{{var_ref}}}': {str(e)}")
 
         # 如果字符串中包含多个变量引用或混合了字面量，进行字符串替换
         result = value
-        matches = list(re.finditer(pattern, result))
 
         # 从后向前替换，避免位置偏移
-        for match in reversed(matches):
-            var_ref = match.group(1)  # 例如: "users[0].name" 或 "data['key']"
+        for start, end, var_ref in reversed(matches):
 
             try:
-                if expression_evaluator:
-                    var_value = expression_evaluator(var_ref)
-                else:
-                    var_value = self._parse_variable_path(var_ref)
+                var_value = self._evaluate_placeholder(
+                    var_ref, expression_evaluator)
                 # 替换变量引用，转换为字符串
-                result = result[:match.start()] + str(var_value) + \
-                    result[match.end():]
+                result = result[:start] + str(var_value) + result[end:]
             except (KeyError, IndexError, TypeError, ValueError) as e:
                 raise KeyError(f"无法解析变量引用 '${{{var_ref}}}': {str(e)}")
 
         return result
 
-    def _parse_variable_path(self, var_ref: str):
-        """解析复杂的变量访问路径
+    def _find_placeholders(self, value: str) -> List[tuple]:
+        """扫描字符串中的 ${...} 占位符边界。"""
+        matches = []
+        index = 0
 
-        支持的语法：
-        - variable
-        - object.property
-        - array[0]
-        - dict["key"]
-        - users[0].name
-        - data["users"][0]["name"]
+        while index < len(value):
+            start = value.find('${', index)
+            if start == -1:
+                break
 
-        Args:
-            var_ref: 变量引用路径，如 "users[0].name"
+            end = self._find_placeholder_end(value, start)
+            if end is None:
+                break
 
-        Returns:
-            解析后的变量值
+            matches.append((start, end, value[start + 2:end - 1]))
+            index = end
 
-        Raises:
-            KeyError: 当变量不存在时
-            IndexError: 当数组索引超出范围时
-            TypeError: 当类型不匹配时
-        """
-        # 解析访问路径
-        path_parts = self._tokenize_path(var_ref)
+        return matches
 
-        # 获取根变量
-        root_var_name = path_parts[0]
-        try:
-            current_value = self.get_variable(root_var_name)
-        except KeyError:
-            raise KeyError(f"变量 '{root_var_name}' 不存在")
+    def _find_placeholder_end(self, value: str, start: int) -> Optional[int]:
+        """找到从 start 开始的占位符结束位置。"""
+        depth = 1
+        index = start + 2
+        quote = None
 
-        # 逐步访问路径
-        for part in path_parts[1:]:
-            current_value = self._access_value(
-                current_value, part, root_var_name)
+        while index < len(value):
+            char = value[index]
 
-        return current_value
-
-    def _tokenize_path(self, var_ref: str) -> list:
-        """将变量路径分解为访问令牌
-
-        例如：
-        - "users[0].name" -> ["users", "[0]", "name"]
-        - "data['key'].items[1]" -> ["data", "['key']", "items", "[1]"]
-
-        Args:
-            var_ref: 变量引用路径
-
-        Returns:
-            访问令牌列表
-        """
-        tokens = []
-        current_token = ""
-        i = 0
-
-        while i < len(var_ref):
-            char = var_ref[i]
-
-            if char == '.':
-                if current_token:
-                    tokens.append(current_token)
-                    current_token = ""
-            elif char == '[':
-                if current_token:
-                    tokens.append(current_token)
-                    current_token = ""
-
-                # 找到匹配的右括号
-                bracket_count = 1
-                bracket_content = "["
-                i += 1
-
-                while i < len(var_ref) and bracket_count > 0:
-                    char = var_ref[i]
-                    bracket_content += char
-                    if char == '[':
-                        bracket_count += 1
-                    elif char == ']':
-                        bracket_count -= 1
-                    i += 1
-
-                tokens.append(bracket_content)
-                i -= 1  # 回退一位，因为外层循环会自增
+            if quote:
+                if char == '\\':
+                    index += 2
+                    continue
+                if char == quote:
+                    quote = None
             else:
-                current_token += char
+                if char in ("'", '"'):
+                    quote = char
+                elif value.startswith('${', index):
+                    depth += 1
+                    index += 2
+                    continue
+                elif char == '}':
+                    depth -= 1
+                    if depth == 0:
+                        return index + 1
 
-            i += 1
+            index += 1
 
-        if current_token:
-            tokens.append(current_token)
+        return None
 
-        return tokens
+    def _evaluate_placeholder(self, var_ref: str, expression_evaluator=None):
+        """求值占位符内部表达式。"""
+        if expression_evaluator:
+            return expression_evaluator(var_ref)
 
-    def _access_value(self, current_value, access_token: str, root_var_name: str):
-        """根据访问令牌获取值
+        return self._evaluate_expression_text(var_ref)
 
-        Args:
-            current_value: 当前值
-            access_token: 访问令牌，如 "name", "[0]", "['key']"
-            root_var_name: 根变量名（用于错误信息）
+    def _evaluate_expression_text(self, expr_text: str):
+        """通过 parser 解析并求值占位符表达式。"""
+        from pytest_dsl.core.parser import parse_expression_fragment
 
-        Returns:
-            访问后的值
+        expr_node, errors = parse_expression_fragment(expr_text)
+        if errors:
+            messages = "; ".join(error.get('message', str(error))
+                                 for error in errors)
+            raise ValueError(f"无效的占位符表达式 '{expr_text}': {messages}")
+        if expr_node is None:
+            raise ValueError(f"无效的占位符表达式 '{expr_text}'")
 
-        Raises:
-            KeyError: 当键不存在时
-            IndexError: 当索引超出范围时
-            TypeError: 当类型不匹配时
-        """
-        if access_token.startswith('[') and access_token.endswith(']'):
-            # 数组索引或字典键访问
-            key_content = access_token[1:-1].strip()
-            key = self._resolve_index_key(key_content)
-            return self.access_by_key(current_value, key)
+        return self._eval_expression_node(expr_node)
 
-        else:
-            # 属性访问（点号语法）
-            return self.access_property(current_value, access_token)
+    def _eval_expression_node(self, expr_node):
+        """求值 parser 生成的表达式节点。"""
+        if expr_node.type == 'Expression':
+            return self.replace_in_value(expr_node.value)
+        if expr_node.type == 'StringLiteral':
+            if '${' in expr_node.value:
+                return self.replace_in_string(expr_node.value)
+            return expr_node.value
+        if expr_node.type == 'NumberLiteral':
+            return expr_node.value
+        if expr_node.type == 'BooleanExpr':
+            return expr_node.value
+        if expr_node.type == 'VariableRef':
+            return self.get_variable(expr_node.value)
+        if expr_node.type == 'PlaceholderRef':
+            return self.replace_in_string(expr_node.value)
+        if expr_node.type == 'ListExpr':
+            return [self._eval_expression_node(item)
+                    for item in expr_node.children]
+        if expr_node.type == 'DictExpr':
+            return {
+                self._eval_expression_node(item.children[0]):
+                self._eval_expression_node(item.children[1])
+                for item in expr_node.children
+            }
+        if expr_node.type == 'IndexAccessExpr':
+            collection = self._eval_expression_node(expr_node.children[0])
+            key = self._eval_expression_node(expr_node.children[1])
+            return self.access_by_key(collection, key)
+        if expr_node.type == 'PropertyAccessExpr':
+            current_value = self._eval_expression_node(expr_node.children[0])
+            return self.access_property(current_value, expr_node.value)
+        if expr_node.type == 'UnaryExpr':
+            value = self._eval_expression_node(expr_node.children[0])
+            if expr_node.value == '-':
+                return -value
+            raise ValueError(f"未知的一元操作符: {expr_node.value}")
+        if expr_node.type == 'ArithmeticExpr':
+            return self._eval_arithmetic_expr(expr_node)
+        if expr_node.type == 'ComparisonExpr':
+            return self._eval_comparison_expr(expr_node)
+        if expr_node.type == 'LogicalExpr':
+            return self._eval_logical_expr(expr_node)
 
-    def _resolve_index_key(self, key_content: str):
-        """解析方括号中的索引内容。
+        raise ValueError(f"无法求值的表达式类型: {expr_node.type}")
 
-        支持数字字面量、字符串键，以及由变量提供的动态索引。
-        """
-        if (key_content.startswith('"') and key_content.endswith('"')) or \
-           (key_content.startswith("'") and key_content.endswith("'")):
-            return key_content[1:-1]
+    def _eval_arithmetic_expr(self, expr_node):
+        left_value = self._eval_expression_node(expr_node.children[0])
+        right_value = self._eval_expression_node(expr_node.children[1])
+        operator = expr_node.value
 
-        try:
-            return int(key_content)
-        except ValueError:
-            pass
+        if operator == '+':
+            if isinstance(left_value, str) or isinstance(right_value, str):
+                return str(left_value) + str(right_value)
+            return left_value + right_value
+        if operator == '-':
+            return left_value - right_value
+        if operator == '*':
+            if (isinstance(left_value, str) and
+                    isinstance(right_value, (int, float))):
+                return left_value * int(right_value)
+            if (isinstance(right_value, str) and
+                    isinstance(left_value, (int, float))):
+                return right_value * int(left_value)
+            return left_value * right_value
+        if operator == '/':
+            if right_value == 0:
+                raise ValueError("除法错误: 除数不能为0")
+            return left_value / right_value
+        if operator == '%':
+            if right_value == 0:
+                raise ValueError("模运算错误: 除数不能为0")
+            return left_value % right_value
 
-        var_pattern = r'^[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*$'
-        if re.match(var_pattern, key_content):
-            try:
-                return self.get_variable(key_content)
-            except KeyError:
-                pass
+        raise ValueError(f"未知的算术操作符: {operator}")
 
-        raise ValueError(f"无效的索引格式: '{key_content}'")
+    def _eval_comparison_expr(self, expr_node):
+        left_value = self._eval_expression_node(expr_node.children[0])
+        right_value = self._eval_expression_node(expr_node.children[1])
+        operator = expr_node.value
+
+        if operator == '>':
+            return left_value > right_value
+        if operator == '<':
+            return left_value < right_value
+        if operator == '>=':
+            return left_value >= right_value
+        if operator == '<=':
+            return left_value <= right_value
+        if operator == '==':
+            return left_value == right_value
+        if operator == '!=':
+            return left_value != right_value
+        if operator == 'in':
+            return left_value in right_value
+        if operator == 'not in':
+            return left_value not in right_value
+
+        raise ValueError(f"未知的比较操作符: {operator}")
+
+    def _eval_logical_expr(self, expr_node):
+        operator = expr_node.value
+
+        if operator == 'not':
+            return not bool(self._eval_expression_node(expr_node.children[0]))
+        if operator == 'and':
+            return (bool(self._eval_expression_node(expr_node.children[0])) and
+                    bool(self._eval_expression_node(expr_node.children[1])))
+        if operator == 'or':
+            return (bool(self._eval_expression_node(expr_node.children[0])) or
+                    bool(self._eval_expression_node(expr_node.children[1])))
+
+        raise ValueError(f"未知的逻辑操作符: {operator}")
 
     def access_by_key(self, current_value, key):
         """使用求值后的索引或键访问集合。"""

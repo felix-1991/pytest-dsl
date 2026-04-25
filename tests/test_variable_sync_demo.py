@@ -59,13 +59,12 @@ def test_basic_functionality():
         print("✓ RemoteKeywordManager 功能正常")
 
         print("\n🎉 所有基本功能测试通过！")
-        return True
 
     except Exception as e:
         print(f"❌ 测试失败: {str(e)}")
         import traceback
         traceback.print_exc()
-        return False
+        raise
 
 def test_variable_transfer():
     """测试变量传递功能"""
@@ -87,50 +86,41 @@ def test_variable_transfer():
         print("✓ 变量收集功能正常")
 
         print("\n🎉 变量传递测试通过！")
-        return True
 
     except Exception as e:
         print(f"❌ 变量传递测试失败: {str(e)}")
         import traceback
         traceback.print_exc()
-        return False
+        raise
 
 def main():
     """主函数"""
     print("pytest-dsl 变量传递功能演示")
     print("=" * 50)
 
-    success = True
-
     # 运行基本功能测试
-    if not test_basic_functionality():
-        success = False
+    test_basic_functionality()
 
     # 运行变量传递测试
-    if not test_variable_transfer():
-        success = False
+    test_variable_transfer()
 
     print("\n" + "=" * 50)
-    if success:
-        print("🎉 所有测试通过！变量传递功能已成功实现。")
-        print("\n功能特性:")
-        print("- ✓ 连接时自动传递全局变量（g_开头）")
-        print("- ✓ 连接时自动传递YAML配置变量")
-        print("- ✓ 远程服务器变量存储")
-        print("- ✓ 简化的配置管理")
-        print("- ✓ 参数传递机制保持不变")
+    print("🎉 所有测试通过！变量传递功能已成功实现。")
+    print("\n功能特性:")
+    print("- ✓ 连接时自动传递全局变量（g_开头）")
+    print("- ✓ 连接时自动传递YAML配置变量")
+    print("- ✓ 远程服务器变量存储")
+    print("- ✓ 简化的配置管理")
+    print("- ✓ 参数传递机制保持不变")
 
-        print("\n使用方法:")
-        print("1. 启动远程关键字服务器: pytest-dsl-server")
-        print("2. 设置全局变量: g_test_var = \"value\"")
-        print("3. 在DSL文件中使用远程导入: 远程导入 http://localhost:8270/ 别名 server")
-        print("4. 远程关键字可以访问传递过去的变量: ${g_test_var}")
-        print("5. 其他变量通过参数传递: server|打印 内容 ${local_var}")
+    print("\n使用方法:")
+    print("1. 启动远程关键字服务器: pytest-dsl-server")
+    print("2. 设置全局变量: g_test_var = \"value\"")
+    print("3. 在DSL文件中使用远程导入: 远程导入 http://localhost:8270/ 别名 server")
+    print("4. 远程关键字可以访问传递过去的变量: ${g_test_var}")
+    print("5. 其他变量通过参数传递: server|打印 内容 ${local_var}")
 
-        return 0
-    else:
-        print("❌ 部分测试失败，请检查实现。")
-        return 1
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

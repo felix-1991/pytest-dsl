@@ -60,6 +60,14 @@ def test_string_interpolation_uses_dynamic_index_expression():
     assert executor.eval_expression(expr) == "索引 2 对应的水果: 橙子"
 
 
+def test_placeholder_token_accepts_expression_body():
+    expr = _parse_assignment_expr("next_index = ${i + 1}")
+
+    executor = _executor_with_vars(i=1)
+
+    assert executor.eval_expression(expr) == 2
+
+
 def test_variable_replacer_keeps_existing_placeholder_api_with_dynamic_index():
     replacer = VariableReplacer(
         local_variables={"items": ["苹果", "香蕉", "橙子"], "i": 0}

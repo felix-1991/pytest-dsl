@@ -30,6 +30,8 @@ class VariableBridge:
             shared_variables: 远程服务器的共享变量字典
         """
         if self._bridge_installed:
+            self.shared_variables = shared_variables
+            logger.info("变量桥接机制已更新")
             return
             
         self.shared_variables = shared_variables

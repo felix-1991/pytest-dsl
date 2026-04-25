@@ -105,11 +105,50 @@ def t_LBRACKET(t):
                 t.type = 'INDEX_LBRACKET'
     return t
 
-# 增加PLACEHOLDER规则，匹配 ${变量名} 格式，支持点号、数组索引和字典键访问
-# 匹配: ${variable}, ${obj.prop}, ${arr[0]}, ${dict["key"]}, ${obj[0].prop} 等
-t_PLACEHOLDER = (r'\$\{[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*'
-                 r'(?:(?:\.[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)'
-                 r'|(?:\[[^\]]+\]))*\}')
+
+def _find_placeholder_end(text, start):
+    """找到从 start 开始的 ${...} 占位符结束位置。"""
+    depth = 1
+    index = start + 2
+    quote = None
+
+    while index < len(text):
+        char = text[index]
+
+        if quote:
+            if char == '\\':
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+        else:
+            if char in ("'", '"'):
+                quote = char
+            elif text.startswith('${', index):
+                depth += 1
+                index += 2
+                continue
+            elif char == '}':
+                depth -= 1
+                if depth == 0:
+                    return index + 1
+
+        index += 1
+
+    return None
+
+
+def t_PLACEHOLDER(t):
+    r'\$\{'
+    end = _find_placeholder_end(t.lexer.lexdata, t.lexpos)
+    if end is None:
+        print(f"未闭合的变量占位符 在行 {t.lineno} 位置 {t.lexpos}")
+        return None
+
+    t.value = t.lexer.lexdata[t.lexpos:end]
+    t.lexer.lineno += t.value.count('\n')
+    t.lexer.lexpos = end
+    return t
 
 # 添加管道符的正则表达式定义
 t_PIPE = r'\|'

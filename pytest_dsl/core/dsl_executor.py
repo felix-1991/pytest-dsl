@@ -365,21 +365,7 @@ class DSLExecutor:
             if isinstance(value, Node):
                 return self.eval_expression(value)
             elif isinstance(value, str):
-                # 定义扩展的变量引用模式，支持数组索引和字典键访问
-                pattern = (
-                    r'\$\{([a-zA-Z_\u4e00-\u9fa5]'
-                    r'[a-zA-Z0-9_\u4e00-\u9fa5]*'
-                    r'(?:(?:\.[a-zA-Z_\u4e00-\u9fa5]'
-                    r'[a-zA-Z0-9_\u4e00-\u9fa5]*)'
-                    r'|(?:\[[^\]]+\]))*)\}'
-                )
-                # 检查整个字符串是否完全匹配单一变量引用模式
-                match = re.fullmatch(pattern, value)
-                if match:
-                    var_ref = match.group(1)
-                    # 使用新的变量路径解析器
-                    return self._eval_interpolation_expression(var_ref)
-                elif '${' in value:
+                if '${' in value:
                     # 如果包含变量占位符，则替换字符串中的所有变量引用
                     return self.variable_replacer.replace_in_string(
                         value,
@@ -405,17 +391,18 @@ class DSLExecutor:
     def _eval_interpolation_expression(self, expr_text: str):
         """按 DSL 表达式语法求值字符串占位符内部内容。"""
         from pytest_dsl.core.lexer import get_lexer
-        from pytest_dsl.core.parser import parse_with_error_handling
+        from pytest_dsl.core.parser import parse_expression_fragment
 
-        wrapped_dsl = f"__placeholder_value = {expr_text}"
-        ast, errors = parse_with_error_handling(wrapped_dsl, lexer=get_lexer())
+        expr_node, errors = parse_expression_fragment(
+            expr_text, lexer=get_lexer())
         if errors:
             messages = "; ".join(error.get('message', str(error))
                                  for error in errors)
             raise ValueError(f"无效的占位符表达式 '{expr_text}': {messages}")
+        if expr_node is None:
+            raise ValueError(f"无效的占位符表达式 '{expr_text}'")
 
-        assignment = ast.children[1].children[0]
-        return self.eval_expression(assignment.children[0])
+        return self.eval_expression(expr_node)
 
     def _eval_index_access_expr(self, expr_node):
         """求值下标访问表达式，如 items[i]。"""

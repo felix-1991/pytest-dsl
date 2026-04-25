@@ -1,3 +1,5 @@
+import sys
+
 import ply.yacc as yacc
 from pytest_dsl.core.lexer import tokens
 
@@ -608,6 +610,7 @@ def p_arithmetic_expr(p):
 
 # 全局变量用于存储解析错误
 _parse_errors = []
+_expression_parser = None
 
 
 def p_error(p):
@@ -638,6 +641,26 @@ def get_parser(debug=False):
     return yacc.yacc(debug=debug)
 
 
+def get_expression_parser(debug=False):
+    """获取只解析表达式片段的 parser。"""
+    global _expression_parser
+
+    if debug:
+        return yacc.yacc(module=sys.modules[__name__], start='expression',
+                         debug=debug, write_tables=False)
+
+    if _expression_parser is None:
+        _expression_parser = yacc.yacc(
+            module=sys.modules[__name__],
+            start='expression',
+            debug=False,
+            write_tables=False,
+            errorlog=yacc.NullLogger()
+        )
+
+    return _expression_parser
+
+
 def parse_with_error_handling(content, lexer=None):
     """带错误处理的解析函数
 
@@ -659,6 +682,28 @@ def parse_with_error_handling(content, lexer=None):
     ast = parser.parse(content, lexer=lexer)
 
     # 返回AST和错误列表
+    return ast, _parse_errors.copy()
+
+
+def parse_expression_fragment(content, lexer=None):
+    """按 DSL 表达式语法解析一段表达式文本。
+
+    Args:
+        content: 表达式内容，不包含外层 ``${`` 和 ``}``
+        lexer: 词法分析器实例
+
+    Returns:
+        tuple: (表达式AST节点, 错误列表)
+    """
+    global _parse_errors
+    _parse_errors = []
+
+    if lexer is None:
+        from pytest_dsl.core.lexer import get_lexer
+        lexer = get_lexer()
+
+    parser = get_expression_parser()
+    ast = parser.parse(content, lexer=lexer)
     return ast, _parse_errors.copy()
 
 # 定义远程关键字调用的语法规则

@@ -7,7 +7,11 @@
 
 import subprocess
 import time
-from test_mock_server import MockServer
+
+try:
+    from .test_mock_server import MockServer
+except ImportError:
+    from test_mock_server import MockServer
 
 
 def run_dsl_test(dsl_file):
@@ -55,4 +59,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()
