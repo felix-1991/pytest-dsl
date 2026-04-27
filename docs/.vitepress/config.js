@@ -31,6 +31,7 @@ export default defineConfig({
             { text: 'DSL语法基础', link: '/guide/dsl-syntax' },
             { text: '变量和数据类型', link: '/guide/variables' },
             { text: '流程控制', link: '/guide/control-flow' },
+            { text: '语法限制说明', link: '/guide/syntax-limitations' },
             { text: '内置关键字', link: '/guide/builtin-keywords' }
           ]
         },

@@ -337,8 +337,7 @@ class CustomKeywordManager:
                 executor = DSLExecutor()
                 print(f"创建新执行器执行自定义关键字: {keyword_name}")
 
-            # 导入ReturnException以避免循环导入
-            from pytest_dsl.core.dsl_executor import ReturnException
+            from pytest_dsl.core.execution.exceptions import ReturnException
 
             # 获取传递的上下文
             context = kwargs.get('context')

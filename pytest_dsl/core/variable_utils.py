@@ -26,7 +26,9 @@ class VariableReplacer:
             local_variables: 本地变量字典
             test_context: 测试上下文
         """
-        self.local_variables = local_variables or {}
+        self.local_variables = (
+            local_variables if local_variables is not None else {}
+        )
         self._test_context = test_context
 
     @property

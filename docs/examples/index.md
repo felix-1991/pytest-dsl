@@ -10,6 +10,7 @@
 
 - **[Hello World](./hello-world)** - 最简单的入门示例
 - **[基本语法](./basic-syntax)** - DSL语法基础演示
+- **[增强的for循环](./enhanced-for-loops)** - 数组遍历、字典键值遍历和循环控制示例
 
 ### 🔧 高级示例
 
@@ -25,6 +26,7 @@
 推荐学习路径：
 1. [Hello World](./hello-world) - 了解基本结构
 2. [基本语法](./basic-syntax) - 掌握语法规则
+3. [增强的for循环](./enhanced-for-loops) - 掌握列表/字典遍历
 
 ### 🚀 我想了解高级功能
 
@@ -158,4 +160,4 @@ user_id = 1
 
 ---
 
-准备好开始探索了吗？从[Hello World](./hello-world)开始您的pytest-dsl学习之旅吧！ 
+准备好开始探索了吗？从[Hello World](./hello-world)开始您的pytest-dsl学习之旅吧！

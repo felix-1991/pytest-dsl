@@ -30,27 +30,45 @@ while ${condition} do
 end
 ```
 
+#### 4. 单参数 range
+```python
+# ❌ 不支持
+for i in range(5) do
+    [打印], 内容: ${i}
+end
+```
+
 ### 支持的替代方案
 
 #### 1. 直接遍历数组/列表
 ```python
 # ✅ 支持
-for item in ${array} do
+array = ["item1", "item2", "item3"]
+for item in array do
     [打印], 内容: ${item}
 end
 ```
 
-#### 2. 直接遍历字典键
+#### 2. 直接遍历字典键值对
 ```python
-# ✅ 支持（单变量时遍历键）
-for key in ${dict} do
-    [打印], 内容: "${key}: ${dict[key]}"
+# ✅ 支持
+user_info = {"name": "张三", "age": 30, "city": "北京"}
+for key, value in user_info do
+    [打印], 内容: "${key}: ${value}"
 end
 ```
 
-#### 3. 使用索引遍历数组
+#### 3. 直接遍历字典键
 ```python
-# ✅ 支持
+# ✅ 支持（单变量时遍历键）
+for key in user_info do
+    [打印], 内容: "${key}: ${user_info[key]}"
+end
+```
+
+#### 4. 使用索引遍历数组
+```python
+# ✅ 支持，需要索引时使用
 array = ["item1", "item2", "item3"]
 array_length = 3  # 需要预定义长度
 
@@ -59,21 +77,20 @@ for i in range(0, ${array_length}) do
 end
 ```
 
-#### 4. 遍历对象数组
+#### 5. 遍历对象数组
 ```python
 # ✅ 支持
 users = [
     {"name": "张三", "age": 25},
     {"name": "李四", "age": 30}
 ]
-users_length = 2
 
-for i in range(0, ${users_length}) do
-    [打印], 内容: "用户: ${users[i].name}, 年龄: ${users[i].age}"
+for user in users do
+    [打印], 内容: "用户: ${user.name}, 年龄: ${user.age}"
 end
 ```
 
-#### 5. 手动键列表遍历（兼容方案）
+#### 6. 手动键列表遍历（兼容方案）
 ```python
 # ✅ 支持
 user_info = {"name": "张三", "age": 30, "city": "北京"}
@@ -87,7 +104,7 @@ for i in range(0, ${keys_length}) do
 end
 ```
 
-#### 6. 使用 for + break 模拟 while
+#### 7. 使用 for + break 模拟 while
 ```python
 # ✅ 支持 - 模拟 while 循环
 max_attempts = 10
@@ -298,10 +315,15 @@ timeout_config = ${data["config"]["timeout"]}
 
 ## 最佳实践建议
 
-### 1. 预定义数组长度
+### 1. 优先直接遍历集合
 ```python
 # 推荐做法
 test_data = ["case1", "case2", "case3"]
+for test_case in test_data do
+    [执行测试], 用例: ${test_case}
+end
+
+# 只有需要索引时，才预定义数组长度
 test_data_length = 3  # 明确指定长度
 
 for i in range(0, ${test_data_length}) do
@@ -347,13 +369,14 @@ end
 ```python
 # 推荐做法 - 将复杂逻辑封装为自定义关键字
 function 批量处理用户 (用户列表, 批次大小=10) do
-    用户数量 = ${用户列表.length}  # 假设有length属性
+    已处理数量 = 0
     
-    for i in range(0, ${用户数量}) do
-        [处理单个用户], 用户: ${用户列表[i]}
+    for 用户 in 用户列表 do
+        [处理单个用户], 用户: ${用户}
+        已处理数量 = ${已处理数量} + 1
         
         # 每处理一定数量后暂停
-        if (i + 1) % ${批次大小} == 0 do
+        if ${已处理数量} % ${批次大小} == 0 do
             [等待], 秒数: 1
         end
     end

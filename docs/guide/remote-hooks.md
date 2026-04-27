@@ -480,7 +480,7 @@ test_server|[HTTP请求], 客户端: "default", 配置: '''
 ''', 步骤名称: "测试自定义授权注入"
 
 # 测试性能监控
-for i in range(3) do
+for i in range(0, 3) do
     test_server|[HTTP请求], 客户端: "default", 配置: '''
         method: GET
         url: https://httpbin.org/delay/1

@@ -94,45 +94,40 @@ end
 
 # ===== 循环结构 =====
 
-# 范围循环 - 当前支持的语法
+# 范围循环 - 适合需要索引或固定次数的场景
 [打印], 内容: 范围循环 (0-4):
 for i in range(0, 5) do
     [打印], 内容: 当前索引: ${i}
 end
 
-# 注意：由于当前不支持 ${len(array)} 语法，
-# 需要预先定义数组长度或使用固定范围
+# 直接遍历数组/列表
+[打印], 内容: 遍历颜色列表:
+for color in colors do
+    [打印], 内容: 颜色: ${color}
+end
 
-# 预定义数组长度
+# 直接遍历数字数组
+total = 0
+[打印], 内容: 遍历数字列表:
+for number in numbers do
+    total = ${total} + ${number}
+    [打印], 内容: 数字: ${number}, 累计: ${total}
+end
+
+# 需要索引时，预定义长度后配合range使用
 colors_length = 3
 numbers_length = 5
-
-# 模拟遍历数组 - 使用预定义长度
-[打印], 内容: 遍历颜色列表:
 for i in range(0, ${colors_length}) do
-    [打印], 内容: 颜色: ${colors[i]}
-end
-
-# 模拟遍历数字数组
-[打印], 内容: 遍历数字列表:
-for i in range(0, ${numbers_length}) do
-    [打印], 内容: 数字: ${numbers[i]}
-end
-
-# 新增支持的循环语法：
-
-# 数组遍历 - 现在支持直接遍历数组！
-[打印], 内容: 遍历颜色数组（新语法）:
-for color in colors do
-    [打印], 内容: 颜色（直接遍历）: ${color}
+    [打印], 内容: 第 ${i} 个颜色: ${colors[i]}
 end
 
 # 注意：当前版本暂不支持以下语法：
 # - for i, item in enumerate(array) (带索引遍历)
+# - for i in range(5) (单参数range)
 # - while 循环
 # 这些功能将在后续版本中添加
 
-# 字典遍历 - 新增支持！
+# 字典键值对遍历
 [打印], 内容: 遍历用户字典:
 for property, value in user do
     [打印], 内容: 属性: ${property}, 值: ${value}
@@ -177,17 +172,14 @@ products = [
     {"name": "面包", "price": 2.0, "category": "主食"}
 ]
 
-# 预定义产品数组长度
-products_length = 3
-
 [打印], 内容: 产品信息:
-for i in range(0, ${products_length}) do
-    [打印], 内容: 产品: ${products[i].name}, 价格: ${products[i].price}, 类别: ${products[i].category}
+for product in products do
+    [打印], 内容: 产品: ${product.name}, 价格: ${product.price}, 类别: ${product.category}
     
-    if ${products[i].price} > 4.0 do
-        [打印], 内容: ${products[i].name} 价格较高
+    if ${product.price} > 4.0 do
+        [打印], 内容: ${product.name} 价格较高
     else
-        [打印], 内容: ${products[i].name} 价格适中
+        [打印], 内容: ${product.name} 价格适中
     end
 end
 
@@ -258,11 +250,11 @@ class TestBasicSyntax:
 颜色: 蓝色
 颜色: 绿色
 遍历数字列表:
-数字: 1
-数字: 2
-数字: 3
-数字: 4
-数字: 5
+数字: 1, 累计: 1
+数字: 2, 累计: 3
+数字: 3, 累计: 6
+数字: 4, 累计: 10
+数字: 5, 累计: 15
 ...
 所有断言都通过了！
 基本语法演示完成！
@@ -280,7 +272,7 @@ pytest-dsl支持多种数据类型：
 string_var = "字符串"
 number_var = 42
 float_var = 3.14
-boolean_var = true
+boolean_var = True
 
 # 复合类型
 array_var = [1, 2, 3]
@@ -326,21 +318,31 @@ end
 当前支持的循环方式：
 
 ```python
-# 范围循环（当前唯一支持的循环语法）
+# 范围循环，range需要开始值和结束值两个参数
 for i in range(start, end) do
     # 执行代码
 end
 
-# 模拟数组遍历（使用预定义长度）
-array_length = 5  # 需要预先定义数组长度
-for i in range(0, ${array_length}) do
-    # 使用 ${array[i]} 访问元素
+# 直接遍历数组/列表
+for item in array_var do
+    # 使用 ${item} 访问当前元素
+end
+
+# 直接遍历字典键值对
+for key, value in object_var do
+    # 使用 ${key} 和 ${value}
+end
+
+# 需要索引时，使用range配合预定义长度
+array_length = 3
+for index in range(0, ${array_length}) do
+    # 使用 ${array_var[index]} 访问元素
 end
 ```
 
 **注意：** 以下语法暂不支持，将在后续版本中添加：
-- `for item in array` - 直接遍历数组
 - `for i, item in enumerate(array)` - 带索引遍历  
+- `for i in range(5)` - 单参数range
 - `while condition` - while循环
 - `${len(array)}` - 占位符内的函数调用
 - `${expr + 1}` - 占位符内的算术运算

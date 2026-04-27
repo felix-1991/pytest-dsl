@@ -141,7 +141,7 @@ for j in range(1, ${max_count} + 1) do
 end
 
 # 从0开始的循环
-for k in range(5) do
+for k in range(0, 5) do
     [打印], 内容: "索引: ${k}"
 end
 ```
@@ -149,38 +149,55 @@ end
 #### 列表循环
 
 ```python
-# 遍历列表 - 注意：当前不支持直接遍历，需要使用索引
+# 直接遍历列表
 users = ["张三", "李四", "王五"]
-users_length = 3  # 预定义长度
 
-for i in range(0, ${users_length}) do
-    [打印], 内容: "处理用户: ${users[i]}"
+for user in users do
+    [打印], 内容: "处理用户: ${user}"
 end
 
-# 遍历数字列表 - 使用索引访问
+# 遍历数字列表
 numbers = [1, 2, 3, 4, 5]
-numbers_length = 5  # 预定义长度
 total = 0
 
-for i in range(0, ${numbers_length}) do
-    total = total + ${numbers[i]}
-    [打印], 内容: "当前数字: ${numbers[i]}, 累计: ${total}"
+for number in numbers do
+    total = total + number
+    [打印], 内容: "当前数字: ${number}, 累计: ${total}"
+end
+
+# 需要索引时，仍可使用range配合预定义长度
+users_length = 3
+for i in range(0, ${users_length}) do
+    [打印], 内容: "第 ${i} 个用户: ${users[i]}"
 end
 ```
 
 #### 字典循环
 
 ```python
-# 遍历字典的键 - 注意：当前不支持直接遍历字典
+# 遍历字典键值对
 user_info = {"name": "张三", "age": 30, "city": "北京"}
-# 需要预定义键列表
-keys = ["name", "age", "city"]
-keys_length = 3
 
-for i in range(0, ${keys_length}) do
-    key = ${keys[i]}
-    value = ${user_info[key]}
+for key, value in user_info do
     [打印], 内容: "${key}: ${value}"
+end
+
+# 单变量遍历字典时，循环变量是字典的键
+for key in user_info do
+    [打印], 内容: "字段: ${key}, 值: ${user_info[key]}"
+end
+```
+
+#### 对象列表循环
+
+```python
+users = [
+    {"name": "张三", "age": 25},
+    {"name": "李四", "age": 30}
+]
+
+for user in users do
+    [打印], 内容: "用户: ${user.name}, 年龄: ${user.age}"
 end
 ```
 
@@ -198,13 +215,12 @@ for i in range(1, 11) do
     [打印], 内容: "当前数字: ${i}"
 end
 
-# 在条件满足时退出 - 使用索引访问
+# 在条件满足时退出
 users = ["admin", "user1", "user2", "guest"]
-users_length = 4
 
-for i in range(0, ${users_length}) do
-    [打印], 内容: "检查用户: ${users[i]}"
-    if ${users[i]} == "guest" do
+for user in users do
+    [打印], 内容: "检查用户: ${user}"
+    if ${user} == "guest" do
         [打印], 内容: "找到访客用户，停止搜索"
         break
     end
@@ -223,41 +239,38 @@ for i in range(1, 11) do
     [打印], 内容: "奇数: ${i}"
 end
 
-# 跳过特定条件 - 使用索引访问
+# 跳过特定条件
 test_cases = ["case1", "skip_case", "case2", "case3"]
-test_cases_length = 4
 
-for i in range(0, ${test_cases_length}) do
-    if ${test_cases[i]} == "skip_case" do
-        [打印], 内容: "跳过测试用例: ${test_cases[i]}"
+for test_case in test_cases do
+    if ${test_case} == "skip_case" do
+        [打印], 内容: "跳过测试用例: ${test_case}"
         continue
     end
-    [打印], 内容: "执行测试用例: ${test_cases[i]}"
+    [打印], 内容: "执行测试用例: ${test_case}"
 end
 ```
 
 ### 嵌套循环
 
 ```python
-# 嵌套循环示例 - 使用索引访问
+# 嵌套循环示例
 environments = ["dev", "test", "prod"]
 test_types = ["unit", "integration", "e2e"]
-environments_length = 3
-test_types_length = 3
 
-for i in range(0, ${environments_length}) do
-    [打印], 内容: "环境: ${environments[i]}"
+for environment in environments do
+    [打印], 内容: "环境: ${environment}"
     
-    for j in range(0, ${test_types_length}) do
-        [打印], 内容: "  执行 ${test_types[j]} 测试"
+    for test_type in test_types do
+        [打印], 内容: "  执行 ${test_type} 测试"
         
         # 模拟测试执行
-        if ${environments[i]} == "prod" and ${test_types[j]} == "unit" do
+        if ${environment} == "prod" and ${test_type} == "unit" do
             [打印], 内容: "    生产环境跳过单元测试"
             continue
         end
         
-        [打印], 内容: "    ${environments[i]} 环境的 ${test_types[j]} 测试完成"
+        [打印], 内容: "    ${environment} 环境的 ${test_type} 测试完成"
     end
 end
 ```
@@ -296,18 +309,17 @@ end
 ### 2. 批量用户测试
 
 ```python
-# 批量测试多个用户 - 使用索引访问
+# 批量测试多个用户
 test_users = [
     {"username": "admin", "password": "admin123", "role": "admin"},
     {"username": "user1", "password": "user123", "role": "user"},
     {"username": "guest", "password": "guest123", "role": "guest"}
 ]
-test_users_length = 3
 
-for i in range(0, ${test_users_length}) do
-    username = ${test_users[i]["username"]}
-    password = ${test_users[i]["password"]}
-    role = ${test_users[i]["role"]}
+for test_user in test_users do
+    username = test_user["username"]
+    password = test_user["password"]
+    role = test_user["role"]
     
     [打印], 内容: "测试用户: ${username} (${role})"
     
@@ -366,8 +378,8 @@ for attempt in range(1, ${max_retries} + 1) do
     else
         [打印], 内容: "请求失败，状态码: ${response_status}"
         if ${attempt} < ${max_retries} do
-                    [打印], 内容: "等待重试..."
-        [等待], 秒数: 2
+            [打印], 内容: "等待重试..."
+            [等待], 秒数: 2
         end
     end
 end
@@ -394,11 +406,11 @@ end
 # 验证每个用户数据的完整性
 required_fields = ["id", "name", "email", "status"]
 
-for user in ${users_data} do
+for user in users_data do
     user_id = user["id"]
     [打印], 内容: "验证用户 ${user_id} 的数据"
     
-    for field in ${required_fields} do
+    for field in required_fields do
         if field in user do
             [打印], 内容: "  ✓ 字段 ${field} 存在"
         else
@@ -459,7 +471,7 @@ if ${run_security_tests} and test_environment != "production" do
     # SQL注入测试
     malicious_inputs = ["'; DROP TABLE users; --", "1' OR '1'='1", "<script>alert('xss')</script>"]
     
-    for payload in ${malicious_inputs} do
+    for payload in malicious_inputs do
         [打印], 内容: "测试恶意输入: ${payload}"
         [HTTP请求], 客户端: "default", 配置: '''
             method: POST
@@ -502,15 +514,15 @@ end
 
 ```python
 # 不好的做法
-for i in range(10) do
-    for j in range(5) do
+for i in range(0, 10) do
+    for j in range(0, 5) do
         # 不清楚i和j代表什么
     end
 end
 
 # 好的做法
-for test_case_index in range(10) do
-    for retry_attempt in range(5) do
+for test_case_index in range(0, 10) do
+    for retry_attempt in range(0, 5) do
         # 变量名清晰表达意图
     end
 end
@@ -537,7 +549,7 @@ end
 found_target = False
 target_id = 123
 
-for item in ${item_list} do
+for item in item_list do
     item_id = item["id"]
     
     # 跳过无效项目
@@ -579,7 +591,7 @@ end
 
 ```python
 # 注意：循环变量在循环外仍然可用
-for i in range(5) do
+for i in range(0, 5) do
     [打印], 内容: "循环中: ${i}"
 end
 
@@ -594,7 +606,7 @@ end
 counter = 0
 max_iterations = 100
 
-for i in range(${max_iterations}) do
+for i in range(0, ${max_iterations}) do
     # 确保有退出条件
     if some_condition do
         break
@@ -615,4 +627,4 @@ end
 1. **[内置关键字](./builtin-keywords)** - 了解框架提供的功能
 2. **[自定义关键字](./custom-keywords)** - 创建可复用的测试组件
 3. **[HTTP API测试](./http-testing)** - 在API测试中应用流程控制
-4. **[数据驱动测试](./data-driven)** - 结合循环实现数据驱动测试 
+4. **[数据驱动测试](./data-driven)** - 结合循环实现数据驱动测试
