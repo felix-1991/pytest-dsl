@@ -371,19 +371,32 @@ function 生成测试用户 (用户类型, 序号) do
         "type": "${用户类型}"
     }
     
-    # 根据用户类型设置不同属性
+    # 根据用户类型返回不同属性
     if "${用户类型}" == "admin" do
-        基础数据["permissions"] = ["read", "write", "admin"]
-        基础数据["department"] = "IT"
+        return {
+            "username": "${基础数据.username}",
+            "email": "${基础数据.email}",
+            "type": "${基础数据.type}",
+            "permissions": ["read", "write", "admin"],
+            "department": "IT"
+        }
     elif "${用户类型}" == "manager" do
-        基础数据["permissions"] = ["read", "write"]
-        基础数据["department"] = "Sales"
+        return {
+            "username": "${基础数据.username}",
+            "email": "${基础数据.email}",
+            "type": "${基础数据.type}",
+            "permissions": ["read", "write"],
+            "department": "Sales"
+        }
     else
-        基础数据["permissions"] = ["read"]
-        基础数据["department"] = "General"
+        return {
+            "username": "${基础数据.username}",
+            "email": "${基础数据.email}",
+            "type": "${基础数据.type}",
+            "permissions": ["read"],
+            "department": "General"
+        }
     end
-    
-    return ${基础数据}
 end
 
 # 生成不同类型的用户进行测试
@@ -424,7 +437,7 @@ function 生成日期范围 (开始日期, 天数) do
     for i in range(0, ${天数}) do
         # 这里简化处理，实际应该使用日期库
         当前日期 = "${开始日期}_day_${i}"
-        日期列表.append(${当前日期})
+        日期列表 = 日期列表 + [${当前日期}]
     end
     
     return ${日期列表}
@@ -522,11 +535,11 @@ end
 当前批次 = []
 
 # 收集批次数据
-当前批次.append({
+当前批次 = 当前批次 + [{
     "username": "${username}",
     "password": "${password}",
     "expected": ${expected_status}
-})
+}]
 
 # 当批次满时或到达末尾时处理 - 注意：len() 函数调用不支持
 # if len(${当前批次}) >= ${批次大小} do  # 不支持
@@ -640,7 +653,7 @@ end
     "duration": ${测试结果.duration},
     "details": "${测试结果.message}"
 }
-测试结果列表.append(${测试记录})
+测试结果列表 = 测试结果列表 + [${测试记录}]
 
 # 在所有测试完成后输出统计信息
 teardown do

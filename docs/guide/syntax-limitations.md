@@ -131,11 +131,41 @@ for i in range(0, ${max_attempts}) do
 end
 ```
 
-## 占位符语法限制
+## 占位符表达式能力与限制
+
+`${...}` 占位符内部会按 DSL 表达式语法求值，而不只是简单变量路径。因此它既可以用于变量访问，也可以用于算术、比较、逻辑和集合字面量表达式。
+
+### 支持的语法
+
+```python
+# ✅ 基本变量和嵌套访问
+user = {"name": "张三", "roles": ["admin", "tester"]}
+[打印], 内容: "用户: ${user.name}, 角色: ${user.roles[0]}"
+
+# ✅ 动态下标和表达式下标
+items = ["apple", "banana", "orange"]
+i = 1
+[打印], 内容: "下一项: ${items[i + 1]}"
+
+# ✅ 算术表达式
+count = 5
+next_count = ${count + 1}
+total_price = ${99.9 * 2}
+
+# ✅ 比较、成员和逻辑表达式
+age = 18
+is_adult = ${age >= 18}
+is_allowed = ${age >= 18 and "admin" in user.roles}
+
+# ✅ 单独占位符会保留原始类型
+data = ${{"name": "张三", "tags": ["api", "smoke"]}}
+empty_list = ${[]}
+empty_dict = ${{}}
+```
 
 ### 不支持的语法
 
-#### 1. 函数调用
+#### 1. 函数或方法调用
 ```python
 # ❌ 不支持
 array = [1, 2, 3, 4, 5]
@@ -146,71 +176,36 @@ text = "hello"
 upper_text = ${text.upper()}
 
 # ❌ 不支持
-numbers = [1, 2, 3, 4, 5]
-total = ${sum(numbers)}
-```
-
-#### 2. 算术运算
-```python
-# ❌ 不支持
-count = 5
-next_count = ${count + 1}
-
-# ❌ 不支持
-price = 100
-tax = ${price * 0.1}
-```
-
-#### 3. 比较运算
-```python
-# ❌ 不支持
-age = 18
-is_adult = ${age >= 18}
-```
-
-#### 4. 类型转换
-```python
-# ❌ 不支持
-number = 123
-text = ${str(number)}
-
-# ❌ 不支持
 text = "123"
 number = ${int(text)}
 ```
 
 ### 支持的替代方案
 
-#### 1. 预定义变量
+#### 1. 使用内置关键字处理函数能力
 ```python
 # ✅ 支持
 array = [1, 2, 3, 4, 5]
-array_length = 5  # 手动指定长度
+array_length = [获取长度], 对象: ${array}
 
 # ✅ 支持
 text = "hello"
-upper_text = "HELLO"  # 手动指定转换结果
-```
-
-#### 2. 使用表达式语法
-```python
-# ✅ 支持 - 在赋值中使用算术运算
-count = 5
-next_count = count + 1
-
-# ✅ 支持 - 在条件中使用比较运算
-age = 18
-if age >= 18 do
-    [打印], 内容: "已成年"
-end
-```
-
-#### 3. 使用关键字处理复杂逻辑
-```python
-# ✅ 支持 - 使用字符串操作关键字
-text = "hello"
 upper_text = [字符串操作], 操作: "upper", 字符串: ${text}
+```
 
+#### 2. 直接使用占位符表达式处理简单逻辑
+```python
+# ✅ 支持 - 占位符中可直接使用算术运算
+count = 5
+next_count = ${count + 1}
+
+# ✅ 支持 - 占位符中可直接使用比较运算
+age = 18
+is_adult = ${age >= 18}
+```
+
+#### 3. 分步处理复杂逻辑
+```python
 # ✅ 支持 - 使用断言关键字进行条件判断
 age = 18
 [断言], 条件: "${age} >= 18", 消息: "年龄验证"
@@ -277,6 +272,7 @@ name, age = user_data
 # ✅ 支持 - 列表字面量
 numbers = [1, 2, 3, 4, 5]
 names = ["张三", "李四", "王五"]
+empty_list = []
 
 # ✅ 支持 - 字典字面量
 user = {
@@ -284,6 +280,7 @@ user = {
     "age": 30,
     "active": True
 }
+empty_dict = {}
 
 # ✅ 支持 - 嵌套结构
 data = {
@@ -398,8 +395,7 @@ end
 
 1. **while 循环语法** - 原生支持 `while ... do ... end`
 2. **函数调用支持** - 在占位符中支持内置函数调用
-3. **算术表达式** - 在占位符中支持复杂的算术运算
-4. **类型系统** - 提供更好的类型检查和转换
-5. **模式匹配** - 支持更复杂的条件匹配语法
+3. **类型系统** - 提供更好的类型检查和转换
+4. **模式匹配** - 支持更复杂的条件匹配语法
 
 在此之前，请使用本文档中描述的替代方案来实现所需功能。 
