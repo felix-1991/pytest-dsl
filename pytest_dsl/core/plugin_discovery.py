@@ -178,8 +178,11 @@ def scan_local_keywords() -> None:
                 try:
                     importlib.import_module('keywords')
                     print("已加载项目keywords包")
-                except ImportError as e:
-                    print(f"导入项目keywords包失败: {e}")
+                except Exception as e:
+                    print(
+                        f"导入项目keywords包失败: "
+                        f"{type(e).__name__}: {e}"
+                    )
             
             # 遍历keywords目录下的所有Python文件（包括子目录）
             loaded_modules = 0
@@ -201,8 +204,11 @@ def scan_local_keywords() -> None:
                         importlib.import_module(f'keywords.{subdir_name}')
                         print(f"已加载项目关键字子包: {subdir_name}")
                         loaded_modules += 1
-                    except ImportError as e:
-                        print(f"导入项目关键字子包 {subdir_name} 失败: {e}")
+                    except Exception as e:
+                        print(
+                            f"导入项目关键字子包 {subdir_name} 失败: "
+                            f"{type(e).__name__}: {e}"
+                        )
                 
                 # 无论是否为包，都尝试直接加载其中的Python文件
                 for file_path in subdir.glob('*.py'):
