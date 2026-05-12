@@ -7,6 +7,7 @@ from pytest_dsl.core.execution.exceptions import (
     ContinueException,
     ReturnException,
 )
+from pytest_dsl.core.reporting import preview_value
 
 
 class LoopHandlers:
@@ -34,7 +35,8 @@ class LoopHandlers:
 
                 allure.attach(
                     f"循环变量: {var_name}\n循环范围: {start_range} 到 "
-                    f"{end_range}\n循环项: {loop_items}{line_info}",
+                    f"{end_range}\n循环次数: {len(loop_items)}\n"
+                    f"循环项预览: {preview_value(loop_items)}{line_info}",
                     name="范围循环信息",
                     attachment_type=allure.attachment_type.TEXT,
                 )
@@ -94,7 +96,7 @@ class LoopHandlers:
                 )
 
                 allure.attach(
-                    f"循环变量: {var_name}\n遍历集合: {collection}\n集合类型: "
+                    f"循环变量: {var_name}\n遍历集合预览: {preview_value(collection)}\n集合类型: "
                     f"{type(collection).__name__}\n集合长度: "
                     f"{len(loop_items)}{line_info}",
                     name="遍历循环信息",
@@ -155,7 +157,7 @@ class LoopHandlers:
 
                 allure.attach(
                     f"键变量: {key_var}\n值变量: {value_var}\n遍历字典: "
-                    f"{collection}\n字典长度: {len(collection)}{line_info}",
+                    f"{preview_value(collection)}\n字典长度: {len(collection)}{line_info}",
                     name="键值对循环信息",
                     attachment_type=allure.attachment_type.TEXT,
                 )

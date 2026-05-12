@@ -174,6 +174,31 @@ class TestHTTPExtractors:
 
         assert http_req.captured_values['title'] == 'Herman Melville'
 
+    def test_capture_report_uses_single_summary_by_default(self, monkeypatch):
+        attachments = []
+
+        def record_attachment(body, name=None, attachment_type=None):
+            attachments.append((name, body))
+
+        monkeypatch.setattr("allure.attach", record_attachment)
+
+        config = {
+            'captures': {
+                'user_id': ['jsonpath', '$.id'],
+                'content_type': ['header', 'Content-Type'],
+            }
+        }
+
+        http_req = HTTPRequest(config)
+        http_req.response = self.mock_response
+        http_req.process_captures()
+
+        attachment_names = [name for name, _ in attachments]
+
+        assert attachment_names == ["变量捕获摘要"]
+        assert "user_id = 123" in str(attachments[0][1])
+        assert "content_type = 'application/json'" in str(attachments[0][1])
+
 
 class TestHTTPAssertions:
     """测试HTTP断言功能"""
@@ -372,6 +397,73 @@ class TestHTTPAssertions:
             assert len(results) == 1
             assert results[0]['result'] == True
             assert len(failed) == 0
+
+    def test_assertion_report_uses_single_success_summary_by_default(self, monkeypatch):
+        attachments = []
+
+        def record_attachment(body, name=None, attachment_type=None):
+            attachments.append((name, body))
+
+        monkeypatch.setattr("allure.attach", record_attachment)
+
+        config = {
+            'asserts': [
+                ['status', 'eq', 200],
+                ['jsonpath', '$.name', 'matches', '^Jo'],
+            ]
+        }
+
+        http_req = HTTPRequest(config)
+        http_req.response = self.mock_response
+        results, failed = http_req.process_asserts()
+
+        attachment_names = [name for name, _ in attachments]
+
+        assert len(results) == 2
+        assert failed == []
+        assert attachment_names == ["HTTP断言摘要"]
+        assert "断言 #1 [status] 通过" in str(attachments[0][1])
+        assert "断言 #2 [jsonpath $.name] 通过" in str(attachments[0][1])
+        assert "断言参数" not in attachment_names
+        assert not any(str(name).startswith("断言成功") for name in attachment_names)
+        assert "正则表达式匹配" not in attachment_names
+
+    def test_request_response_report_uses_summaries_by_default(self, monkeypatch):
+        attachments = []
+
+        def record_attachment(body, name=None, attachment_type=None):
+            attachments.append((name, body))
+
+        monkeypatch.setattr("allure.attach", record_attachment)
+
+        response = Mock()
+        response.status_code = 201
+        response.reason = "Created"
+        response.headers = {"Content-Type": "application/json"}
+        response.json.return_value = {"token": "secret", "items": list(range(100))}
+        response.text = json.dumps(response.json.return_value)
+        response.content = response.text.encode("utf-8")
+        response.elapsed.total_seconds.return_value = 0.123
+
+        http_req = HTTPRequest({})
+        http_req._log_request_to_allure(
+            "POST",
+            "/login",
+            {
+                "headers": {
+                    "Authorization": "Bearer secret",
+                    "Content-Type": "application/json",
+                },
+                "json": {"username": "alice", "password": "secret"},
+            },
+        )
+        http_req._log_response_to_allure(response)
+
+        assert [name for name, _ in attachments] == ["HTTP请求摘要", "HTTP响应摘要"]
+        assert "Authorization: ***REDACTED***" in str(attachments[0][1])
+        assert "password" not in str(attachments[0][1])
+        assert "Body:" not in str(attachments[1][1])
+        assert "201 Created" in str(attachments[1][1])
 
 
 if __name__ == '__main__':

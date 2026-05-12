@@ -10,6 +10,36 @@ import allure
 from typing import Any, Dict, List, Union
 import jsonpath_ng.ext as jsonpath
 from pytest_dsl.core.keyword_manager import keyword_manager
+from pytest_dsl.core.reporting import is_verbose
+
+
+def _attach_verbose(details: str, name: str) -> None:
+    """Attach diagnostic details only when verbose DSL logging is enabled."""
+    if is_verbose():
+        allure.attach(
+            details,
+            name=name,
+            attachment_type=allure.attachment_type.TEXT
+        )
+
+
+def _attach_assertion_success(actual: Any = None, expected: Any = None,
+                              operator: str = None,
+                              condition: str = None) -> None:
+    if condition is not None:
+        details = f"条件: {condition}\n结果: 通过"
+    else:
+        details = (
+            f"实际值: {actual}\n"
+            f"预期值: {expected}\n"
+            f"操作符: {operator}\n"
+            f"结果: 通过"
+        )
+    allure.attach(
+        details,
+        name="断言成功",
+        attachment_type=allure.attachment_type.TEXT
+    )
 
 
 def _extract_jsonpath(json_data: Union[Dict, List], path: str) -> Any:
@@ -181,11 +211,9 @@ def assert_condition(**kwargs):
             operator_used = op
             break
 
-    # 调试输出
-    allure.attach(
+    _attach_verbose(
         f"原始条件: {condition}\n检测到的操作符: {operator_used}",
-        name="条件解析调试",
-        attachment_type=allure.attachment_type.TEXT
+        name="条件解析调试"
     )
 
     if not operator_used:
@@ -196,11 +224,9 @@ def assert_condition(**kwargs):
                 condition = (context.executor.variable_replacer
                            .replace_in_string(condition))
             
-            # 调试输出
-            allure.attach(
+            _attach_verbose(
                 f"变量替换后的条件: {condition}",
-                name="变量替换调试",
-                attachment_type=allure.attachment_type.TEXT
+                name="变量替换调试"
             )
             
             # 尝试直接求值
@@ -209,6 +235,7 @@ def assert_condition(**kwargs):
                 raise ValueError(f"表达式结果不是布尔值: {result}")
             if not result:
                 raise AssertionError(f"{message}. 布尔表达式求值为假: {condition}")
+            _attach_assertion_success(condition=condition)
             return True
         except Exception as e:
             raise AssertionError(
@@ -230,11 +257,9 @@ def assert_condition(**kwargs):
     elif right_value.startswith("'") and right_value.endswith("'"):
         right_value = right_value[1:-1]
 
-    # 记录原始值（用于调试）
-    allure.attach(
+    _attach_verbose(
         f"原始左值: {left_value}\n原始右值: {right_value}\n操作符: {operator_used}",
-        name="表达式解析",
-        attachment_type=allure.attachment_type.TEXT
+        name="表达式解析"
     )
 
     # 对左值进行变量替换和表达式计算
@@ -391,10 +416,9 @@ def assert_condition(**kwargs):
                 else:
                     result = left_value in right_value
         except Exception as e:
-            allure.attach(
+            _attach_verbose(
                 f"in 操作符处理异常: {str(e)}\n左值: {left_value}\n右值: {right_value}",
-                name="in 操作符处理异常",
-                attachment_type=allure.attachment_type.TEXT
+                name="in 操作符处理异常"
             )
             # 降级为字符串包含检查
             result = str(left_value) in str(right_value)
@@ -413,12 +437,10 @@ def assert_condition(**kwargs):
             except Exception:
                 pass
 
-        # 记录类型转换后的值（用于调试）
-        allure.attach(
+        _attach_verbose(
             f"类型转换后左值: {left_value} ({type(left_value).__name__})\n"
             f"类型转换后右值: {right_value} ({type(right_value).__name__})",
-            name="类型转换",
-            attachment_type=allure.attachment_type.TEXT
+            name="类型转换"
         )
 
         # 执行比较
@@ -432,6 +454,7 @@ def assert_condition(**kwargs):
         实际值: {left_value} ({type(left_value).__name__})
         预期值: {right_value} ({type(right_value).__name__})
         操作符: {operator_used}
+        结果: 失败
         消息: {message}
         """
         allure.attach(
@@ -441,12 +464,7 @@ def assert_condition(**kwargs):
         )
         raise AssertionError(error_details)
 
-    # 记录成功的断言
-    allure.attach(
-        f"实际值: {left_value}\n预期值: {right_value}\n操作符: {operator_used}",
-        name="断言成功",
-        attachment_type=allure.attachment_type.TEXT
-    )
+    _attach_assertion_success(left_value, right_value, operator_used)
     return True
 
 
@@ -506,7 +524,8 @@ def assert_json(**kwargs):
     # 记录和处理断言结果
     if not result:
         allure.attach(
-            f"实际值: {actual_value}\n预期值: {expected_value}\n操作符: {operator}",
+            f"实际值: {actual_value}\n预期值: {expected_value}\n"
+            f"操作符: {operator}\n结果: 失败\n消息: {message}",
             name="JSON断言失败",
             attachment_type=allure.attachment_type.TEXT
         )
@@ -514,7 +533,8 @@ def assert_json(**kwargs):
 
     # 记录成功的断言
     allure.attach(
-        f"实际值: {actual_value}\n预期值: {expected_value}\n操作符: {operator}",
+        f"实际值: {actual_value}\n预期值: {expected_value}\n"
+        f"操作符: {operator}\n结果: 通过",
         name="JSON断言成功",
         attachment_type=allure.attachment_type.TEXT
     )
@@ -651,7 +671,8 @@ def assert_type(**kwargs):
     if not result:
         actual_type = type(value).__name__
         allure.attach(
-            f"值: {value}\n实际类型: {actual_type}\n预期类型: {expected_type}",
+            f"值: {value}\n实际类型: {actual_type}\n"
+            f"预期类型: {expected_type}\n结果: 失败\n消息: {message}",
             name="类型断言失败",
             attachment_type=allure.attachment_type.TEXT
         )
@@ -659,7 +680,7 @@ def assert_type(**kwargs):
 
     # 记录成功的断言
     allure.attach(
-        f"值: {value}\n类型: {expected_type}",
+        f"值: {value}\n类型: {expected_type}\n结果: 通过",
         name="类型断言成功",
         attachment_type=allure.attachment_type.TEXT
     )
@@ -719,7 +740,8 @@ def compare_values(**kwargs):
     # 记录和处理比较结果
     if not result:
         allure.attach(
-            f"实际值: {actual}\n预期值: {expected}\n操作符: {operator}",
+            f"实际值: {actual}\n预期值: {expected}\n"
+            f"操作符: {operator}\n结果: 失败\n消息: {message}",
             name="数据比较失败",
             attachment_type=allure.attachment_type.TEXT
         )
@@ -727,7 +749,8 @@ def compare_values(**kwargs):
 
     # 记录成功的比较
     allure.attach(
-        f"实际值: {actual}\n预期值: {expected}\n操作符: {operator}",
+        f"实际值: {actual}\n预期值: {expected}\n"
+        f"操作符: {operator}\n结果: 通过",
         name="数据比较成功",
         attachment_type=allure.attachment_type.TEXT
     )

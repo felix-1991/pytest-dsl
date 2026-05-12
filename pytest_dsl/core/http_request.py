@@ -9,6 +9,13 @@ import allure
 import requests
 
 from pytest_dsl.core.http_client import http_client_manager
+from pytest_dsl.core.reporting import (
+    attach_text,
+    attach_verbose,
+    payload_summary,
+    preview_value,
+    redact_value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +203,7 @@ class HTTPRequest:
         self._ensure_response_exists("捕获响应")
 
         captures_config = self.config.get('captures', {})
+        capture_lines = []
 
         for var_name, capture_spec in captures_config.items():
             if not isinstance(capture_spec, list):
@@ -227,11 +235,13 @@ class HTTPRequest:
                         original_value = captured_value
                         captured_value = len(captured_value)
 
-                        # 记录长度到Allure
-                        allure.attach(
-                            f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n原始值: {str(original_value)}\n长度: {captured_value}",
-                            name=f"捕获长度: {var_name}",
-                            attachment_type=allure.attachment_type.TEXT
+                        attach_verbose(
+                            f"捕获长度: {var_name}",
+                            f"变量名: {var_name}\n"
+                            f"提取器: {extractor_type}\n"
+                            f"路径: {extraction_path}\n"
+                            f"原始值: {preview_value(original_value)}\n"
+                            f"长度: {captured_value}",
                         )
                     except Exception as e:
                         # 记录长度计算失败的详细信息
@@ -240,21 +250,18 @@ class HTTPRequest:
                             f"类型: {type(original_value).__name__}\n"
                             f"值: {original_value}"
                         )
-                        allure.attach(
+                        attach_text(
+                            f"长度计算失败: {extractor_type} {extraction_path}",
                             error_msg,
-                            name=f"长度计算失败: {extractor_type} {extraction_path}",
-                            attachment_type=allure.attachment_type.TEXT
                         )
                         # 抛出更具体的异常，而不是用0替代
                         raise ValueError(
                             f"断言类型'length'无法应用于值 '{original_value}': {str(e)}")
-                else:
-                    # 记录捕获到Allure
-                    allure.attach(
-                        f"变量名: {var_name}\n提取器: {extractor_type}\n路径: {extraction_path}\n提取值: {str(captured_value)}",
-                        name=f"捕获变量: {var_name}",
-                        attachment_type=allure.attachment_type.TEXT
-                    )
+
+                capture_lines.append(
+                    f"{var_name} = {preview_value(captured_value)} "
+                    f"({extractor_type}{' ' + str(extraction_path) if extraction_path else ''})"
+                )
 
                 self.captured_values[var_name] = captured_value
             except Exception as e:
@@ -270,6 +277,9 @@ class HTTPRequest:
                 )
                 # 设置默认值
                 self.captured_values[var_name] = None
+
+        if capture_lines:
+            attach_text("变量捕获摘要", "\n".join(capture_lines))
 
         return self.captured_values
 
@@ -572,19 +582,22 @@ class HTTPRequest:
                     # 对于其他类型（包括body、jsonpath、header等），尝试计算长度
                     try:
                         # 记录长度断言的原始值信息
-                        allure.attach(
-                            f"提取器: {extractor_type}\n路径: {extraction_path}\n原始值: {original_actual_value}\n类型: {type(original_actual_value).__name__}",
-                            name=f"长度断言原始值: {extractor_type}",
-                            attachment_type=allure.attachment_type.TEXT
+                        attach_verbose(
+                            f"长度断言原始值: {extractor_type}",
+                            f"提取器: {extractor_type}\n"
+                            f"路径: {extraction_path}\n"
+                            f"原始值: {preview_value(original_actual_value)}\n"
+                            f"类型: {type(original_actual_value).__name__}",
                         )
 
                         actual_value = len(actual_value)
 
                         # 记录计算结果
-                        allure.attach(
-                            f"提取器: {extractor_type}\n路径: {extraction_path}\n长度: {actual_value}",
-                            name=f"长度断言计算结果: {extractor_type}",
-                            attachment_type=allure.attachment_type.TEXT
+                        attach_verbose(
+                            f"长度断言计算结果: {extractor_type}",
+                            f"提取器: {extractor_type}\n"
+                            f"路径: {extraction_path}\n"
+                            f"长度: {actual_value}",
                         )
                     except Exception as e:
                         # 记录长度计算失败的详细信息
@@ -593,10 +606,9 @@ class HTTPRequest:
                             f"类型: {type(original_actual_value).__name__}\n"
                             f"值: {original_actual_value}"
                         )
-                        allure.attach(
+                        attach_text(
+                            f"长度计算失败: {extractor_type} {extraction_path}",
                             error_msg,
-                            name=f"长度计算失败: {extractor_type} {extraction_path}",
-                            attachment_type=allure.attachment_type.TEXT
                         )
                         # 抛出更具体的异常，而不是用0替代
                         raise ValueError(
@@ -627,11 +639,9 @@ class HTTPRequest:
                 if result:
                     assertion_result['passed'] = True
 
-                    # 使用Allure记录断言成功
-                    allure.attach(
+                    attach_verbose(
+                        f"断言成功: {extractor_type}",
                         self._format_assertion_details(assertion_result),
-                        name=f"断言成功: {extractor_type}",
-                        attachment_type=allure.attachment_type.TEXT
                     )
                 else:
                     # 断言失败但没有抛出异常
@@ -639,11 +649,10 @@ class HTTPRequest:
                     assertion_result['error'] = "断言失败"
 
                     # 使用Allure记录断言失败
-                    allure.attach(
+                    attach_text(
+                        f"断言失败: {extractor_type}",
                         self._format_assertion_details(
                             assertion_result) + "\n\n错误: 断言结果为False",
-                        name=f"断言失败: {extractor_type}",
-                        attachment_type=allure.attachment_type.TEXT
                     )
 
                     # 如果断言可重试，添加到失败且需要重试的断言列表
@@ -687,11 +696,10 @@ class HTTPRequest:
                     )
 
                 # 使用Allure记录断言失败
-                allure.attach(
+                attach_text(
+                    f"断言失败: {extractor_type}",
                     self._format_assertion_details(
                         assertion_result) + f"\n\n错误: {str(e)}",
-                    name=f"断言失败: {extractor_type}",
-                    attachment_type=allure.attachment_type.TEXT
                 )
 
                 # 如果断言可重试，添加到失败且需要重试的断言列表
@@ -721,17 +729,25 @@ class HTTPRequest:
                 )
 
                 # 使用Allure记录断言错误
-                allure.attach(
+                attach_text(
+                    f"断言执行错误: {extractor_type}",
                     self._format_assertion_details(
                         assertion_result) + f"\n\n错误: {assertion_result['error']}",
-                    name=f"断言执行错误: {extractor_type}",
-                    attachment_type=allure.attachment_type.TEXT
                 )
 
                 # 收集断言失败，而不是立即抛出异常
                 failed_assertions.append((assertion_idx, formatted_error))
 
             assert_results.append(assertion_result)
+
+        if assert_results:
+            attach_text(
+                "HTTP断言摘要",
+                "\n".join(
+                    self._format_assertion_summary_line(result)
+                    for result in assert_results
+                ),
+            )
 
         # 执行完所有断言后，如果有失败的断言，抛出异常
         if failed_assertions:
@@ -796,6 +812,30 @@ class HTTPRequest:
         details += f"结果: {'通过' if assertion_result['passed'] else '失败'}"
 
         return details
+
+    def _format_assertion_summary_line(self,
+                                       assertion_result: Dict[str, Any]) -> str:
+        index = assertion_result.get('index', 0) + 1
+        extractor_type = assertion_result.get('type')
+        extraction_path = assertion_result.get('path')
+        label = (
+            f"{extractor_type} {extraction_path}"
+            if extraction_path else str(extractor_type)
+        )
+        status = "通过" if assertion_result.get('passed') else "失败"
+        actual_value = preview_value(assertion_result.get('actual_value'))
+        expected_value = assertion_result.get('expected_value')
+        operator = assertion_result.get('operator')
+
+        if expected_value is None:
+            comparison = f"{operator} -> {actual_value}"
+        else:
+            comparison = (
+                f"{actual_value} {operator} "
+                f"{preview_value(expected_value)}"
+            )
+
+        return f"断言 #{index} [{label}] {status}: {comparison}"
 
     def _extract_value(self, extractor_type: str, extraction_path: str = None, default_value: Any = None) -> Any:
         """从响应提取值
@@ -1044,14 +1084,12 @@ class HTTPRequest:
                     attachment_type=allure.attachment_type.TEXT
                 )
 
-        # 记录断言参数
-        allure.attach(
+        attach_verbose(
+            "断言参数",
             f"断言类型: {assertion_type}\n"
             f"比较操作符: {operator}\n"
             f"实际值: {actual_value} ({type(actual_value).__name__})\n"
             f"期望值: {expected_value} ({type(expected_value).__name__ if expected_value is not None else 'None'})",
-            name="断言参数",
-            attachment_type=allure.attachment_type.TEXT
         )
 
         # 基于断言类型执行断言
@@ -1087,23 +1125,20 @@ class HTTPRequest:
                     import re
                     pattern = str(expected_value)
                     match_result = bool(re.search(pattern, actual_value))
-                    # 记录匹配结果
-                    allure.attach(
+                    attach_verbose(
+                        "正则表达式匹配",
                         f"正则表达式匹配结果: {'成功' if match_result else '失败'}\n"
                         f"模式: {pattern}\n"
                         f"目标字符串: {actual_value}",
-                        name="正则表达式匹配",
-                        attachment_type=allure.attachment_type.TEXT
                     )
                     return match_result
                 except Exception as e:
                     # 记录正则表达式匹配错误
-                    allure.attach(
+                    attach_text(
+                        "正则表达式错误",
                         f"正则表达式匹配失败: {type(e).__name__}: {str(e)}\n"
                         f"模式: {expected_value}\n"
                         f"目标字符串: {actual_value}",
-                        name="正则表达式错误",
-                        attachment_type=allure.attachment_type.TEXT
                     )
                     return False
             elif assertion_type == "schema":
@@ -1113,12 +1148,11 @@ class HTTPRequest:
                     return True
                 except Exception as e:
                     # 记录JSON Schema验证错误
-                    allure.attach(
+                    attach_text(
+                        "Schema验证错误",
                         f"JSON Schema验证失败: {type(e).__name__}: {str(e)}\n"
                         f"Schema: {expected_value}\n"
                         f"实例: {actual_value}",
-                        name="Schema验证错误",
-                        attachment_type=allure.attachment_type.TEXT
                     )
                     return False
         elif assertion_type == "length":
@@ -1211,23 +1245,20 @@ class HTTPRequest:
                 import re
                 pattern = str(expected_value)
                 match_result = bool(re.search(pattern, actual_value))
-                # 记录匹配结果
-                allure.attach(
+                attach_verbose(
+                    "正则表达式匹配",
                     f"正则表达式匹配结果: {'成功' if match_result else '失败'}\n"
                     f"模式: {pattern}\n"
                     f"目标字符串: {actual_value}",
-                    name="正则表达式匹配",
-                    attachment_type=allure.attachment_type.TEXT
                 )
                 return match_result
             except Exception as e:
                 # 记录正则表达式匹配错误
-                allure.attach(
+                attach_text(
+                    "正则表达式错误",
                     f"正则表达式匹配失败: {type(e).__name__}: {str(e)}\n"
                     f"模式: {expected_value}\n"
                     f"目标字符串: {actual_value}",
-                    name="正则表达式错误",
-                    attachment_type=allure.attachment_type.TEXT
                 )
                 return False
         else:
@@ -1241,56 +1272,57 @@ class HTTPRequest:
             url: 请求URL
             request_kwargs: 请求参数
         """
-        # 创建请求信息摘要
         request_summary = f"{method} {url}"
-
-        # 创建详细请求信息
-        request_details = [f"Method: {method}", f"URL: {url}"]
+        summary_details = [f"Method: {method}", f"URL: {url}"]
+        verbose_details = [f"Method: {method}", f"URL: {url}"]
 
         # 添加请求头
         if "headers" in request_kwargs and request_kwargs["headers"]:
-            # 隐藏敏感信息
-            safe_headers = {}
-            for key, value in request_kwargs["headers"].items():
-                if key.lower() in ["authorization", "x-api-key", "token", "api-key"]:
-                    safe_headers[key] = "***REDACTED***"
-                else:
-                    safe_headers[key] = value
-            request_details.append("Headers:")
+            safe_headers = redact_value(request_kwargs["headers"])
+            summary_details.append("Headers:")
+            verbose_details.append("Headers:")
             for key, value in safe_headers.items():
-                request_details.append(f"  {key}: {value}")
+                summary_details.append(f"  {key}: {value}")
+                verbose_details.append(f"  {key}: {value}")
 
         # 添加查询参数
         if "params" in request_kwargs and request_kwargs["params"]:
-            request_details.append("Query Parameters:")
-            for key, value in request_kwargs["params"].items():
-                request_details.append(f"  {key}: {value}")
+            summary_details.append(
+                f"Query Parameters: {payload_summary(request_kwargs['params'])}")
+            verbose_details.append("Query Parameters:")
+            for key, value in redact_value(request_kwargs["params"]).items():
+                verbose_details.append(f"  {key}: {value}")
 
         # 添加请求体
         if "json" in request_kwargs and request_kwargs["json"]:
-            request_details.append("JSON Body:")
+            summary_details.append(
+                f"JSON Body: {payload_summary(request_kwargs['json'])}")
+            verbose_details.append("JSON Body:")
             try:
-                request_details.append(json.dumps(
-                    request_kwargs["json"], indent=2, ensure_ascii=False))
+                verbose_details.append(json.dumps(
+                    redact_value(request_kwargs["json"]),
+                    indent=2,
+                    ensure_ascii=False))
             except:
-                request_details.append(str(request_kwargs["json"]))
+                verbose_details.append(preview_value(request_kwargs["json"]))
         elif "data" in request_kwargs and request_kwargs["data"]:
-            request_details.append("Form Data:")
-            for key, value in request_kwargs["data"].items():
-                request_details.append(f"  {key}: {value}")
+            summary_details.append(
+                f"Form Data: {payload_summary(request_kwargs['data'])}")
+            verbose_details.append("Form Data:")
+            for key, value in redact_value(request_kwargs["data"]).items():
+                verbose_details.append(f"  {key}: {value}")
 
         # 添加文件信息
         if "files" in request_kwargs and request_kwargs["files"]:
-            request_details.append("Files:")
+            summary_details.append(
+                f"Files: {payload_summary(request_kwargs['files'])}")
+            verbose_details.append("Files:")
             for key, value in request_kwargs["files"].items():
-                request_details.append(f"  {key}: <File object>")
+                verbose_details.append(f"  {key}: <File object>")
 
-        # 记录到Allure
-        allure.attach(
-            "\n".join(request_details),
-            name=f"HTTP请求: {request_summary}",
-            attachment_type=allure.attachment_type.TEXT
-        )
+        attach_text("HTTP请求摘要", "\n".join(summary_details))
+        attach_verbose(f"HTTP请求详情: {request_summary}",
+                       "\n".join(verbose_details))
 
     def _log_response_to_allure(self, response: Response) -> None:
         """使用Allure记录响应信息
@@ -1298,10 +1330,17 @@ class HTTPRequest:
         Args:
             response: 响应对象
         """
-        # 创建响应信息摘要
         response_summary = f"{response.status_code} {response.reason} ({response.elapsed.total_seconds() * 1000:.2f}ms)"
 
-        # 创建详细响应信息
+        summary_details = [
+            f"Status: {response.status_code} {response.reason}",
+            f"Response Time: {response.elapsed.total_seconds() * 1000:.2f}ms",
+            f"Body Size: {len(getattr(response, 'content', b''))} bytes",
+        ]
+        content_type = response.headers.get('Content-Type')
+        if content_type:
+            summary_details.append(f"Content-Type: {content_type}")
+
         response_details = [
             f"Status: {response.status_code} {response.reason}",
             f"Response Time: {response.elapsed.total_seconds() * 1000:.2f}ms"
@@ -1325,9 +1364,6 @@ class HTTPRequest:
         except Exception as e:
             response_details.append(f"<Error parsing body: {str(e)}>")
 
-        # 记录到Allure
-        allure.attach(
-            "\n".join(response_details),
-            name=f"HTTP响应: {response_summary}",
-            attachment_type=allure.attachment_type.TEXT
-        )
+        attach_text("HTTP响应摘要", "\n".join(summary_details))
+        attach_verbose(f"HTTP响应详情: {response_summary}",
+                       "\n".join(response_details))

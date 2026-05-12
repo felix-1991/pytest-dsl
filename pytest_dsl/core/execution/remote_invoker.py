@@ -3,7 +3,7 @@
 import allure
 
 from pytest_dsl.core.execution.exceptions import DSLExecutionError
-from pytest_dsl.remote.log_utils import is_verbose
+from pytest_dsl.core.reporting import is_verbose, preview_value
 
 
 class RemoteKeywordInvoker:
@@ -124,12 +124,25 @@ class RemoteKeywordInvoker:
 
                 kwargs['context'] = executor.test_context
 
-                result = remote_keyword_manager.execute_remote_keyword(
-                    alias, keyword_name, **kwargs)
+                step_name = kwargs.get(
+                    '步骤名称',
+                    kwargs.get('step_name', f"{alias}|{keyword_name}")
+                )
+
+                with allure.step(step_name):
+                    result = remote_keyword_manager.execute_remote_keyword(
+                        alias, keyword_name, **kwargs)
+                if is_verbose():
+                    details = (f"远程关键字参数: {kwargs}\n"
+                               f"远程关键字结果: {result}{line_info}")
+                    attachment_name = "远程关键字执行详情"
+                else:
+                    details = (f"远程关键字: {alias}|{keyword_name}\n"
+                               f"结果: {preview_value(result)}{line_info}")
+                    attachment_name = "远程关键字执行结果"
                 allure.attach(
-                    f"远程关键字参数: {kwargs}\n"
-                    f"远程关键字结果: {result}{line_info}",
-                    name="远程关键字执行详情",
+                    details,
+                    name=attachment_name,
                     attachment_type=allure.attachment_type.TEXT,
                 )
                 return result

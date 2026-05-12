@@ -15,6 +15,7 @@ from typing import Dict, Any, Union
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.core.http_request import HTTPRequest
 from pytest_dsl.core.context import TestContext
+from pytest_dsl.core.reporting import is_verbose
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -293,22 +294,24 @@ def http_request(context, **kwargs):
     assert_retry_count = kwargs.get('assert_retry_count')
     assert_retry_interval = kwargs.get('assert_retry_interval')
 
-    # 添加调试信息，检查客户端配置是否可用
-    print(f"🌐 HTTP请求 - 客户端: {client_name}")
-
     # 从context获取http_clients配置（统一的变量获取方式）
     http_clients_config = context.get("http_clients")
+    if is_verbose():
+        print(f"HTTP请求 - 客户端: {client_name}")
     if http_clients_config:
-        print(f"✓ 找到http_clients配置，包含 {len(http_clients_config)} 个客户端")
+        if is_verbose():
+            print(f"找到http_clients配置，包含 {len(http_clients_config)} 个客户端")
         if client_name in http_clients_config:
-            print(f"✓ 找到客户端 '{client_name}' 的配置")
             client_config = http_clients_config[client_name]
-            print(f"  - base_url: {client_config.get('base_url', 'N/A')}")
-            print(f"  - timeout: {client_config.get('timeout', 'N/A')}")
+            if is_verbose():
+                print(f"找到客户端 '{client_name}' 的配置")
+                print(f"  - base_url: {client_config.get('base_url', 'N/A')}")
+                print(f"  - timeout: {client_config.get('timeout', 'N/A')}")
         else:
-            print(f"⚠️ 未找到客户端 '{client_name}' 的配置")
-            print(f"  可用客户端: {list(http_clients_config.keys())}")
-    else:
+            if is_verbose():
+                print(f"未找到客户端 '{client_name}' 的配置")
+                print(f"  可用客户端: {list(http_clients_config.keys())}")
+    elif is_verbose():
         print("⚠️ 未找到http_clients配置")
 
     with allure.step(f"发送HTTP请求 (客户端: {client_name}"

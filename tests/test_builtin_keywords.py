@@ -8,6 +8,7 @@ import pytest
 
 import pytest_dsl.keywords  # noqa: F401 - import registers builtin keywords
 from pytest_dsl.core.context import TestContext as DSLContext
+from pytest_dsl.core.dsl_executor import DSLExecutor
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.keywords import assertion_keywords, global_keywords, http_keywords
 from pytest_dsl.keywords import system_keywords
@@ -301,6 +302,66 @@ def test_assert_condition_failure_and_invalid_regex_are_reported():
         assertion_keywords.assert_condition(condition="abc matches [")
 
 
+def test_successful_assertion_report_omits_debug_and_failure_message(monkeypatch):
+    attachments = []
+
+    def record_attachment(body, name=None, attachment_type=None):
+        attachments.append((name, body))
+
+    monkeypatch.setattr("allure.attach", record_attachment)
+
+    content = """
+@name: "断言成功报告"
+
+[断言], 条件: "True == True", 消息: "执行失败"
+"""
+
+    DSLExecutor(enable_hooks=False, enable_tracking=False).execute_from_content(content)
+
+    attachment_names = [name for name, _ in attachments]
+    attachment_text = "\n".join(str(body) for _, body in attachments)
+
+    assert "参数解析详情" not in attachment_names
+    assert "条件解析调试" not in attachment_names
+    assert "表达式解析" not in attachment_names
+    assert "类型转换" not in attachment_names
+    assert "执行失败" not in attachment_text
+    assert any(
+        name == "断言成功" and "实际值: True" in str(body) and "结果: 通过" in str(body)
+        for name, body in attachments
+    )
+
+
+def test_failed_assertion_report_keeps_failure_details(monkeypatch):
+    attachments = []
+
+    def record_attachment(body, name=None, attachment_type=None):
+        attachments.append((name, body))
+
+    monkeypatch.setattr("allure.attach", record_attachment)
+
+    content = """
+@name: "断言失败报告"
+
+[断言], 条件: "True == False", 消息: "执行失败"
+"""
+
+    with pytest.raises(AssertionError, match="执行失败"):
+        DSLExecutor(enable_hooks=False, enable_tracking=False).execute_from_content(content)
+
+    attachment_names = [name for name, _ in attachments]
+    failure_details = "\n".join(
+        str(body) for name, body in attachments if name == "断言失败详情"
+    )
+
+    assert "参数解析详情" not in attachment_names
+    assert "条件解析调试" not in attachment_names
+    assert "表达式解析" not in attachment_names
+    assert "类型转换" not in attachment_names
+    assert "消息: 执行失败" in failure_details
+    assert "结果: 失败" in failure_details
+
+
 @pytest.mark.parametrize(
     ("actual", "expected", "operator"),
     [
@@ -523,7 +584,7 @@ def test_deep_merge_recursively_merges_template_and_user_config():
     }
 
 
-def test_http_request_keyword_uses_template_merges_config_and_returns_side_effects(monkeypatch):
+def test_http_request_keyword_uses_template_merges_config_and_returns_side_effects(monkeypatch, capsys):
     context = DSLContext()
     context.set(
         "http_clients",
@@ -612,6 +673,7 @@ captures:
     }
     assert context.get("created_id") == 42
     assert context.get("saved_response") is response
+    assert capsys.readouterr().out == ""
 
 
 def test_http_request_keyword_rejects_missing_template():

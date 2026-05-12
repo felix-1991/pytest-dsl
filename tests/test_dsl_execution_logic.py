@@ -80,6 +80,38 @@ end
     assert variables["visited"] == "1,3,4,"
 
 
+def test_loop_iterations_are_reported_as_steps_by_default(monkeypatch):
+    step_titles = []
+
+    class RecordStep:
+        def __init__(self, title):
+            self.title = title
+
+        def __enter__(self):
+            step_titles.append(self.title)
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr("allure.step", RecordStep)
+    monkeypatch.delenv("PYTEST_DSL_VERBOSE", raising=False)
+
+    _execute_dsl(
+        '''
+total = 0
+
+for i in range(1, 4) do
+    total = total + i
+end
+''',
+        monkeypatch,
+    )
+
+    assert "循环轮次: i = 1" in step_titles
+    assert "循环轮次: i = 2" in step_titles
+    assert "循环轮次: i = 3" in step_titles
+
+
 def test_for_item_and_key_value_loops_evaluate_runtime_collections(monkeypatch):
     executor = _execute_dsl(
         '''

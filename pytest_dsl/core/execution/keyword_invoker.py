@@ -7,6 +7,7 @@ import allure
 
 from pytest_dsl.core.execution.exceptions import DSLExecutionError
 from pytest_dsl.core.keyword_manager import keyword_manager
+from pytest_dsl.core.reporting import is_verbose
 
 
 class KeywordInvoker:
@@ -36,7 +37,7 @@ class KeywordInvoker:
         with allure.step(f"调用关键字: {keyword_name}"):
             try:
                 kwargs = self.prepare_params(node, keyword_info)
-                kwargs['step_name'] = keyword_name
+                kwargs.setdefault('step_name', keyword_name)
                 kwargs['skip_logging'] = True
 
                 result = keyword_manager.execute(keyword_name, **kwargs)
@@ -115,12 +116,13 @@ class KeywordInvoker:
                             param.children[0])
                         kwargs[english_param_name] = param_value
 
-                        allure.attach(
-                            f"参数名: {param_name}\n"
-                            f"参数值: {param_value}",
-                            name="参数解析详情",
-                            attachment_type=allure.attachment_type.TEXT,
-                        )
+                        if is_verbose():
+                            allure.attach(
+                                f"参数名: {param_name}\n"
+                                f"参数值: {param_value}",
+                                name="参数解析详情",
+                                attachment_type=allure.attachment_type.TEXT,
+                            )
                     except Exception as e:
                         raise Exception(
                             f"参数解析异常 ({param_name}): {str(e)}")
