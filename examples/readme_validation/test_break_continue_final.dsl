@@ -30,6 +30,7 @@ for i in range(1, 6) do
 end
 
 [打印], 内容: "Break测试最终结果: ${test_result} (预期: 12)"
+[断言], 条件: "${test_result} == '12'", 消息: "break 应在 i=3 时退出循环"
 
 # 测试2: 基本的continue功能
 [打印], 内容: "=== 测试2: Continue功能 ==="
@@ -45,6 +46,7 @@ for j in range(1, 6) do
 end
 
 [打印], 内容: "Continue测试最终结果: ${test_result2} (预期: 1245)"
+[断言], 条件: "${test_result2} == '1245'", 消息: "continue 应跳过 j=3"
 
 # 测试3: 复合条件下的break和continue（演示模运算%的使用）
 [打印], 内容: "=== 测试3: 复合条件测试 ==="
@@ -75,6 +77,7 @@ for k in range(1, 11) do
 end
 
 [打印], 内容: "奇数累加结果: ${odd_sum} (预期: 16，即1+3+5+7)"
+[断言], 条件: "${odd_sum} == 16", 消息: "复合条件下奇数累加结果错误"
 
 # 测试4: 嵌套条件中的break和continue
 [打印], 内容: "=== 测试4: 嵌套条件测试 ==="
@@ -99,5 +102,9 @@ for m in range(1, 6) do
 end
 
 [打印], 内容: "嵌套条件测试最终列表: ${result_list} (预期: [1, 2, 3])"
+[断言], 条件: "${result_list} contains 1", 消息: "嵌套条件结果应包含1"
+[断言], 条件: "${result_list} contains 2", 消息: "嵌套条件结果应包含2"
+[断言], 条件: "${result_list} contains 3", 消息: "嵌套条件结果应包含3"
+[断言], 条件: "${result_list} not_contains 4", 消息: "嵌套条件结果不应包含4"
 
 [打印], 内容: "=== 所有测试完成 ===" 

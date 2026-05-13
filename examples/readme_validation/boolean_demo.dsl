@@ -97,4 +97,11 @@ end
 [打印], 内容: "最终loop_count: ${loop_count}"
 [打印], 内容: "最终should_continue: ${should_continue}"
 
+[断言], 条件: "${is_enabled} == True", 消息: "True布尔值赋值失败"
+[断言], 条件: "${is_disabled} == False", 消息: "False布尔值赋值失败"
+[断言], 条件: "${bool_result1} == True", 消息: "布尔值True比较失败"
+[断言], 条件: "${bool_result2} == True", 消息: "布尔值False比较失败"
+[断言], 条件: "${loop_count} == 3", 消息: "布尔循环控制应在第3次退出"
+[断言], 条件: "${should_continue} == False", 消息: "布尔循环控制标记应为False"
+
 [打印], 内容: "=== 布尔值演示完成 ===" 

@@ -16,3 +16,7 @@ admin_pass = ${test_users.admin.password}
 
 # 在字符串中使用变量
 [打印], 内容: "用户${test_users.admin.username}的密码是${test_users.admin.password}"
+
+[断言], 条件: "${simple_var} == 'test_value'", 消息: "基本变量访问失败"
+[断言], 条件: "${admin_user} == 'admin'", 消息: "嵌套YAML用户名访问失败"
+[断言], 条件: "${admin_pass} == 'admin123'", 消息: "嵌套YAML密码访问失败"

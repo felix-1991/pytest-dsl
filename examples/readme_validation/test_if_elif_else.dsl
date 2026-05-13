@@ -7,50 +7,69 @@
 # 测试1: 基本的if-elif-else结构
 [打印], 内容: "=== 测试1: 基本if-elif-else ==="
 score = 85
+grade = "未判定"
 
 if score >= 90 do
+    grade = "A"
     [打印], 内容: "优秀 (A)"
 elif score >= 80 do
+    grade = "B"
     [打印], 内容: "良好 (B)"
 elif score >= 70 do
+    grade = "C"
     [打印], 内容: "中等 (C)"
 elif score >= 60 do
+    grade = "D"
     [打印], 内容: "及格 (D)"
 else
+    grade = "F"
     [打印], 内容: "不及格 (F)"
 end
 
 # 测试2: 多个elif分支
 [打印], 内容: "=== 测试2: 多个elif分支 ==="
 day = 3
+day_name = "未判定"
 
 if day == 1 do
+    day_name = "星期一"
     [打印], 内容: "星期一"
 elif day == 2 do
+    day_name = "星期二"
     [打印], 内容: "星期二"
 elif day == 3 do
+    day_name = "星期三"
     [打印], 内容: "星期三"
 elif day == 4 do
+    day_name = "星期四"
     [打印], 内容: "星期四"
 elif day == 5 do
+    day_name = "星期五"
     [打印], 内容: "星期五"
 elif day == 6 do
+    day_name = "星期六"
     [打印], 内容: "星期六"
 elif day == 7 do
+    day_name = "星期日"
     [打印], 内容: "星期日"
 else
+    day_name = "无效"
     [打印], 内容: "无效的日期"
 end
 
 # 测试3: 只有if和elif，没有else
 [打印], 内容: "=== 测试3: 只有if和elif ==="
 temperature = 25
+weather = "未判定"
 
 if temperature > 30 do
+    weather = "热"
     [打印], 内容: "天气很热"
 elif temperature > 20 do
+    weather = "温暖"
     [打印], 内容: "天气温暖"
 elif temperature > 10 do
+    weather = "凉爽"
     [打印], 内容: "天气凉爽"
 end
 
@@ -58,18 +77,23 @@ end
 [打印], 内容: "=== 测试4: 嵌套条件语句 ==="
 age = 25
 has_license = True
+drive_result = "未判定"
 
 if age >= 18 do
     [打印], 内容: "成年人"
     if has_license == True do
+        drive_result = "可以开车"
         [打印], 内容: "可以开车"
     else
+        drive_result = "需要考驾照"
         [打印], 内容: "需要考驾照"
     end
 elif age >= 16 do
+    drive_result = "不能开车"
     [打印], 内容: "青少年"
     [打印], 内容: "不能开车"
 else
+    drive_result = "不能开车"
     [打印], 内容: "未成年人"
     [打印], 内容: "不能开车"
 end
@@ -78,31 +102,48 @@ end
 [打印], 内容: "=== 测试5: 复杂条件表达式 ==="
 x = 15
 y = 20
+complex_result = "未判定"
 
 if x > 20 do
+    complex_result = "x大于20"
     [打印], 内容: "x大于20"
 elif x > 10 do
     if y > 15 do
+        complex_result = "x在10-20之间且y大于15"
         [打印], 内容: "x在10-20之间，且y大于15"
     else
+        complex_result = "x在10-20之间但y不大于15"
         [打印], 内容: "x在10-20之间，但y不大于15"
     end
 else
+    complex_result = "x不大于10"
     [打印], 内容: "x不大于10"
 end
 
 # 测试6: 字符串比较
 [打印], 内容: "=== 测试6: 字符串比较 ==="
 status = "active"
+status_label = "未判定"
 
 if status == "active" do
+    status_label = "激活"
     [打印], 内容: "状态：激活"
 elif status == "inactive" do
+    status_label = "未激活"
     [打印], 内容: "状态：未激活"
 elif status == "pending" do
+    status_label = "待处理"
     [打印], 内容: "状态：待处理"
 else
+    status_label = "未知"
     [打印], 内容: "状态：未知"
 end
+
+[断言], 条件: "${grade} == 'B'", 消息: "if-elif-else 基本分支错误"
+[断言], 条件: "${day_name} == '星期三'", 消息: "多elif分支选择错误"
+[断言], 条件: "${weather} == '温暖'", 消息: "无else的elif分支选择错误"
+[断言], 条件: "${drive_result} == '可以开车'", 消息: "嵌套条件分支错误"
+[断言], 条件: "${complex_result} == 'x在10-20之间且y大于15'", 消息: "复杂条件分支错误"
+[断言], 条件: "${status_label} == '激活'", 消息: "字符串比较分支错误"
 
 [打印], 内容: "=== if-elif-else测试完成 ==="

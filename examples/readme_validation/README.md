@@ -52,12 +52,13 @@ pytest-dsl api_basic.dsl
 python run_all_tests.py
 ```
 
-`run_all_tests.py` 默认会执行三层校验：
+`run_all_tests.py` 默认会执行五类校验：
 
-1. DSL 语法校验（当前目录全部 `.dsl`，以及 `../test_new_for_loops.dsl`）
+1. DSL 语法校验（当前目录普通 `.dsl`，以及 `../test_new_for_loops.dsl`）
 2. 语法基线用例校验（`syntax_cases/pass` 必须可解析，`syntax_cases/fail` 必须解析失败）
 3. README 示例执行校验（自动启动本地 mock HTTP，离线替代 jsonplaceholder）
-4. 远程关键字冒烟校验（自动启动本地 `pytest_dsl.remote.keyword_server`，覆盖 `@remote` 与 `remote_servers` 两种方式）
+4. pytest 数据驱动示例校验（执行 `test_runner.py -k data_driven`）
+5. 远程关键字冒烟校验（自动启动本地 `pytest_dsl.remote.keyword_server`，覆盖 `@remote` 与 `remote_servers` 两种方式）
 
 可选参数：
 

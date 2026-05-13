@@ -14,6 +14,7 @@ import contextlib
 import http.server
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -59,6 +60,8 @@ EXECUTION_FILES = [
 
 # README 中仅用于 pytest 数据驱动的示例，仍做语法校验
 SYNTAX_ONLY_FILES = ["data_driven.dsl"]
+
+IMPORT_RE = re.compile(r'(@import:\s*")([^"]+)(")')
 
 
 class _MockAPIHandler(http.server.BaseHTTPRequestHandler):
@@ -210,13 +213,7 @@ def _rewrite_content(content: str, replacement_base_url: str) -> str:
     return rewritten
 
 
-def _materialize_temp_dsl(original_file: Path, replacement_base_url: str) -> Path:
-    content = original_file.read_text(encoding="utf-8")
-    rewritten = _rewrite_content(content, replacement_base_url)
-
-    if rewritten == content:
-        return original_file
-
+def _write_temp_file(original_file: Path, content: str) -> Path:
     fd, temp_path = tempfile.mkstemp(
         prefix=f".tmp_{original_file.stem}_",
         suffix=original_file.suffix,
@@ -224,8 +221,48 @@ def _materialize_temp_dsl(original_file: Path, replacement_base_url: str) -> Pat
     )
     os.close(fd)
     temp_file = Path(temp_path)
-    temp_file.write_text(rewritten, encoding="utf-8")
+    temp_file.write_text(content, encoding="utf-8")
     return temp_file
+
+
+def _materialize_temp_dsl(original_file: Path, replacement_base_url: str) -> Path:
+    content = original_file.read_text(encoding="utf-8")
+    rewritten = _rewrite_content(content, replacement_base_url)
+
+    def rewrite_import(match: re.Match[str]) -> str:
+        import_ref = match.group(2)
+        imported_file = (original_file.parent / import_ref).resolve()
+        if not imported_file.exists() or imported_file.suffix != ".resource":
+            return match.group(0)
+
+        imported_content = imported_file.read_text(encoding="utf-8")
+        imported_rewritten = _rewrite_content(imported_content, replacement_base_url)
+        if imported_rewritten == imported_content:
+            return match.group(0)
+
+        temp_import = _write_temp_file(imported_file, imported_rewritten)
+        temp_import_ref = os.path.relpath(temp_import, start=original_file.parent)
+        return f"{match.group(1)}{temp_import_ref}{match.group(3)}"
+
+    rewritten = IMPORT_RE.sub(rewrite_import, rewritten)
+
+    if rewritten == content:
+        return original_file
+
+    return _write_temp_file(original_file, rewritten)
+
+
+def _cleanup_materialized_temp(temp_file: Path, original_file: Path) -> None:
+    if temp_file == original_file or not temp_file.exists():
+        return
+
+    content = temp_file.read_text(encoding="utf-8")
+    for import_ref in IMPORT_RE.findall(content):
+        imported_file = (temp_file.parent / import_ref[1]).resolve()
+        if imported_file.exists() and imported_file.name.startswith(".tmp_"):
+            imported_file.unlink()
+
+    temp_file.unlink()
 
 
 def _run_cli(file_path: Path, timeout: int = 90, extra_args: Optional[List[str]] = None) -> Tuple[bool, str]:
@@ -318,10 +355,34 @@ def execute_readme_examples(mock_base_url: str) -> Tuple[int, int, List[str]]:
                 failed += 1
                 messages.append(f"[执行失败] {rel_path}\n{output}")
         finally:
-            if temp_file != target and temp_file.exists():
-                temp_file.unlink()
+            _cleanup_materialized_temp(temp_file, target)
 
     return passed, failed, messages
+
+
+def pytest_data_driven_examples() -> Tuple[int, int, List[str]]:
+    cmd = [
+        sys.executable,
+        "-m",
+        "pytest",
+        "test_runner.py",
+        "-k",
+        "data_driven",
+        "-q",
+    ]
+    result = subprocess.run(
+        cmd,
+        cwd=str(SCRIPT_DIR),
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+
+    if result.returncode == 0:
+        return 1, 0, []
+
+    output = f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}".strip()
+    return 0, 1, [f"[pytest数据驱动失败] test_runner.py -k data_driven\n{output}"]
 
 
 def remote_smoke_test() -> Tuple[int, int, List[str]]:
@@ -396,6 +457,8 @@ def discover_dsl_files() -> List[Path]:
     files = []
     for entry in SCRIPT_DIR.glob("*.dsl"):
         if entry.name.startswith(".tmp_"):
+            continue
+        if entry.name in SYNTAX_ONLY_FILES:
             continue
         files.append(entry)
 
@@ -498,9 +561,17 @@ def main() -> int:
         print(f"执行通过: {exec_ok}")
         print(f"执行失败: {exec_fail}")
 
+        print_section("3) pytest 数据驱动示例校验")
+        data_ok, data_fail, data_msgs = pytest_data_driven_examples()
+        total_passed += data_ok
+        total_failed += data_fail
+        details.extend(data_msgs)
+        print(f"数据驱动通过: {data_ok}")
+        print(f"数据驱动失败: {data_fail}")
+
     # 3) 远程冒烟
     if not args.skip_remote:
-        print_section("3) 远程关键字冒烟校验")
+        print_section("4) 远程关键字冒烟校验")
         try:
             remote_ok, remote_fail, remote_msgs = remote_smoke_test()
         except Exception as exc:

@@ -14,11 +14,19 @@
 
 # 简单的条件判断来模拟不同的测试结果
 if "${username}" == "admin" do
+    simulated_status = 200
     [打印], 内容: "管理员登录测试"
 elif "${username}" == "user" do
+    simulated_status = 200
     [打印], 内容: "普通用户登录测试"
+elif "${username}" == "" do
+    simulated_status = 400
+    [打印], 内容: "空用户名登录测试"
 else
+    simulated_status = 401
     [打印], 内容: "无效用户登录测试"
 end
+
+[断言], 条件: "${simulated_status} == ${expected_status}", 消息: "模拟登录状态与期望状态不一致"
 
 [打印], 内容: "测试用例: ${test_case} - 完成"

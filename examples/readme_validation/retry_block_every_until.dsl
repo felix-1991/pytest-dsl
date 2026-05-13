@@ -11,3 +11,5 @@ retry 5 every 2 until ${status} == "ready" do
     end 
     a = a + 1
 end
+
+[断言], 条件: "${status} == 'ready'", 消息: "retry until 应在状态就绪后结束"
