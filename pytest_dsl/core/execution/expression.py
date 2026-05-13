@@ -61,6 +61,8 @@ class ExpressionEvaluator:
                 }
             if expr_node.type == 'BooleanExpr':
                 return expr_node.value
+            if expr_node.type == 'NullExpr':
+                return None
             if expr_node.type == 'ComparisonExpr':
                 return self._eval_comparison_expr(expr_node)
             if expr_node.type == 'ArithmeticExpr':

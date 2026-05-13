@@ -67,6 +67,22 @@ value = 1
     }
 
 
+def test_null_reserved_words_parse_as_metadata_text_values():
+    ast = _parse_dsl(
+        '''
+@name: None
+@tags: [null, None]
+value = 1
+'''
+    )
+
+    metadata = ast.children[0]
+    items = {item.type: item.value for item in metadata.children}
+
+    assert items["@name"] == "None"
+    assert [tag.value for tag in items["@tags"]] == ["null", "None"]
+
+
 @pytest.mark.parametrize(
     ("expr", "expected"),
     [
@@ -134,6 +150,48 @@ def test_collection_literals_support_nested_values_access_and_empty_values():
     executor.test_context.set("data", result)
     access_expr = _parse_assignment_expr("name = data.users[1].name")
     assert executor.eval_expression(access_expr) == "李四"
+
+
+def test_null_and_none_literals_evaluate_to_python_none():
+    assert _eval_expr("null") is None
+    assert _eval_expr("None") is None
+    assert _eval_expr('{"caller": null, "next": None}') == {
+        "caller": None,
+        "next": None,
+    }
+    assert _eval_expr("${null}") is None
+    assert _eval_expr('"caller: ${null}"') == "caller: null"
+
+
+def test_custom_keyword_default_value_accepts_null_literal(monkeypatch):
+    ast = _parse_dsl(
+        '''
+function return_null_default(value=null) do
+    return value
+end
+result = [return_null_default]
+'''
+    )
+
+    custom_keyword = _statements(ast).children[0]
+    parameter = custom_keyword.children[0][0]
+
+    assert parameter.value == "value"
+    assert parameter.children[0].type == "NullExpr"
+    assert parameter.children[0].value is None
+
+    monkeypatch.setenv("PYTEST_DSL_KEEP_VARIABLES", "1")
+    executor = DSLExecutor(enable_hooks=False, enable_tracking=False)
+    executor.execute_from_content(
+        '''
+function return_null_default(value=null) do
+    return value
+end
+result = [return_null_default]
+'''
+    )
+
+    assert executor.variable_replacer.local_variables["result"] is None
 
 
 def test_control_flow_syntax_parses_if_elif_else_and_loop_controls():

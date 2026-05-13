@@ -124,7 +124,9 @@ def p_metadata_item(p):
 
 def p_metadata_value(p):
     '''metadata_value : STRING
-                     | ID'''
+                     | ID
+                     | NULL
+                     | NONE'''
     p[0] = p[1]
 
 
@@ -139,7 +141,9 @@ def p_tags(p):
 
 def p_tag(p):
     '''tag : STRING
-           | ID'''
+           | ID
+           | NULL
+           | NONE'''
     p[0] = Node('Tag', value=p[1])
 
 
@@ -201,6 +205,7 @@ def p_expr_atom(p):
                  | PLACEHOLDER
                  | ID
                  | boolean_expr
+                 | null_expr
                  | list_expr
                  | dict_expr
                  | MINUS expr_atom %prec UMINUS
@@ -258,6 +263,12 @@ def p_boolean_expr(p):
     '''boolean_expr : TRUE
                     | FALSE'''
     p[0] = Node('BooleanExpr', value=True if p[1] == 'True' else False)
+
+
+def p_null_expr(p):
+    '''null_expr : NULL
+                 | NONE'''
+    p[0] = Node('NullExpr', value=None)
 
 
 def p_list_expr(p):
@@ -469,9 +480,13 @@ def p_param_def_list(p):
 def p_param_def(p):
     '''param_def : ID EQUALS STRING
                 | ID EQUALS NUMBER
+                | ID EQUALS boolean_expr
+                | ID EQUALS null_expr
                 | ID'''
     if len(p) == 4:
-        p[0] = Node('ParameterDef', [Node('Expression', value=p[3])], p[1])
+        default_node = p[3] if isinstance(p[3], Node) else Node(
+            'Expression', value=p[3])
+        p[0] = Node('ParameterDef', [default_node], p[1])
     else:
         p[0] = Node('ParameterDef', [], p[1])
 

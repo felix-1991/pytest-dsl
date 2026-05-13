@@ -426,15 +426,13 @@ age = 25
 is_active = True
 scores = [85, 90, 78]
 user_info = {"name": "张三", "age": 30}
+null_value = null
 
 [类型断言], 值: ${name}, 类型: "string", 消息: "name应该是字符串"
 [类型断言], 值: ${age}, 类型: "number", 消息: "age应该是数字"
 [类型断言], 值: ${is_active}, 类型: "boolean", 消息: "is_active应该是布尔值"
 [类型断言], 值: ${scores}, 类型: "list", 消息: "scores应该是列表"
 [类型断言], 值: ${user_info}, 类型: "object", 消息: "user_info应该是对象"
-
-# 检查null值（使用字符串"null"表示）
-null_value = "null"
 [类型断言], 值: ${null_value}, 类型: "null", 消息: "null_value应该是null"
 
 # 字符串形式的数字和布尔值会被智能识别

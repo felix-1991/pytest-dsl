@@ -165,6 +165,127 @@ def _process_request_config(config: Dict[str, Any],
     return config
 
 
+def _dump_inline_yaml_value(value: Any) -> str:
+    """Render a Python value as an inline YAML scalar/flow value."""
+    dumped = yaml.safe_dump(
+        value,
+        default_flow_style=True,
+        allow_unicode=True,
+        sort_keys=False,
+    )
+    lines = [line for line in dumped.splitlines() if line != '...']
+    return "\n".join(lines).strip()
+
+
+def _line_bounds(text: str, index: int) -> tuple:
+    line_start = text.rfind('\n', 0, index) + 1
+    line_end = text.find('\n', index)
+    if line_end == -1:
+        line_end = len(text)
+    return line_start, line_end
+
+
+def _line_indent(line: str) -> int:
+    return len(line) - len(line.lstrip(' '))
+
+
+def _is_block_scalar_header(stripped_line: str) -> bool:
+    return bool(re.search(r'(^|:\s*|-\s*)[|>][+-]?\d*\s*(#.*)?$',
+                          stripped_line))
+
+
+def _is_inside_yaml_block_scalar(config: str, start: int) -> bool:
+    current_line_start, current_line_end = _line_bounds(config, start)
+    current_line = config[current_line_start:current_line_end]
+    current_indent = _line_indent(current_line)
+
+    search_end = current_line_start - 1
+    while search_end >= 0:
+        line_start, line_end = _line_bounds(config, search_end)
+        line = config[line_start:line_end]
+        stripped = line.strip()
+
+        if not stripped or stripped.startswith('#'):
+            search_end = line_start - 1
+            continue
+
+        indent = _line_indent(line)
+        if indent < current_indent:
+            return _is_block_scalar_header(stripped)
+        if indent == current_indent:
+            return False
+
+        search_end = line_start - 1
+
+    return False
+
+
+def _indent_block_scalar_replacement(config: str, start: int,
+                                     replacement: str) -> str:
+    if '\n' not in replacement:
+        return replacement
+
+    line_start, _ = _line_bounds(config, start)
+    prefix = config[line_start:start]
+    indent = prefix if not prefix.strip() else prefix[:_line_indent(prefix)]
+    return replacement.replace('\n', '\n' + indent)
+
+
+def _is_standalone_yaml_placeholder(config: str, start: int, end: int) -> bool:
+    """Return whether a placeholder occupies a complete YAML value slot."""
+    if _is_inside_yaml_block_scalar(config, start):
+        return False
+
+    line_start, line_end = _line_bounds(config, start)
+
+    before = config[line_start:start].strip()
+    after = config[end:line_end].strip()
+
+    if after.startswith('#'):
+        after = ''
+
+    before_allows_value = (
+        not before or
+        before in {'-', '?'} or
+        before.endswith((':', '[', '{', ','))
+    )
+    after_allows_value_end = not after or after[0] in ',]}'
+
+    return before_allows_value and after_allows_value_end
+
+
+def _replace_config_variables(config: str,
+                              test_context: TestContext = None) -> Any:
+    """Replace DSL placeholders in YAML config text with YAML-safe values."""
+    from pytest_dsl.core.variable_utils import VariableReplacer
+
+    replacer = VariableReplacer(test_context=test_context)
+    matches = replacer._find_placeholders(config)
+    if not matches:
+        return config
+
+    if (len(matches) == 1 and matches[0][0] == 0 and
+            matches[0][1] == len(config)):
+        return replacer._evaluate_placeholder(matches[0][2])
+
+    result = config
+    for start, end, var_ref in reversed(matches):
+        var_value = replacer._evaluate_placeholder(var_ref)
+        if _is_standalone_yaml_placeholder(config, start, end):
+            replacement = _dump_inline_yaml_value(var_value)
+        else:
+            replacement = replacer._stringify_placeholder_value(var_value)
+            if _is_inside_yaml_block_scalar(config, start):
+                replacement = _indent_block_scalar_replacement(
+                    config, start, replacement)
+        result = (
+            result[:start] +
+            replacement +
+            result[end:]
+        )
+    return result
+
+
 def _normalize_retry_config(config, assert_retry_count=None,
                             assert_retry_interval=None):
     """标准化断言重试配置
@@ -333,9 +454,7 @@ def http_request(context, **kwargs):
             # 解析配置并合并模板
             if isinstance(config, str):
                 # 先进行变量替换，再解析YAML
-                from pytest_dsl.core.variable_utils import VariableReplacer
-                replacer = VariableReplacer(test_context=context)
-                config = replacer.replace_in_string(config)
+                config = _replace_config_variables(config, context)
                 try:
                     user_config = yaml.safe_load(config) if config else {}
 
@@ -347,9 +466,7 @@ def http_request(context, **kwargs):
         else:
             # 如果没有使用模板，直接对配置字符串进行变量替换
             if isinstance(config, str):
-                from pytest_dsl.core.variable_utils import VariableReplacer
-                replacer = VariableReplacer(test_context=context)
-                config = replacer.replace_in_string(config)
+                config = _replace_config_variables(config, context)
 
         # 解析YAML配置
         if isinstance(config, str):

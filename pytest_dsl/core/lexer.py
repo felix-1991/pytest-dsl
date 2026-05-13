@@ -15,6 +15,8 @@ reserved = {
     'using': 'USING',  # Add new keyword for data-driven testing
     'True': 'TRUE',    # 添加布尔值支持
     'False': 'FALSE',   # 添加布尔值支持
+    'null': 'NULL',     # 添加空值字面量支持
+    'None': 'NONE',     # 添加Python风格空值字面量支持
     'return': 'RETURN',  # 添加return关键字支持
     'else': 'ELSE',   # 添加else关键字支持
     'elif': 'ELIF',   # 添加elif关键字支持

@@ -88,6 +88,10 @@ port = 8080
 is_enabled = True
 is_disabled = False
 
+# 空值变量
+caller = null
+fallback = None
+
 # 列表
 users = ["alice", "bob", "charlie"]
 

@@ -1,10 +1,12 @@
 import json
 import re
 import string
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+import yaml
 
 import pytest_dsl.keywords  # noqa: F401 - import registers builtin keywords
 from pytest_dsl.core.context import TestContext as DSLContext
@@ -584,6 +586,44 @@ def test_deep_merge_recursively_merges_template_and_user_config():
     }
 
 
+def test_http_config_variable_replacement_preserves_mixed_string_scalars():
+    context = DSLContext()
+    context.set("slug", "a # b: 001")
+
+    config = http_keywords._replace_config_variables(
+        """
+request:
+  url: "/v/${slug}/tail"
+  headers:
+    X-Slug: "prefix-${slug}"
+""",
+        context,
+    )
+
+    parsed = yaml.safe_load(config)
+
+    assert parsed["request"]["url"] == "/v/a # b: 001/tail"
+    assert parsed["request"]["headers"]["X-Slug"] == "prefix-a # b: 001"
+
+
+def test_http_config_variable_replacement_preserves_block_scalar_text():
+    context = DSLContext()
+    context.set("payload", "line1\nline2")
+
+    config = http_keywords._replace_config_variables(
+        """
+request:
+  data: |
+    ${payload}
+""",
+        context,
+    )
+
+    parsed = yaml.safe_load(config)
+
+    assert parsed["request"]["data"] == "line1\nline2\n"
+
+
 def test_http_request_keyword_uses_template_merges_config_and_returns_side_effects(monkeypatch, capsys):
     context = DSLContext()
     context.set(
@@ -674,6 +714,49 @@ captures:
     assert context.get("created_id") == 42
     assert context.get("saved_response") is response
     assert capsys.readouterr().out == ""
+
+
+def test_http_request_dsl_preserves_null_literal_in_json_body(monkeypatch):
+    created = {}
+
+    class FakeHTTPRequest:
+        def __init__(self, config, client_name, session_name):
+            created["config"] = config
+            created["client_name"] = client_name
+            created["session_name"] = session_name
+            self.captured_values = {"caller": config["request"]["json"]["meta"]["caller"]}
+
+        def execute(self, disable_auth=False):
+            created["disable_auth"] = disable_auth
+            return SimpleNamespace(
+                status_code=200,
+                headers={"Content-Type": "application/json"},
+                text='{"ok": true}',
+                url="https://example.test/async-task",
+                elapsed=0.01,
+            )
+
+        def process_asserts(self):
+            created["asserted"] = True
+            return ([{"result": True}], [])
+
+    monkeypatch.setattr(http_keywords, "HTTPRequest", FakeHTTPRequest)
+    monkeypatch.setenv("PYTEST_DSL_KEEP_VARIABLES", "1")
+
+    dsl = Path(__file__).with_name("test_http_null_literal_request.dsl").read_text(
+        encoding="utf-8"
+    )
+
+    executor = DSLExecutor(enable_hooks=False, enable_tracking=False)
+    executor.execute_from_content(dsl)
+
+    assert created["client_name"] == "default"
+    assert created["session_name"] is None
+    assert created["asserted"] is True
+    assert created["config"]["request"]["json"]["meta"]["caller"] is None
+    assert executor.variable_replacer.local_variables["request_result"]["result"] == {
+        "caller": None
+    }
 
 
 def test_http_request_keyword_rejects_missing_template():

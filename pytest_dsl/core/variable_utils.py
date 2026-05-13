@@ -160,11 +160,21 @@ class VariableReplacer:
                 var_value = self._evaluate_placeholder(
                     var_ref, expression_evaluator)
                 # 替换变量引用，转换为字符串
-                result = result[:start] + str(var_value) + result[end:]
+                result = (
+                    result[:start] +
+                    self._stringify_placeholder_value(var_value) +
+                    result[end:]
+                )
             except (KeyError, IndexError, TypeError, ValueError) as e:
                 raise KeyError(f"无法解析变量引用 '${{{var_ref}}}': {str(e)}")
 
         return result
+
+    def _stringify_placeholder_value(self, value: Any) -> str:
+        """Convert a placeholder value for mixed string interpolation."""
+        if value is None:
+            return 'null'
+        return str(value)
 
     def _find_placeholders(self, value: str) -> List[tuple]:
         """扫描字符串中的 ${...} 占位符边界。"""
@@ -249,6 +259,8 @@ class VariableReplacer:
             return expr_node.value
         if expr_node.type == 'BooleanExpr':
             return expr_node.value
+        if expr_node.type == 'NullExpr':
+            return None
         if expr_node.type == 'VariableRef':
             return self.get_variable(expr_node.value)
         if expr_node.type == 'PlaceholderRef':
