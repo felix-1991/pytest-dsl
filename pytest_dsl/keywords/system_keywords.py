@@ -13,7 +13,13 @@ from pytest_dsl.core.keyword_manager import keyword_manager
 ], category='系统/调试', tags=['输出', '调试'], returns='none')
 def print_content(**kwargs):
     content = kwargs.get('content')
-    print(f"内容: {content}")
+    output = f"内容: {content}"
+    print(output)
+    allure.attach(
+        output,
+        name="打印输出",
+        attachment_type=allure.attachment_type.TEXT
+    )
 
 
 @keyword_manager.register('返回结果', [

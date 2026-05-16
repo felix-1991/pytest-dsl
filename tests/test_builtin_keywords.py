@@ -334,6 +334,29 @@ def test_successful_assertion_report_omits_debug_and_failure_message(monkeypatch
     )
 
 
+def test_print_keyword_keeps_user_output_in_default_report(monkeypatch):
+    attachments = []
+
+    def record_attachment(body, name=None, attachment_type=None):
+        attachments.append((name, body))
+
+    monkeypatch.setattr("allure.attach", record_attachment)
+    monkeypatch.delenv("PYTEST_DSL_VERBOSE", raising=False)
+
+    content = """
+@name: "打印报告"
+
+[打印], 内容: "hello report"
+"""
+
+    DSLExecutor(enable_hooks=False, enable_tracking=False).execute_from_content(content)
+
+    attachment_names = [name for name, _ in attachments]
+
+    assert "参数解析详情" not in attachment_names
+    assert ("打印输出", "内容: hello report") in attachments
+
+
 def test_failed_assertion_report_keeps_failure_details(monkeypatch):
     attachments = []
 
