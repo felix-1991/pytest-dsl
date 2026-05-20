@@ -220,10 +220,10 @@ def p_expr_atom(p):
         access_line = getattr(p.slice[2], 'lineno', None)
         p[0] = Node('PropertyAccessExpr', children=[p[1]], value=p[3],
                     line_number=access_line)
-    elif p[1] == '(':
+    elif len(p) == 4 and p.slice[1].type == 'LPAREN':
         # 处理括号表达式，直接返回括号内的表达式节点
         p[0] = p[2]
-    elif p[1] == '-':
+    elif len(p) == 3 and p.slice[1].type == 'MINUS':
         # 一元负号表达式
         unary_line = getattr(p.slice[1], 'lineno', None)
         unary_node = Node('UnaryExpr', children=[p[2]], value='-')

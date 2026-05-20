@@ -51,6 +51,7 @@ parsetab.py
 allure-report/
 allure-results/
 pytest-dsl.code-workspace
+.pytest-dsl-gui/
 
 # uv相关
 .uv/
@@ -64,6 +65,7 @@ docs/.vitepress/cache/
 docs/.vitepress/.temp/
 node_modules/
 package-lock.json
+!electron-gui/package-lock.json
 yarn.lock
 pnpm-lock.yaml
 .pnpm-store/
@@ -119,3 +121,4 @@ performance_report.json
 # Playwright认证状态文件
 playwright/.auth
 web-editor/
+electron-gui/

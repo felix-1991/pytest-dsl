@@ -152,6 +152,22 @@ def test_collection_literals_support_nested_values_access_and_empty_values():
     assert executor.eval_expression(access_expr) == "李四"
 
 
+def test_string_literals_matching_parser_control_symbols_remain_values():
+    assert _eval_expr('"-"') == "-"
+    assert _eval_expr('"("') == "("
+
+    expr = _parse_assignment_expr(
+        'value = {"minVersion": "-", "maxVersion": "-", "marker": "("}'
+    )
+    executor = DSLExecutor(enable_hooks=False, enable_tracking=False)
+
+    assert executor.eval_expression(expr) == {
+        "minVersion": "-",
+        "maxVersion": "-",
+        "marker": "(",
+    }
+
+
 def test_null_and_none_literals_evaluate_to_python_none():
     assert _eval_expr("null") is None
     assert _eval_expr("None") is None
