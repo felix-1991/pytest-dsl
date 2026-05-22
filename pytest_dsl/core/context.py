@@ -2,10 +2,15 @@ class TestContext:
     def __init__(self):
         self._data = {}
         self._external_providers = []  # 外部变量提供者列表
+        self.executor = None
 
     def set(self, key: str, value: any) -> None:
         """设置上下文变量"""
         self._data[key] = value
+        executor = getattr(self, 'executor', None)
+        state = getattr(executor, 'state', None)
+        if state is not None and getattr(state, 'test_context', None) is self:
+            state.variables[key] = value
 
     def get(self, key: str, default=None) -> any:
         """获取上下文变量，遵循变量优先级：本地变量 > 外部提供者变量"""

@@ -34,6 +34,25 @@ def test_execution_state_sets_local_variables_and_context():
     assert state.variable_replacer.local_variables is state.variables
 
 
+def test_bound_context_set_updates_executor_local_variables():
+    executor = DSLExecutor(enable_hooks=False, enable_tracking=False)
+    executor.state.set_variable("headers", {"sid": "old"})
+
+    executor.test_context.set(
+        "headers",
+        {"sid": "new", "x-csrf-token": "token"},
+    )
+
+    expr, errors = parse_expression_fragment(
+        '"sid=${headers[\'sid\']}; '
+        'x-csrf-token=${headers[\'x-csrf-token\']}"',
+        lexer=get_lexer(),
+    )
+    assert errors == []
+
+    assert executor.eval_expression(expr) == "sid=new; x-csrf-token=token"
+
+
 def test_executor_uses_expression_evaluator_component():
     from pytest_dsl.core.execution.expression import ExpressionEvaluator
 
