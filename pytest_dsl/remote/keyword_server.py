@@ -253,6 +253,9 @@ class RemoteKeywordServer:
                 args_dict = json.loads(args_dict) if isinstance(
                     args_dict, str) else {}
 
+            from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+            args_dict = XMLRPCSerializer.restore_bigints(args_dict)
+
             # 获取关键字信息
             keyword_info = keyword_manager.get_keyword_info(name)
             if not keyword_info:
@@ -385,7 +388,7 @@ class RemoteKeywordServer:
                 'default': param.default
             })
 
-        return param_details
+        return self._ensure_serializable(param_details)
 
     def get_keyword_documentation(self, name):
         """获取关键字的文档信息"""
@@ -411,7 +414,7 @@ class RemoteKeywordServer:
                 'default': param.default
             })
 
-        return {
+        contract = {
             'name': name,
             'parameters': param_details,
             'returns': keyword_info.get('returns'),
@@ -419,6 +422,7 @@ class RemoteKeywordServer:
             'category': keyword_info.get('category'),
             'tags': sorted(list(keyword_info.get('tags', [])))
         }
+        return self._ensure_serializable(contract)
 
     def _process_keyword_result(self, result, test_context):
         """处理关键字执行结果，确保可序列化并提取上下文变量
@@ -505,6 +509,9 @@ class RemoteKeywordServer:
             # 将所有同步的变量注入到 shared/yaml_vars/global_context，默认只输出摘要避免刷屏
             from pytest_dsl.core.yaml_vars import yaml_vars
             from pytest_dsl.core.global_context import global_context
+            from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+
+            variables = XMLRPCSerializer.restore_bigints(variables)
 
             global_count = 0
             for name, value in variables.items():
@@ -553,7 +560,8 @@ class RemoteKeywordServer:
         try:
             return {
                 'status': 'success',
-                'variables': self.shared_variables.copy()
+                'variables': self._ensure_serializable(
+                    self.shared_variables.copy())
             }
         except Exception as e:
             return {
@@ -580,6 +588,9 @@ class RemoteKeywordServer:
             }
 
         try:
+            from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+
+            value = XMLRPCSerializer.restore_bigints(value)
             self.shared_variables[name] = value
             if is_verbose():
                 print(f"设置共享变量: {name} = {preview_value(value)}")
@@ -616,7 +627,8 @@ class RemoteKeywordServer:
             if name in self.shared_variables:
                 return {
                     'status': 'success',
-                    'value': self.shared_variables[name]
+                    'value': self._ensure_serializable(
+                        self.shared_variables[name])
                 }
             else:
                 return {

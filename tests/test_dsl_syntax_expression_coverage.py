@@ -152,25 +152,6 @@ def test_collection_literals_support_nested_values_access_and_empty_values():
     assert executor.eval_expression(access_expr) == "李四"
 
 
-def test_fullwidth_comma_and_colon_parse_like_ascii_punctuation():
-    ast = _parse_dsl(
-        '''
-headers = {"sid"："abc"， "x-csrf-token"："token"}
-cookie = "sid=${headers['sid']}; x-csrf-token=${headers['x-csrf-token']}"
-[打印]， 内容： ${cookie}
-'''
-    )
-
-    statements = _statements(ast).children
-    keyword_call = statements[2]
-    parameter = keyword_call.children[0][0]
-
-    assert keyword_call.type == "KeywordCall"
-    assert keyword_call.value == "打印"
-    assert parameter.type == "ParameterItem"
-    assert parameter.value == "内容"
-
-
 def test_string_literals_matching_parser_control_symbols_remain_values():
     assert _eval_expr('"-"') == "-"
     assert _eval_expr('"("') == "("

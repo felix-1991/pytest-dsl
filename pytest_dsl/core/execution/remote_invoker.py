@@ -63,7 +63,8 @@ class RemoteKeywordInvoker:
                     if not final_variables:
                         continue
 
-                    result = client.server.sync_variables_from_client(
+                    result = XMLRPCSerializer.safe_xmlrpc_call(
+                        client.server, 'sync_variables_from_client',
                         final_variables, client.api_key)
 
                     if result.get('status') == 'success':
