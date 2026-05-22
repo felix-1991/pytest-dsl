@@ -1,4 +1,4 @@
-"""Small command helpers used by the local Electron GUI."""
+"""Public workbench command helpers for local GUI/editor integrations."""
 
 import argparse
 import json
@@ -8,25 +8,17 @@ from pathlib import Path
 
 from pytest_dsl.core.lexer import get_lexer
 from pytest_dsl.core.parser import parse_with_error_handling
-
-
-GUI_EVENT_PREFIX = "__PYTEST_DSL_GUI_EVENT__"
-DEBUG_STEP_NODE_TYPES = {
-    "Assignment",
-    "AssignmentKeywordCall",
-    "AssignmentRemoteKeywordCall",
-    "KeywordCall",
-    "RemoteKeywordCall",
-    "ForLoop",
-    "ForRangeLoop",
-    "ForItemLoop",
-    "ForKeyValueLoop",
-    "IfStatement",
-    "Retry",
-    "Return",
-    "Break",
-    "Continue",
-}
+from pytest_dsl.workbench.debug import (
+    DEBUG_STEP_NODE_TYPES,
+    StepDebugger,
+    normalize_pause_from_line,
+    read_debug_command,
+)
+from pytest_dsl.workbench.protocol import (
+    GUI_EVENT_PREFIX,
+    capabilities_payload,
+    emit_event,
+)
 
 
 def syntax_check(file_path: str) -> int:
@@ -107,93 +99,14 @@ def debug_run(file_path: str, yaml_vars=None, pause_from_line=None) -> int:
         return 1
 
 
-class StepDebugger:
-    """Blocks DSL execution between tracked executable steps."""
-
-    def __init__(self, pause_from_line=None):
-        self.auto_continue = False
-        self.tracked_steps = set()
-        self.pause_from_line = normalize_pause_from_line(pause_from_line)
-
-    def attach(self, tracker):
-        tracker.register_callback("step_start", self.on_step_start)
-        tracker.register_callback("step_finish", self.on_step_finish)
-
-    def on_step_start(self, step, **_kwargs):
-        if step.node_type not in DEBUG_STEP_NODE_TYPES:
-            return
-        if self.pause_from_line and step.line_number < self.pause_from_line:
-            return
-
-        self.tracked_steps.add(id(step))
-        emit_event({
-            "type": "debug_step",
-            "phase": "start",
-            "line": step.line_number,
-            "nodeType": step.node_type,
-            "description": step.description,
-            "status": step.status.value,
-        })
-
-        if not self.auto_continue:
-            command = read_debug_command()
-            if command == "continue":
-                self.auto_continue = True
-            elif command == "stop":
-                raise KeyboardInterrupt()
-
-    def on_step_finish(self, step, **_kwargs):
-        if id(step) not in self.tracked_steps:
-            return
-
-        emit_event({
-            "type": "debug_step",
-            "phase": "finish",
-            "line": step.line_number,
-            "nodeType": step.node_type,
-            "description": step.description,
-            "status": "failed" if step.error else "success",
-            "error": step.error,
-            "duration": step.duration,
-        })
-
-
-def read_debug_command() -> str:
-    command = sys.stdin.readline()
-    if not command:
-        return "continue"
-    normalized = command.strip().lower()
-    if normalized in {"next", "continue", "stop"}:
-        return normalized
-    return "next"
-
-
-def normalize_pause_from_line(value):
-    if value is None:
-        return None
-    try:
-        line = int(value)
-    except (TypeError, ValueError):
-        return None
-    return line if line > 1 else None
-
-
-def emit_event(payload) -> None:
-    print(
-        GUI_EVENT_PREFIX + json.dumps(payload, ensure_ascii=False),
-        flush=True,
-    )
+def capabilities() -> int:
+    print(json.dumps(capabilities_payload(), ensure_ascii=False), flush=True)
+    return 0
 
 
 def _load_runtime(yaml_vars):
     from pytest_dsl.core.keyword_loader import load_all_keywords
     from pytest_dsl.core.yaml_loader import load_yaml_variables_from_args
-
-    class Args:
-        yaml_vars_dir = None
-
-        def __init__(self, yaml_files):
-            self.yaml_vars = yaml_files
 
     load_all_keywords(include_remote=True)
     environment = (
@@ -210,7 +123,7 @@ def _load_runtime(yaml_vars):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="pytest-dsl GUI helper")
+    parser = argparse.ArgumentParser(description="pytest-dsl workbench runtime")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     syntax_parser = subparsers.add_parser("syntax", help="检查 DSL 语法")
@@ -231,6 +144,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="执行前置步骤后，从指定源码行开始暂停调试",
     )
 
+    subparsers.add_parser("capabilities", help="输出 workbench runtime 能力")
     return parser
 
 
@@ -244,6 +158,8 @@ def main(argv=None) -> int:
             yaml_vars=args.yaml_vars,
             pause_from_line=args.pause_from_line,
         )
+    if args.command == "capabilities":
+        return capabilities()
     return 1
 
 
