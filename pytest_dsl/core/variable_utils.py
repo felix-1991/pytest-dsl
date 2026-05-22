@@ -4,6 +4,7 @@
 """
 
 import json
+from collections.abc import Mapping
 from typing import Any, Dict, List, Optional
 from pytest_dsl.core.global_context import global_context
 from pytest_dsl.core.context import TestContext
@@ -320,7 +321,7 @@ class VariableReplacer:
                     f"数组索引 {key} 超出范围，数组长度为 {len(current_value)}")
             return current_value[key]
 
-        if isinstance(current_value, dict):
+        if isinstance(current_value, Mapping):
             if isinstance(key, int):
                 str_key = str(key)
                 if key not in current_value and str_key not in current_value:
@@ -340,7 +341,7 @@ class VariableReplacer:
 
     def access_property(self, current_value, property_name: str):
         """使用点号语法访问字典属性。"""
-        if isinstance(current_value, dict) and property_name in current_value:
+        if isinstance(current_value, Mapping) and property_name in current_value:
             return current_value[property_name]
 
         raise KeyError(

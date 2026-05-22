@@ -1,3 +1,5 @@
+from requests.structures import CaseInsensitiveDict
+
 from pytest_dsl.core.dsl_executor import DSLExecutor
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.core.lexer import get_lexer
@@ -58,6 +60,23 @@ def test_string_interpolation_uses_dynamic_index_expression():
     executor = _executor_with_vars(items=["苹果", "香蕉", "橙子"], i=2)
 
     assert executor.eval_expression(expr) == "索引 2 对应的水果: 橙子"
+
+
+def test_string_interpolation_can_index_case_insensitive_mapping():
+    expr = _parse_assignment_expr(
+        'cookie = "sid=${headers[\'sid\']}; '
+        'x-csrf-token=${headers[\'x-csrf-token\']}"'
+    )
+    headers = CaseInsensitiveDict({
+        "SID": "abc123",
+        "X-CSRF-Token": "token456",
+    })
+
+    executor = _executor_with_vars(headers=headers)
+
+    assert executor.eval_expression(expr) == (
+        "sid=abc123; x-csrf-token=token456"
+    )
 
 
 def test_placeholder_token_accepts_expression_body():
