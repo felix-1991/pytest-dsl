@@ -99,6 +99,38 @@ class TestReturnHandlers:
         processed = handler.process(simple_data)
         assert processed['result'] == 'simple_value'
         assert processed['side_effects'] == {}
+
+    def test_default_return_handler_converts_captures_to_variables(self):
+        """默认处理器应将通用captures转换为变量副作用"""
+        handler = DefaultReturnHandler()
+
+        processed = handler.process({
+            'result': {'success': True},
+            'captures': {'exported_value': 'second'},
+            'metadata': {}
+        })
+
+        assert processed['result'] == {'success': True}
+        assert processed['side_effects']['variables'] == {
+            'exported_value': 'second'
+        }
+
+    def test_default_return_handler_preserves_existing_side_effects(self):
+        """默认处理器应保留通用返回里的side_effects"""
+        handler = DefaultReturnHandler()
+
+        processed = handler.process({
+            'result': {'success': True},
+            'side_effects': {
+                'variables': {'exported_value': 'third'}
+            },
+            'metadata': {}
+        })
+
+        assert processed['result'] == {'success': True}
+        assert processed['side_effects']['variables'] == {
+            'exported_value': 'third'
+        }
     
     def test_return_handler_registry(self):
         """测试返回处理器注册表"""

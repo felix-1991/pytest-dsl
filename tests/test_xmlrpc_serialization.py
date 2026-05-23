@@ -115,6 +115,46 @@ def test_remote_keyword_result_with_large_capture_int_is_xmlrpc_safe():
     assert is_valid, error_msg
 
 
+def test_remote_keyword_result_captures_test_context_local_variables():
+    """Legacy remote keywords should return variables written via context.set."""
+    from pytest_dsl.core.context import TestContext
+
+    server = RemoteKeywordServer.__new__(RemoteKeywordServer)
+    test_context = TestContext()
+    test_context.set("exported_value", "second")
+
+    processed = server._process_keyword_result(
+        {"success": True}, test_context)
+
+    assert processed["result"] == {"success": True}
+    assert processed["captures"] == {"exported_value": "second"}
+
+
+def test_remote_keyword_side_effects_result_merges_context_variables():
+    """New-format remote keyword results should include context variables."""
+    from pytest_dsl.core.context import TestContext
+
+    server = RemoteKeywordServer.__new__(RemoteKeywordServer)
+    test_context = TestContext()
+    test_context.set("saved_response", {"status_code": 201})
+
+    processed = server._process_keyword_result({
+        "result": {"created_id": 42},
+        "side_effects": {
+            "variables": {"created_id": 42},
+            "context_updates": {}
+        },
+        "metadata": {"keyword_type": "http_request"}
+    }, test_context)
+
+    assert processed["result"] == {"created_id": 42}
+    assert processed["side_effects"]["variables"] == {
+        "saved_response": {"status_code": 201},
+        "created_id": 42
+    }
+    assert processed["metadata"]["keyword_type"] == "http_request"
+
+
 def test_safe_xmlrpc_call_restores_large_int_markers_from_response():
     result = XMLRPCSerializer.safe_xmlrpc_call(
         _FakeServerProxy(), "run_keyword")

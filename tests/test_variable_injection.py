@@ -131,6 +131,23 @@ class TestVariableInjection:
         # 验证变量是否被正确注入
         assert executor.test_context.get('captured_var') == 'captured_value'
         assert global_context.get_variable('g_global_var') == 'global_value'
+
+    def test_process_return_data_injects_generic_captures(self):
+        """普通远程captures应覆盖本地已有变量"""
+        executor = DSLExecutor()
+        client = RemoteKeywordClient("http://localhost:8000", "localhost", 8000)
+
+        executor.state.set_variable('exported_value', '')
+
+        result = client._process_return_data({
+            'result': {'success': True},
+            'captures': {'exported_value': 'second'},
+            'session_state': {},
+            'metadata': {}
+        })
+
+        assert result == {'success': True}
+        assert executor.test_context.get('exported_value') == 'second'
     
     def test_get_current_executor(self):
         """测试获取当前执行器"""

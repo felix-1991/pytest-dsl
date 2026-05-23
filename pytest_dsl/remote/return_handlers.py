@@ -113,16 +113,17 @@ class DefaultReturnHandler(RemoteReturnHandler):
         logger.debug("使用默认返回处理器处理数据")
         
         if isinstance(return_data, dict):
+            side_effects = self._extract_side_effects(return_data)
             if 'result' in return_data:
                 return {
                     'result': return_data['result'],
-                    'side_effects': {},
+                    'side_effects': side_effects,
                     'metadata': return_data.get('metadata', {})
                 }
             else:
                 return {
                     'result': return_data,
-                    'side_effects': {},
+                    'side_effects': side_effects,
                     'metadata': {}
                 }
         else:
@@ -131,6 +132,20 @@ class DefaultReturnHandler(RemoteReturnHandler):
                 'side_effects': {},
                 'metadata': {}
             }
+
+    def _extract_side_effects(self, return_data: Dict[str, Any]) -> Dict[str, Any]:
+        side_effects = return_data.get('side_effects') or {}
+        side_effects = side_effects.copy() if isinstance(side_effects, dict) else {}
+
+        captures = return_data.get('captures') or {}
+        if isinstance(captures, dict) and captures:
+            variables = dict(captures)
+            existing_variables = side_effects.get('variables') or {}
+            if isinstance(existing_variables, dict):
+                variables.update(existing_variables)
+            side_effects['variables'] = variables
+
+        return side_effects
     
     @property
     def priority(self) -> int:

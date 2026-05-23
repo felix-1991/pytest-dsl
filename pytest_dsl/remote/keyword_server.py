@@ -434,26 +434,62 @@ class RemoteKeywordServer:
         Returns:
             处理后的结果
         """
-        # 如果结果已经是新格式（包含captures等），直接返回
+        context_captures = self._extract_context_captures(test_context)
+
+        # 如果结果已经是新格式（包含side_effects/captures/session_state等），直接返回
+        if isinstance(result, dict) and 'side_effects' in result:
+            if context_captures:
+                result = result.copy()
+                result['side_effects'] = (
+                    self._merge_captures_into_side_effects(
+                        context_captures, result.get('side_effects')))
+            return self._ensure_serializable(result)
+
         if isinstance(result, dict) and ('captures' in result or 'session_state' in result):
+            if context_captures:
+                result = result.copy()
+                captures = dict(context_captures)
+                captures.update(result.get('captures') or {})
+                result['captures'] = captures
             # 确保结果可序列化
             return self._ensure_serializable(result)
 
         # 对于传统格式的结果，包装成新格式
         processed_result = {
             "result": result,
-            "captures": {},
+            "captures": context_captures,
             "session_state": {},
             "metadata": {}
         }
 
-        # 从上下文中提取可能的变量（这是为了向后兼容）
-        # 注意：这只是一个备用方案，新的关键字应该主动返回所需数据
-        if hasattr(test_context, '_variables'):
-            # 只提取在执行过程中新增的变量
-            processed_result["captures"] = dict(test_context._variables)
-
         return self._ensure_serializable(processed_result)
+
+    def _extract_context_captures(self, test_context):
+        """提取关键字执行期间写入TestContext的本地变量。"""
+        if test_context is None:
+            return {}
+
+        if hasattr(test_context, 'get_local_variables'):
+            local_variables = test_context.get_local_variables()
+        elif hasattr(test_context, '_data'):
+            local_variables = test_context._data
+        elif hasattr(test_context, '_variables'):
+            local_variables = test_context._variables
+        else:
+            return {}
+
+        if not isinstance(local_variables, dict):
+            return {}
+        return dict(local_variables)
+
+    def _merge_captures_into_side_effects(self, captures, side_effects):
+        side_effects = side_effects.copy() if isinstance(side_effects, dict) else {}
+        variables = dict(captures)
+        existing_variables = side_effects.get('variables') or {}
+        if isinstance(existing_variables, dict):
+            variables.update(existing_variables)
+        side_effects['variables'] = variables
+        return side_effects
 
     def _ensure_serializable(self, obj):
         """确保对象可以被XML-RPC安全传输"""
