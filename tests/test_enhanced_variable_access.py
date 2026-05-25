@@ -75,6 +75,24 @@ class TestEnhancedVariableAccess:
         assert self.replacer.replace_in_string("${environment}") == "test"
         assert self.replacer.replace_in_string("${version}") == "1.0.0"
 
+    def test_numeric_string_with_leading_zero_keeps_string_type(self):
+        """测试带前导0的编码类字符串不会被自动转为数字"""
+        replacer = VariableReplacer(local_variables={
+            "uninstallCode": "01111111",
+            "short_code": "00123",
+            "negative_code": "-00123",
+            "positive_code": "+00123",
+            "decimal_code": "01.5",
+        })
+
+        assert replacer.get_variable("uninstallCode") == "01111111"
+        assert replacer.replace_in_string("${uninstallCode}") == "01111111"
+        assert replacer.replace_in_string("code=${uninstallCode}") == "code=01111111"
+        assert replacer.replace_in_string("${short_code}") == "00123"
+        assert replacer.replace_in_string("${negative_code}") == "-00123"
+        assert replacer.replace_in_string("${positive_code}") == "+00123"
+        assert replacer.replace_in_string("${decimal_code}") == "01.5"
+
     def test_dot_notation_access(self):
         """测试点号访问（现有功能）"""
         assert self.replacer.replace_in_string("${api.base_url}") == "https://api.example.com"

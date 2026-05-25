@@ -94,6 +94,11 @@ class VariableReplacer:
             # 处理布尔值
             if value.lower() in ('true', 'false'):
                 return value.lower() == 'true'
+            # 保留带前导0的编码类数字字符串，避免 01111111 被转成 1111111
+            normalized = value[1:] if value.startswith(('+', '-')) else value
+            if (len(normalized) > 1 and normalized.startswith('0') and
+                    normalized[1].isdigit()):
+                return value
             # 处理数字
             try:
                 if '.' in value:
