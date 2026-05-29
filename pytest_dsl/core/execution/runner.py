@@ -82,14 +82,18 @@ class DSLExecutionRunner:
 
     def parse_dsl_content(self, content: str) -> Node:
         """Parse DSL source content into an AST root node."""
-        from pytest_dsl.core.parser import parse_with_error_handling
+        from pytest_dsl.core.parser import (
+            format_parse_errors,
+            parse_with_error_handling,
+        )
         from pytest_dsl.core.lexer import get_lexer
 
         lexer = get_lexer()
         ast, parse_errors = parse_with_error_handling(content, lexer)
 
         if parse_errors:
-            error_messages = [error['message'] for error in parse_errors]
-            raise Exception(f"DSL解析失败: {'; '.join(error_messages)}")
+            raise Exception(
+                "DSL解析失败:\n" + format_parse_errors(parse_errors)
+            )
 
         return ast

@@ -144,7 +144,16 @@ def t_PLACEHOLDER(t):
     r'\$\{'
     end = _find_placeholder_end(t.lexer.lexdata, t.lexpos)
     if end is None:
-        print(f"未闭合的变量占位符 在行 {t.lineno} 位置 {t.lexpos}")
+        if hasattr(t.lexer, 'dsl_errors'):
+            t.lexer.dsl_errors.append({
+                'kind': 'lexer',
+                'error_type': 'UNCLOSED_PLACEHOLDER',
+                'line': t.lineno,
+                'position': t.lexpos,
+                'token_value': '${',
+            })
+        else:
+            print(f"词法错误：第 {t.lineno} 行，变量占位符未闭合")
         return None
 
     t.value = t.lexer.lexdata[t.lexpos:end]
@@ -254,11 +263,30 @@ def t_newline(t):
 
 
 def t_error(t):
-    print(f"非法字符 '{t.value[0]}' 在行 {t.lineno} 位置 {t.lexpos}")
+    char = t.value[0]
+    error_type = 'ILLEGAL_CHAR'
+    if char in ("'", '"'):
+        error_type = 'UNCLOSED_STRING'
+
+    if hasattr(t.lexer, 'dsl_errors'):
+        t.lexer.dsl_errors.append({
+            'kind': 'lexer',
+            'error_type': error_type,
+            'line': t.lineno,
+            'position': t.lexpos,
+            'token_value': char,
+        })
+    else:
+        if error_type == 'UNCLOSED_STRING':
+            print(f"词法错误：第 {t.lineno} 行，字符串未闭合")
+        else:
+            print(f"词法错误：第 {t.lineno} 行，非法字符 {char!r}")
     t.lexer.skip(1)
 
 # 模块接口
 
 
 def get_lexer():
-    return lex.lex()
+    lexer = lex.lex()
+    lexer.dsl_errors = []
+    return lexer

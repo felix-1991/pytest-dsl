@@ -1,4 +1,5 @@
 import sys
+import re
 
 import ply.yacc as yacc
 from pytest_dsl.core.lexer import tokens
@@ -625,31 +626,290 @@ def p_arithmetic_expr(p):
 
 # 全局变量用于存储解析错误
 _parse_errors = []
+_parse_source = ""
 _expression_parser = None
+
+
+TOKEN_LABELS = {
+    'COLON': "冒号 ':'",
+    'COMMA': "逗号 ','",
+    'DO': "关键字 'do'",
+    'END': "关键字 'end'",
+    'STRING': "字符串",
+    'ID': "标识符",
+    'EQUALS': "等号 '='",
+    'LBRACKET': "左中括号 '['",
+    'RBRACKET': "右中括号 ']'",
+    'LPAREN': "左括号 '('",
+    'RPAREN': "右括号 ')'",
+    'LBRACE': "左大括号 '{'",
+    'RBRACE': "右大括号 '}'",
+    'AND': "逻辑运算符 'and'",
+    'OR': "逻辑运算符 'or'",
+    'NOT': "逻辑运算符 'not'",
+    'IN': "成员运算符 'in'",
+    'NAME_KEYWORD': "元信息 '@name'",
+    'DESCRIPTION_KEYWORD': "元信息 '@description'",
+    'TAGS_KEYWORD': "元信息 '@tags'",
+    'AUTHOR_KEYWORD': "元信息 '@author'",
+    'DATE_KEYWORD': "元信息 '@date'",
+    'DATA_KEYWORD': "元信息 '@data'",
+    'IMPORT_KEYWORD': "元信息 '@import'",
+    'REMOTE_KEYWORD': "元信息 '@remote'",
+}
+
+BLOCK_START_PATTERN = re.compile(
+    r'^\s*(if|for|retry|function|teardown)\b.*\bdo\b'
+)
+BLOCK_END_PATTERN = re.compile(r'^\s*end\b')
+
+
+def _source_lines(content=None):
+    source = _parse_source if content is None else content
+    return source.splitlines() or [""]
+
+
+def _column_from_position(content, position):
+    if position is None:
+        return None
+    line_start = content.rfind('\n', 0, position) + 1
+    return position - line_start + 1
+
+
+def _line_from_position(content, position):
+    if position is None:
+        return None
+    return content.count('\n', 0, position) + 1
+
+
+def _source_line(content, line):
+    lines = _source_lines(content)
+    if line is None or line < 1 or line > len(lines):
+        return ""
+    return lines[line - 1]
+
+
+def _marker_for_column(source_line, column):
+    if not source_line or column is None:
+        return ""
+    marker_column = max(column, 1)
+    return " " * (marker_column - 1) + "^"
+
+
+def _location_text(line, column):
+    if line is None:
+        return "文件结尾"
+    if column is None:
+        return f"第 {line} 行"
+    return f"第 {line} 行第 {column} 列"
+
+
+def _unclosed_block_hint(content):
+    stack = []
+    for line_number, raw_line in enumerate(_source_lines(content), 1):
+        line = raw_line.split('#', 1)[0].strip()
+        if not line:
+            continue
+        if BLOCK_END_PATTERN.match(line):
+            if stack:
+                stack.pop()
+            continue
+        match = BLOCK_START_PATTERN.match(line)
+        if match:
+            stack.append((line_number, match.group(1)))
+
+    return stack[-1] if stack else None
+
+
+def _syntax_suggestion(token_type, token_value, source_line, column, content,
+                       eof=False):
+    if eof:
+        block_hint = _unclosed_block_hint(content)
+        if block_hint:
+            line_number, block_type = block_hint
+            return (f"第 {line_number} 行开始的 {block_type} 块可能缺少 end，"
+                    "请在该块结束位置补一行 `end`。")
+        return ("检查文件最后一条语句是否写完整，常见情况是缺少 `end`、"
+                "右括号、右中括号、引号或表达式右侧的值。")
+
+    before = source_line[:max((column or 1) - 1, 0)]
+    last_bracket_index = before.rfind(']')
+    if token_type == 'COLON' and last_bracket_index >= 0:
+        between = before[last_bracket_index + 1:]
+        if ',' not in between:
+            return ("关键字调用带参数时，参数前缺少逗号。"
+                    "请改成 `[关键字], 参数名: 参数值`。")
+
+    stripped = source_line.lstrip()
+    if token_type == 'STRING' and stripped.startswith('@'):
+        return "元信息需要使用冒号，例如 `@name: \"用例名称\"`。"
+
+    if token_type == 'DO':
+        return ("`do` 前面的条件或表达式不完整。请检查比较/逻辑运算符"
+                "右侧是否缺少值，例如 `if value == 1 do`。")
+
+    if token_type in {'AND', 'OR'}:
+        op = str(token_value)
+        return (f"逻辑运算符 `{op}` 前后都需要完整表达式。"
+                "请删除多余的运算符，或补齐右侧表达式。")
+
+    if token_type == 'END':
+        return ("当前 `end` 没有匹配的块，或前面已有语法错误导致解析提前中断。"
+                "请优先修复它前面的第一条语法错误。")
+
+    if token_type == 'EQUALS' and stripped.startswith(('if ', 'elif ')):
+        return "条件判断里请使用 `==` 表示相等，单个 `=` 只用于变量赋值。"
+
+    return "请优先修改箭头标出的这一列，检查附近是否缺少逗号、冒号、括号、`do` 或 `end`。"
+
+
+def _lexer_suggestion(error_type):
+    if error_type == 'UNCLOSED_STRING':
+        return "字符串缺少结束引号，请补上结束引号；多行字符串请使用成对的三引号。"
+    if error_type == 'UNCLOSED_PLACEHOLDER':
+        return "变量占位符缺少右大括号，请补成 `${变量名}` 或 `${表达式}`。"
+    return "该字符不属于 DSL 语法，请删除或改成字符串内容。"
+
+
+def _build_syntax_error(token=None, eof=False, content=None):
+    source = _parse_source if content is None else content
+    if eof:
+        lines = _source_lines(source)
+        line = len(lines)
+        column = len(lines[-1]) + 1 if lines else 1
+        src_line = lines[-1] if lines else ""
+        marker = _marker_for_column(src_line, column)
+        message = f"语法错误：文件结尾处仍有未闭合或不完整的语句（{_location_text(line, column)}）。"
+        return {
+            'kind': 'syntax',
+            'message': message,
+            'line': line,
+            'column': column,
+            'position': len(source),
+            'token_type': None,
+            'token_value': None,
+            'source_line': src_line,
+            'marker': marker,
+            'suggestion': _syntax_suggestion(
+                None, None, src_line, column, source, eof=True
+            ),
+        }
+
+    line = getattr(token, 'lineno', None)
+    position = getattr(token, 'lexpos', None)
+    if line is None:
+        line = _line_from_position(source, position)
+    column = _column_from_position(source, position)
+    src_line = _source_line(source, line)
+    token_type = getattr(token, 'type', None)
+    token_value = getattr(token, 'value', None)
+    token_label = TOKEN_LABELS.get(token_type, f"`{token_type}`")
+    location = _location_text(line, column)
+    message = f"语法错误：{location}，{token_label} 出现得不对。"
+    marker = _marker_for_column(src_line, column)
+
+    return {
+        'kind': 'syntax',
+        'message': message,
+        'line': line,
+        'column': column,
+        'position': position,
+        'token_type': token_type,
+        'token_value': token_value,
+        'source_line': src_line,
+        'marker': marker,
+        'suggestion': _syntax_suggestion(
+            token_type, token_value, src_line, column, source
+        ),
+    }
+
+
+def _build_lexer_error(raw_error, content):
+    position = raw_error.get('position')
+    line = raw_error.get('line') or _line_from_position(content, position)
+    column = _column_from_position(content, position)
+    src_line = _source_line(content, line)
+    marker = _marker_for_column(src_line, column)
+    error_type = raw_error.get('error_type')
+    token_value = raw_error.get('token_value')
+    location = _location_text(line, column)
+
+    if error_type == 'UNCLOSED_STRING':
+        message = f"词法错误：{location}，字符串未闭合。"
+    elif error_type == 'UNCLOSED_PLACEHOLDER':
+        message = f"词法错误：{location}，变量占位符未闭合。"
+    else:
+        message = f"词法错误：{location}，非法字符 {token_value!r}。"
+
+    return {
+        'kind': 'lexer',
+        'message': message,
+        'line': line,
+        'column': column,
+        'position': position,
+        'token_type': raw_error.get('error_type'),
+        'token_value': token_value,
+        'source_line': src_line,
+        'marker': marker,
+        'suggestion': _lexer_suggestion(error_type),
+    }
+
+
+def _prepare_lexer(lexer):
+    lexer.lineno = 1
+    lexer.dsl_errors = []
+
+
+def _merge_parse_and_lexer_errors(lexer, content):
+    lexer_errors = [
+        _build_lexer_error(raw_error, content)
+        for raw_error in getattr(lexer, 'dsl_errors', [])
+    ]
+    errors = lexer_errors + _parse_errors
+    return sorted(
+        errors,
+        key=lambda error: (
+            error.get('position') is None,
+            error.get('position') if error.get('position') is not None else sys.maxsize,
+        )
+    )
+
+
+def format_parse_errors(errors, file_path=None):
+    """将解析错误格式化成面向 DSL 用户的中文诊断文本。"""
+    if not errors:
+        return ""
+
+    formatted = []
+    for index, error in enumerate(errors, 1):
+        prefix = f"{index}. " if len(errors) > 1 else ""
+        lines = [f"{prefix}{error.get('message', '未知语法错误')}"]
+        if file_path:
+            lines.append(f"   文件：{file_path}")
+
+        source_line = error.get('source_line')
+        marker = error.get('marker')
+        if source_line:
+            lines.append(f"   {source_line}")
+        if marker:
+            lines.append(f"   {marker}")
+
+        suggestion = error.get('suggestion')
+        if suggestion:
+            lines.append(f"   修改建议：{suggestion}")
+
+        formatted.append("\n".join(lines))
+
+    return "\n\n".join(formatted)
 
 
 def p_error(p):
     global _parse_errors
     if p:
-        error_msg = (f"语法错误: 在第 {p.lineno} 行, 位置 {p.lexpos}, "
-                     f"Token {p.type}, 值: {p.value}")
-        _parse_errors.append({
-            'message': error_msg,
-            'line': p.lineno,
-            'position': p.lexpos,
-            'token_type': p.type,
-            'token_value': p.value
-        })
+        _parse_errors.append(_build_syntax_error(p))
         # 不再直接打印，而是存储错误信息
     else:
-        error_msg = "语法错误: 在文件末尾"
-        _parse_errors.append({
-            'message': error_msg,
-            'line': None,
-            'position': None,
-            'token_type': None,
-            'token_value': None
-        })
+        _parse_errors.append(_build_syntax_error(eof=True))
 
 
 def get_parser(debug=False):
@@ -686,18 +946,20 @@ def parse_with_error_handling(content, lexer=None):
     Returns:
         tuple: (AST节点, 错误列表)
     """
-    global _parse_errors
+    global _parse_errors, _parse_source
     _parse_errors = []  # 清空之前的错误
+    _parse_source = content
 
     if lexer is None:
         from pytest_dsl.core.lexer import get_lexer
         lexer = get_lexer()
 
+    _prepare_lexer(lexer)
     parser = get_parser()
     ast = parser.parse(content, lexer=lexer)
 
     # 返回AST和错误列表
-    return ast, _parse_errors.copy()
+    return ast, _merge_parse_and_lexer_errors(lexer, content)
 
 
 def parse_expression_fragment(content, lexer=None):
@@ -710,16 +972,18 @@ def parse_expression_fragment(content, lexer=None):
     Returns:
         tuple: (表达式AST节点, 错误列表)
     """
-    global _parse_errors
+    global _parse_errors, _parse_source
     _parse_errors = []
+    _parse_source = content
 
     if lexer is None:
         from pytest_dsl.core.lexer import get_lexer
         lexer = get_lexer()
 
+    _prepare_lexer(lexer)
     parser = get_expression_parser()
     ast = parser.parse(content, lexer=lexer)
-    return ast, _parse_errors.copy()
+    return ast, _merge_parse_and_lexer_errors(lexer, content)
 
 # 定义远程关键字调用的语法规则
 

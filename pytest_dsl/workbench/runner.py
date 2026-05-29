@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from pytest_dsl.core.lexer import get_lexer
-from pytest_dsl.core.parser import parse_with_error_handling
+from pytest_dsl.core.parser import format_parse_errors, parse_with_error_handling
 from pytest_dsl.workbench.debug import (
     DEBUG_STEP_NODE_TYPES,
     StepDebugger,
@@ -38,14 +38,7 @@ def syntax_check(file_path: str) -> int:
 
     if errors:
         print(f"语法检查失败: {target}", flush=True)
-        for error in errors:
-            line = error.get("line")
-            column = error.get("column")
-            message = error.get("message", "未知语法错误")
-            location = f"line {line}"
-            if column is not None:
-                location += f", column {column}"
-            print(f"{location}: {message}", flush=True)
+        print(format_parse_errors(errors, file_path=str(target)), flush=True)
         return 1
 
     print(f"语法检查通过: {target}", flush=True)

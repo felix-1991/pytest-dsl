@@ -304,7 +304,7 @@ def test_assert_condition_failure_and_invalid_regex_are_reported():
         assertion_keywords.assert_condition(condition="abc matches [")
 
 
-def test_successful_assertion_report_omits_debug_and_failure_message(monkeypatch):
+def test_successful_assertion_report_omits_debug_and_limits_failure_message(monkeypatch):
     attachments = []
 
     def record_attachment(body, name=None, attachment_type=None):
@@ -321,13 +321,19 @@ def test_successful_assertion_report_omits_debug_and_failure_message(monkeypatch
     DSLExecutor(enable_hooks=False, enable_tracking=False).execute_from_content(content)
 
     attachment_names = [name for name, _ in attachments]
-    attachment_text = "\n".join(str(body) for _, body in attachments)
+    non_call_attachment_text = "\n".join(
+        str(body) for name, body in attachments if name != "关键字调用"
+    )
 
     assert "参数解析详情" not in attachment_names
     assert "条件解析调试" not in attachment_names
     assert "表达式解析" not in attachment_names
     assert "类型转换" not in attachment_names
-    assert "执行失败" not in attachment_text
+    assert "执行失败" not in non_call_attachment_text
+    assert any(
+        name == "关键字调用" and "消息(message): '执行失败'" in str(body)
+        for name, body in attachments
+    )
     assert any(
         name == "断言成功" and "实际值: True" in str(body) and "结果: 通过" in str(body)
         for name, body in attachments

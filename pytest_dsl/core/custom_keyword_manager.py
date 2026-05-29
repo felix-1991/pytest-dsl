@@ -462,11 +462,14 @@ class CustomKeywordManager:
             parser = get_parser()
 
             # 使用带错误处理的解析函数
-            from pytest_dsl.core.parser import parse_with_error_handling
+            from pytest_dsl.core.parser import (
+                format_parse_errors,
+                parse_with_error_handling,
+            )
             ast, parse_errors = parse_with_error_handling(dsl_content, lexer)
 
             if parse_errors:
-                error_msg = f"DSL解析错误: {'; '.join([err['message'] for err in parse_errors])}"
+                error_msg = "DSL解析错误:\n" + format_parse_errors(parse_errors)
                 raise ValueError(error_msg)
 
             if ast is None:

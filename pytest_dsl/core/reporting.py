@@ -9,9 +9,15 @@ import allure
 
 SENSITIVE_KEY_PARTS = (
     "authorization",
+    "认证",
+    "授权",
     "token",
+    "令牌",
     "secret",
+    "密钥",
     "password",
+    "密码",
+    "口令",
     "api-key",
     "apikey",
     "x-api-key",
@@ -48,9 +54,10 @@ def redact_value(value: Any, key: Any = None) -> Any:
     return value
 
 
-def preview_value(value: Any, max_len: int = 160, redact: bool = True) -> str:
+def preview_value(value: Any, max_len: int = 160, redact: bool = True,
+                  key: Any = None) -> str:
     """Generate a compact, report-friendly value preview."""
-    safe_value = redact_value(value) if redact else value
+    safe_value = redact_value(value, key) if redact else value
     try:
         text = repr(safe_value)
     except Exception:
@@ -124,3 +131,52 @@ def compact_json(value: Any, max_len: int = 160) -> str:
     if len(text) > max_len:
         return text[:max_len] + "...(truncated)"
     return text
+
+
+def format_keyword_arguments(arguments: Dict[str, Any], keyword_info: Dict = None,
+                             excluded_keys: Iterable[str] = None,
+                             max_value_len: int = 500) -> str:
+    """Format keyword call arguments for concise Allure attachments."""
+    excluded = set(excluded_keys or ("context", "skip_logging"))
+    visible_arguments = {
+        key: value for key, value in arguments.items()
+        if key not in excluded
+    }
+
+    if not visible_arguments:
+        return "传入参数: <无>"
+
+    mapping = {}
+    if keyword_info:
+        mapping = keyword_info.get("mapping", {}) or {}
+
+    reverse_mapping = {}
+    for display_name, runtime_name in mapping.items():
+        reverse_mapping.setdefault(runtime_name, display_name)
+
+    ordered_keys = []
+    parameters = (keyword_info.get("parameters") or []) if keyword_info else []
+    for parameter in parameters:
+        runtime_name = getattr(parameter, "mapping", None)
+        if (runtime_name in visible_arguments and
+                runtime_name not in ordered_keys):
+            ordered_keys.append(runtime_name)
+
+    for key in visible_arguments.keys():
+        if key not in ordered_keys:
+            ordered_keys.append(key)
+
+    lines = ["传入参数:"]
+    for key in ordered_keys:
+        display_name = reverse_mapping.get(key)
+        if display_name and display_name != key:
+            label = f"{display_name}({key})"
+        else:
+            label = str(key)
+        value_preview = preview_value(
+            visible_arguments[key],
+            max_len=max_value_len,
+            key=key,
+        )
+        lines.append(f"{label}: {value_preview}")
+    return "\n".join(lines)

@@ -3,7 +3,11 @@
 import allure
 
 from pytest_dsl.core.execution.exceptions import DSLExecutionError
-from pytest_dsl.core.reporting import is_verbose, preview_value
+from pytest_dsl.core.reporting import (
+    format_keyword_arguments,
+    is_verbose,
+    preview_value,
+)
 
 
 class RemoteKeywordInvoker:
@@ -103,6 +107,7 @@ class RemoteKeywordInvoker:
         line_info = executor._get_line_info(node)
 
         with allure.step(f"执行远程关键字: {alias}|{keyword_name}"):
+            argument_details = ""
             try:
                 params = []
                 if node.children and node.children[0]:
@@ -124,6 +129,7 @@ class RemoteKeywordInvoker:
                     kwargs[param_name] = param_value
 
                 kwargs['context'] = executor.test_context
+                argument_details = format_keyword_arguments(kwargs)
 
                 step_name = kwargs.get(
                     '步骤名称',
@@ -134,11 +140,13 @@ class RemoteKeywordInvoker:
                     result = remote_keyword_manager.execute_remote_keyword(
                         alias, keyword_name, **kwargs)
                 if is_verbose():
-                    details = (f"远程关键字参数: {kwargs}\n"
+                    details = (f"远程关键字: {alias}|{keyword_name}\n"
+                               f"{argument_details}\n"
                                f"远程关键字结果: {result}{line_info}")
                     attachment_name = "远程关键字执行详情"
                 else:
                     details = (f"远程关键字: {alias}|{keyword_name}\n"
+                               f"{argument_details}\n"
                                f"结果: {preview_value(result)}{line_info}")
                     attachment_name = "远程关键字执行结果"
                 allure.attach(
@@ -150,6 +158,8 @@ class RemoteKeywordInvoker:
             except Exception as e:
                 error_details = (f"执行RemoteKeywordCall节点: {str(e)}"
                                  f"{line_info}\n上下文: 执行RemoteKeywordCall节点")
+                if argument_details:
+                    error_details = f"{error_details}\n{argument_details}"
                 allure.attach(
                     error_details,
                     name="DSL执行异常",

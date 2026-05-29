@@ -241,12 +241,14 @@ class VariableReplacer:
 
     def _evaluate_expression_text(self, expr_text: str):
         """通过 parser 解析并求值占位符表达式。"""
-        from pytest_dsl.core.parser import parse_expression_fragment
+        from pytest_dsl.core.parser import (
+            format_parse_errors,
+            parse_expression_fragment,
+        )
 
         expr_node, errors = parse_expression_fragment(expr_text)
         if errors:
-            messages = "; ".join(error.get('message', str(error))
-                                 for error in errors)
+            messages = format_parse_errors(errors)
             raise ValueError(f"无效的占位符表达式 '{expr_text}': {messages}")
         if expr_node is None:
             raise ValueError(f"无效的占位符表达式 '{expr_text}'")
