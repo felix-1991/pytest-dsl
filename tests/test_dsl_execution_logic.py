@@ -28,6 +28,23 @@ def _eval_expr(text: str, **variables):
     return executor.eval_expression(expr)
 
 
+def test_legacy_dollar_variable_reference_evaluates_like_placeholder(monkeypatch):
+    executor = _execute_dsl(
+        '''
+age = 15
+age = age + 1
+
+from_dollar = $age
+from_placeholder = ${age}
+''',
+        monkeypatch,
+    )
+
+    variables = executor.variable_replacer.local_variables
+    assert variables["from_dollar"] == 16
+    assert variables["from_placeholder"] == 16
+
+
 def test_logical_expressions_short_circuit_missing_variables():
     assert _eval_expr("False and missing_value") is False
     assert _eval_expr("True or missing_value") is True

@@ -204,6 +204,7 @@ def p_expr_atom(p):
     '''expr_atom : NUMBER
                  | STRING
                  | PLACEHOLDER
+                 | DOLLAR_VARIABLE
                  | ID
                  | boolean_expr
                  | null_expr
@@ -247,6 +248,9 @@ def p_expr_atom(p):
             expr_node = Node('NumberLiteral', value=p[1])
         elif token_type == 'ID':
             # 变量引用
+            expr_node = Node('VariableRef', value=p[1])
+        elif token_type == 'DOLLAR_VARIABLE':
+            # 兼容旧式 $var 变量引用
             expr_node = Node('VariableRef', value=p[1])
         elif token_type == 'PLACEHOLDER':
             # 变量占位符 ${var}
@@ -637,6 +641,7 @@ TOKEN_LABELS = {
     'END': "关键字 'end'",
     'STRING': "字符串",
     'ID': "标识符",
+    'DOLLAR_VARIABLE': "变量引用 '$变量名'",
     'EQUALS': "等号 '='",
     'LBRACKET': "左中括号 '['",
     'RBRACKET': "右中括号 ']'",
@@ -672,14 +677,16 @@ def _source_lines(content=None):
 def _column_from_position(content, position):
     if position is None:
         return None
-    line_start = content.rfind('\n', 0, position) + 1
+    last_lf = content.rfind('\n', 0, position)
+    last_cr = content.rfind('\r', 0, position)
+    line_start = max(last_lf, last_cr) + 1
     return position - line_start + 1
 
 
 def _line_from_position(content, position):
     if position is None:
         return None
-    return content.count('\n', 0, position) + 1
+    return len(re.findall(r'\r\n|\r|\n', content[:position])) + 1
 
 
 def _source_line(content, line):

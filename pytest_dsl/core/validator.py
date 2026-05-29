@@ -354,18 +354,27 @@ class DSLValidator:
         """验证关键字"""
         self._check_node_keywords(ast)
 
-    def _check_node_keywords(self, node: Node) -> None:
+    def _check_node_keywords(
+            self, node: Node, inside_custom_keyword: bool = False) -> None:
         """检查节点中的关键字"""
+        current_inside_custom_keyword = (
+            inside_custom_keyword or node.type in ['CustomKeyword', 'Function']
+        )
+
         if node.type == 'KeywordCall':
             keyword_name = node.value
             keyword_info = keyword_manager.get_keyword_info(keyword_name)
 
             if not keyword_info:
-                self.errors.append(DSLValidationError(
-                    "关键字错误",
+                diagnostic = DSLValidationError(
+                    "关键字依赖警告" if current_inside_custom_keyword else "关键字错误",
                     f"未注册的关键字: {keyword_name}",
                     suggestion=self._suggest_similar_keyword(keyword_name)
-                ))
+                )
+                if current_inside_custom_keyword:
+                    self.warnings.append(diagnostic)
+                else:
+                    self.errors.append(diagnostic)
             else:
                 # 验证参数
                 self._validate_keyword_parameters(node, keyword_info)
@@ -373,7 +382,7 @@ class DSLValidator:
         # 递归检查子节点
         for child in node.children:
             if isinstance(child, Node):
-                self._check_node_keywords(child)
+                self._check_node_keywords(child, current_inside_custom_keyword)
 
     def _validate_keyword_parameters(self, keyword_node: Node,
                                      keyword_info: Dict) -> None:

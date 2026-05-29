@@ -48,6 +48,7 @@ tokens = [
     'COLON',
     'COMMA',
     'PLACEHOLDER',
+    'DOLLAR_VARIABLE',
     'NAME_KEYWORD',
     'DESCRIPTION_KEYWORD',
     'TAGS_KEYWORD',
@@ -140,6 +141,11 @@ def _find_placeholder_end(text, start):
     return None
 
 
+def _count_line_breaks(text):
+    """统计 LF、CRLF、CR 三类换行序列。"""
+    return len(re.findall(r'\r\n|\r|\n', text))
+
+
 def t_PLACEHOLDER(t):
     r'\$\{'
     end = _find_placeholder_end(t.lexer.lexdata, t.lexpos)
@@ -157,8 +163,14 @@ def t_PLACEHOLDER(t):
         return None
 
     t.value = t.lexer.lexdata[t.lexpos:end]
-    t.lexer.lineno += t.value.count('\n')
+    t.lexer.lineno += _count_line_breaks(t.value)
     t.lexer.lexpos = end
+    return t
+
+
+def t_DOLLAR_VARIABLE(t):
+    r'\$[a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*'
+    t.value = t.value[1:]
     return t
 
 # 添加管道符的正则表达式定义
@@ -191,7 +203,7 @@ def t_STRING(t):
         t.value = t.value[3:-3]  # 去掉三引号
         
         # 计算多行字符串包含的换行符数量，更新词法分析器的行号
-        newlines = original_value.count('\n')
+        newlines = _count_line_breaks(original_value)
         if newlines > 0:
             t.lexer.lineno += newlines
     else:
@@ -246,8 +258,8 @@ def t_NUMBER(t):
     return t
 
 
-# 忽略空格和制表符
-t_ignore = ' \t'
+# 忽略常见空白字符。兼容 UTF-8 BOM、网页复制的不间断空格和中文全角空格。
+t_ignore = ' \t\ufeff\xa0\u3000'
 
 # 忽略注释
 t_ignore_COMMENT = r'\#.*'
@@ -256,8 +268,8 @@ t_ignore_COMMENT = r'\#.*'
 
 
 def t_newline(t):
-    r'\n+'
-    t.lexer.lineno += len(t.value)
+    r'(\r\n|\r|\n)+'
+    t.lexer.lineno += _count_line_breaks(t.value)
 
 # 错误处理
 
