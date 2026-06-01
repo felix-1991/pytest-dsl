@@ -189,15 +189,8 @@ def p_assignment(p):
 
 
 def p_expression(p):
-    '''expression : expr_atom
-                  | comparison_expr
-                  | arithmetic_expr
-                  | logical_expr'''
-    # 如果是比较表达式或其他复合表达式，则已经是一个Node对象
-    if isinstance(p[1], Node):
-        p[0] = p[1]
-    else:
-        p[0] = Node('Expression', value=p[1])
+    '''expression : logical_or_expr'''
+    p[0] = p[1]
 
 
 def p_expr_atom(p):
@@ -210,7 +203,6 @@ def p_expr_atom(p):
                  | null_expr
                  | list_expr
                  | dict_expr
-                 | MINUS expr_atom %prec UMINUS
                  | LPAREN expression RPAREN
                  | expr_atom INDEX_LBRACKET expression RBRACKET %prec INDEX_ACCESS
                  | expr_atom DOT ID %prec INDEX_ACCESS'''
@@ -225,13 +217,6 @@ def p_expr_atom(p):
     elif len(p) == 4 and p.slice[1].type == 'LPAREN':
         # 处理括号表达式，直接返回括号内的表达式节点
         p[0] = p[2]
-    elif len(p) == 3 and p.slice[1].type == 'MINUS':
-        # 一元负号表达式
-        unary_line = getattr(p.slice[1], 'lineno', None)
-        unary_node = Node('UnaryExpr', children=[p[2]], value='-')
-        if unary_line is not None:
-            unary_node.set_position(unary_line)
-        p[0] = unary_node
     elif isinstance(p[1], Node):
         p[0] = p[1]
     else:
@@ -498,17 +483,20 @@ def p_param_def(p):
 
 def p_return_statement(p):
     '''return_statement : RETURN expression'''
-    p[0] = Node('Return', [p[2]])
+    p[0] = Node('Return', [p[2]],
+                line_number=getattr(p.slice[1], 'lineno', None))
 
 
 def p_break_statement(p):
     '''break_statement : BREAK'''
-    p[0] = Node('Break', [])
+    p[0] = Node('Break', [],
+                line_number=getattr(p.slice[1], 'lineno', None))
 
 
 def p_continue_statement(p):
     '''continue_statement : CONTINUE'''
-    p[0] = Node('Continue', [])
+    p[0] = Node('Continue', [],
+                line_number=getattr(p.slice[1], 'lineno', None))
 
 
 def p_if_statement(p):
@@ -516,18 +504,23 @@ def p_if_statement(p):
                    | IF expression DO statements elif_clauses END
                    | IF expression DO statements ELSE statements END
                    | IF expression DO statements elif_clauses ELSE statements END'''  # noqa: E501
+    line_number = getattr(p.slice[1], 'lineno', None)
     if len(p) == 6:
         # if condition do statements end
-        p[0] = Node('IfStatement', [p[2], p[4]], None)
+        p[0] = Node('IfStatement', [p[2], p[4]], None,
+                    line_number=line_number)
     elif len(p) == 7:
         # if condition do statements elif_clauses end
-        p[0] = Node('IfStatement', [p[2], p[4]] + p[5], None)
+        p[0] = Node('IfStatement', [p[2], p[4]] + p[5], None,
+                    line_number=line_number)
     elif len(p) == 8:
         # if condition do statements else statements end
-        p[0] = Node('IfStatement', [p[2], p[4], p[6]], None)
+        p[0] = Node('IfStatement', [p[2], p[4], p[6]], None,
+                    line_number=line_number)
     else:
         # if condition do statements elif_clauses else statements end
-        p[0] = Node('IfStatement', [p[2], p[4]] + p[5] + [p[7]], None)
+        p[0] = Node('IfStatement', [p[2], p[4]] + p[5] + [p[7]], None,
+                    line_number=line_number)
 
 
 def p_elif_clauses(p):
@@ -544,88 +537,109 @@ def p_elif_clause(p):
     p[0] = Node('ElifClause', [p[2], p[4]], None)
 
 
-def p_comparison_expr(p):
-    '''comparison_expr : expr_atom GT expr_atom
-                      | expr_atom LT expr_atom
-                      | expr_atom GE expr_atom
-                      | expr_atom LE expr_atom
-                      | expr_atom EQ expr_atom
-                      | expr_atom NE expr_atom
-                      | expr_atom IN expr_atom %prec IN
-                      | expr_atom NOT IN expr_atom %prec IN'''
-
-    # 根据规则索引判断使用的是哪个操作符
-    # 先检查多token运算符（not in）- 通过检查token类型而不是长度，更稳妥
-    if len(p) == 5 and p.slice[2].type == 'NOT' and p.slice[3].type == 'IN':
-        # not in 运算符
-        operator = 'not in'
-    elif p.slice[2].type == 'GT':
-        operator = '>'
-    elif p.slice[2].type == 'LT':
-        operator = '<'
-    elif p.slice[2].type == 'GE':
-        operator = '>='
-    elif p.slice[2].type == 'LE':
-        operator = '<='
-    elif p.slice[2].type == 'EQ':
-        operator = '=='
-    elif p.slice[2].type == 'NE':
-        operator = '!='
-    elif p.slice[2].type == 'IN':
-        operator = 'in'
-    else:
-        print(f"警告: 无法识别的操作符类型 {p.slice[2].type}")
-        operator = None
-
-    # 对于 not in，左操作数是 p[1]，右操作数是 p[4]
-    # 对于其他运算符，左操作数是 p[1]，右操作数是 p[3]
-    if operator == 'not in':
-        p[0] = Node('ComparisonExpr', [p[1], p[4]], operator)
-    else:
-        p[0] = Node('ComparisonExpr', [p[1], p[3]], operator)
-
-
-def p_logical_expr(p):
-    '''logical_expr : expression AND expression %prec AND
-                    | expression OR expression %prec OR
-                    | NOT expression %prec NOT'''
-    # 根据token类型判断运算符类型
-    if p.slice[1].type == 'NOT':
-        # 一元逻辑运算符: not
-        p[0] = Node('LogicalExpr', [p[2]], 'not')
-    elif p.slice[2].type == 'AND':
-        # 二元逻辑运算符: and
-        p[0] = Node('LogicalExpr', [p[1], p[3]], 'and')
-    elif p.slice[2].type == 'OR':
-        # 二元逻辑运算符: or
+def p_logical_or_expr(p):
+    '''logical_or_expr : logical_or_expr OR logical_and_expr
+                       | logical_and_expr'''
+    if len(p) == 4:
         p[0] = Node('LogicalExpr', [p[1], p[3]], 'or')
     else:
-        raise SyntaxError(f"未知的逻辑运算符: {p.slice[2].type if len(p) > 2 else p.slice[1].type}")
+        p[0] = p[1]
+
+
+def p_logical_and_expr(p):
+    '''logical_and_expr : logical_and_expr AND logical_not_expr
+                        | logical_not_expr'''
+    if len(p) == 4:
+        p[0] = Node('LogicalExpr', [p[1], p[3]], 'and')
+    else:
+        p[0] = p[1]
+
+
+def p_logical_not_expr(p):
+    '''logical_not_expr : NOT logical_not_expr
+                        | comparison_expr'''
+    if len(p) == 3:
+        p[0] = Node('LogicalExpr', [p[2]], 'not')
+    else:
+        p[0] = p[1]
+
+
+def p_comparison_expr(p):
+    '''comparison_expr : arithmetic_expr comparison_operator arithmetic_expr
+                       | arithmetic_expr NOT IN arithmetic_expr
+                       | arithmetic_expr'''
+    if len(p) == 2:
+        p[0] = p[1]
+    elif len(p) == 5:
+        p[0] = Node('ComparisonExpr', [p[1], p[4]], 'not in')
+    else:
+        p[0] = Node('ComparisonExpr', [p[1], p[3]], p[2])
+
+
+def p_comparison_operator(p):
+    '''comparison_operator : GT
+                           | LT
+                           | GE
+                           | LE
+                           | EQ
+                           | NE
+                           | IN'''
+    operator_map = {
+        'GT': '>',
+        'LT': '<',
+        'GE': '>=',
+        'LE': '<=',
+        'EQ': '==',
+        'NE': '!=',
+        'IN': 'in',
+    }
+    p[0] = operator_map[p.slice[1].type]
 
 
 def p_arithmetic_expr(p):
-    '''arithmetic_expr : expression PLUS expression
-                       | expression MINUS expression
-                       | expression TIMES expression
-                       | expression DIVIDE expression
-                       | expression MODULO expression'''
+    '''arithmetic_expr : additive_expr'''
+    p[0] = p[1]
 
-    # 根据规则索引判断使用的是哪个操作符
-    if p.slice[2].type == 'PLUS':
-        operator = '+'
-    elif p.slice[2].type == 'MINUS':
-        operator = '-'
-    elif p.slice[2].type == 'TIMES':
-        operator = '*'
-    elif p.slice[2].type == 'DIVIDE':
-        operator = '/'
-    elif p.slice[2].type == 'MODULO':
-        operator = '%'
+
+def p_additive_expr(p):
+    '''additive_expr : additive_expr PLUS multiplicative_expr
+                     | additive_expr MINUS multiplicative_expr
+                     | multiplicative_expr'''
+    if len(p) == 4:
+        operator = '+' if p.slice[2].type == 'PLUS' else '-'
+        p[0] = Node('ArithmeticExpr', [p[1], p[3]], operator)
     else:
-        print(f"警告: 无法识别的操作符类型 {p.slice[2].type}")
-        operator = None
+        p[0] = p[1]
 
-    p[0] = Node('ArithmeticExpr', [p[1], p[3]], operator)
+
+def p_multiplicative_expr(p):
+    '''multiplicative_expr : multiplicative_expr TIMES unary_expr
+                           | multiplicative_expr DIVIDE unary_expr
+                           | multiplicative_expr MODULO unary_expr
+                           | unary_expr'''
+    if len(p) == 4:
+        operator_map = {
+            'TIMES': '*',
+            'DIVIDE': '/',
+            'MODULO': '%',
+        }
+        p[0] = Node('ArithmeticExpr', [p[1], p[3]],
+                    operator_map[p.slice[2].type])
+    else:
+        p[0] = p[1]
+
+
+def p_unary_expr(p):
+    '''unary_expr : MINUS unary_expr %prec UMINUS
+                  | expr_atom'''
+    if len(p) == 3:
+        unary_line = getattr(p.slice[1], 'lineno', None)
+        unary_node = Node('UnaryExpr', children=[p[2]], value='-')
+        if unary_line is not None:
+            unary_node.set_position(unary_line)
+        p[0] = unary_node
+    else:
+        p[0] = p[1]
 
 
 # 全局变量用于存储解析错误
@@ -1000,9 +1014,12 @@ def p_remote_keyword_call(p):
                           | ID PIPE LBRACKET ID RBRACKET
                           | PLACEHOLDER PIPE LBRACKET ID RBRACKET COMMA parameter_list
                           | PLACEHOLDER PIPE LBRACKET ID RBRACKET'''
+    line_number = getattr(p.slice[1], 'lineno', None)
     if len(p) == 8:
         p[0] = Node('RemoteKeywordCall', [p[7]], {
-                    'alias': p[1], 'keyword': p[4]})
+                    'alias': p[1], 'keyword': p[4]},
+                    line_number=line_number)
     else:
         p[0] = Node('RemoteKeywordCall', [[]], {
-                    'alias': p[1], 'keyword': p[4]})
+                    'alias': p[1], 'keyword': p[4]},
+                    line_number=line_number)

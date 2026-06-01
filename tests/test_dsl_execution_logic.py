@@ -169,6 +169,22 @@ end
     assert executor.variable_replacer.local_variables["attempts"] == 3
 
 
+def test_retry_until_accepts_unparenthesized_arithmetic_operand(monkeypatch):
+    executor = _execute_dsl(
+        '''
+enabled_count = 100
+base_count = 105
+
+retry 10 every 0 until enabled_count == base_count + 1 do
+    enabled_count = enabled_count + 1
+end
+''',
+        monkeypatch,
+    )
+
+    assert executor.variable_replacer.local_variables["enabled_count"] == 106
+
+
 def test_retry_raises_after_exhausting_until_condition(monkeypatch):
     ast, errors = parse_with_error_handling(
         '''

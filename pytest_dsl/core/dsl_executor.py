@@ -591,7 +591,12 @@ class DSLExecutor:
         with allure.step(f"关键字赋值: {var_name}"):
             try:
                 keyword_call_node = node.children[0]
-                result = self.execute(keyword_call_node)
+                # Call the invoker directly instead of self.execute()
+                # to avoid a nested dispatch cycle.  A nested dispatch
+                # would call tracker.start_step() again, overwriting
+                # current_step and preventing the outer
+                # finish_current_step() from working correctly.
+                result = self.keyword_invoker.execute(keyword_call_node)
 
                 scope = self.state.set_variable(var_name, result)
                 if scope == "global":

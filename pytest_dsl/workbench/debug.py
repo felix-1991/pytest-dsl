@@ -22,6 +22,16 @@ DEBUG_STEP_NODE_TYPES = {
     "Continue",
 }
 
+# Node types that represent entering a keyword/function body.
+# Stepping over these nodes skips all statements inside the body
+# so the debugger does not descend into user-defined keywords.
+_KEYWORD_CALL_TYPES = frozenset({
+    "KeywordCall",
+    "RemoteKeywordCall",
+    "AssignmentKeywordCall",
+    "AssignmentRemoteKeywordCall",
+})
+
 
 class StepDebugger:
     """Blocks DSL execution between tracked executable steps."""
@@ -30,6 +40,10 @@ class StepDebugger:
         self.auto_continue = False
         self.tracked_steps = set()
         self.pause_from_line = normalize_pause_from_line(pause_from_line)
+        # Nesting depth for "step over" keyword calls.
+        # When > 0 the debugger is inside a keyword body and all
+        # inner step events are suppressed.
+        self._keyword_call_depth = 0
 
     def attach(self, tracker):
         tracker.register_callback("step_start", self.on_step_start)
@@ -39,6 +53,22 @@ class StepDebugger:
         if step.node_type not in DEBUG_STEP_NODE_TYPES:
             return
         if self.pause_from_line and step.line_number < self.pause_from_line:
+            return
+
+        # Step-over keyword calls: pause on the call site itself
+        # (at depth 0), then suppress all inner steps until the
+        # keyword body finishes.
+        if step.node_type in _KEYWORD_CALL_TYPES:
+            if self._keyword_call_depth == 0:
+                # Outermost keyword call — pause here, step over.
+                self._keyword_call_depth += 1
+            else:
+                # Nested keyword call inside another keyword body
+                # — skip and track the nesting level.
+                self._keyword_call_depth += 1
+                return
+        elif self._keyword_call_depth > 0:
+            # Non-keyword step inside a keyword body — skip.
             return
 
         self.tracked_steps.add(id(step))
@@ -59,8 +89,14 @@ class StepDebugger:
                 raise KeyboardInterrupt()
 
     def on_step_finish(self, step, **_kwargs):
+        # Decrement keyword-call nesting depth when a boundary
+        # node finishes, regardless of whether it was tracked.
+        if step.node_type in _KEYWORD_CALL_TYPES:
+            self._keyword_call_depth = max(0, self._keyword_call_depth - 1)
+
         if id(step) not in self.tracked_steps:
             return
+        self.tracked_steps.discard(id(step))
 
         emit_event({
             "type": "debug_step",

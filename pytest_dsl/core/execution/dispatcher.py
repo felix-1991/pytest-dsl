@@ -22,18 +22,21 @@ class NodeDispatcher:
             raise DSLExecutionError("收到空节点，可能是解析失败或语法错误导致",
                                     line_number=None, node_type=None)
 
+        step_started = False
         if executor.enable_tracking and executor.execution_tracker:
             line_number = getattr(node, 'line_number', None)
             if line_number:
                 description = executor._get_node_description(node)
                 executor.execution_tracker.start_step(
                     line_number, node.type, description)
+                step_started = True
 
         handler = self._get_handler(node.type)
         if not handler:
             error_msg = f"未知的节点类型: {node.type}"
-            if executor.enable_tracking and executor.execution_tracker:
+            if step_started:
                 executor.execution_tracker.finish_current_step(error=error_msg)
+                step_started = False
             executor._handle_exception_with_line_info(
                 Exception(error_msg), node, f"执行节点 {node.type}")
 
@@ -48,15 +51,23 @@ class NodeDispatcher:
 
         try:
             result = handler(node)
-            if executor.enable_tracking and executor.execution_tracker:
+            if step_started:
                 executor.execution_tracker.finish_current_step(result=result)
+                step_started = False
             return result
         except Exception as e:
-            if executor.enable_tracking and executor.execution_tracker:
-                error_msg = f"{type(e).__name__}: {str(e)}"
-                if hasattr(node, 'line_number') and node.line_number:
-                    error_msg += f" (行{node.line_number})"
-                executor.execution_tracker.finish_current_step(error=error_msg)
+            if step_started:
+                # Control-flow exceptions are normal execution flow,
+                # not errors — finish the step without marking it failed.
+                if isinstance(e, (BreakException, ContinueException,
+                                  ReturnException)):
+                    executor.execution_tracker.finish_current_step()
+                else:
+                    error_msg = f"{type(e).__name__}: {str(e)}"
+                    if hasattr(node, 'line_number') and node.line_number:
+                        error_msg += f" (行{node.line_number})"
+                    executor.execution_tracker.finish_current_step(error=error_msg)
+                step_started = False
 
             if isinstance(e, (BreakException, ContinueException,
                               ReturnException, DSLExecutionError)):

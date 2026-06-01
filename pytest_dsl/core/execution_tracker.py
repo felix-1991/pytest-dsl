@@ -68,6 +68,12 @@ class ExecutionTracker:
         self.dsl_id = dsl_id
         self.steps: List[ExecutionStep] = []
         self.current_step: Optional[ExecutionStep] = None
+        # Stack to support nested step dispatch (e.g. a KeywordCall
+        # whose body dispatches inner KeywordCalls).  Without a stack
+        # the inner step's finish_current_step would overwrite
+        # current_step to None, causing the outer step's finish to
+        # silently no-op.
+        self._step_stack: List[ExecutionStep] = []
         self.execution_start_time: Optional[float] = None
         self.execution_end_time: Optional[float] = None
         self.callbacks: Dict[str, List[Callable]] = {
@@ -129,6 +135,7 @@ class ExecutionTracker:
             step.start()
 
             self.steps.append(step)
+            self._step_stack.append(step)
             self.current_step = step
             self.total_steps += 1
 
@@ -142,8 +149,9 @@ class ExecutionTracker:
     def finish_current_step(self, result: Any = None, error: str = None):
         """完成当前步骤"""
         with self._lock:
-            if self.current_step:
-                self.current_step.finish(result, error)
+            if self._step_stack:
+                step = self._step_stack.pop()
+                step.finish(result, error)
 
                 if error:
                     self.failed_steps += 1
@@ -151,27 +159,33 @@ class ExecutionTracker:
                     self.completed_steps += 1
 
                 # 触发回调
-                self._trigger_callbacks('step_finish', step=self.current_step)
+                self._trigger_callbacks('step_finish', step=step)
 
                 # 记录到Allure
-                self._log_step_to_allure(self.current_step)
+                self._log_step_to_allure(step)
 
-                self.current_step = None
+                # Restore current_step to the enclosing step (if any)
+                self.current_step = (
+                    self._step_stack[-1] if self._step_stack else None
+                )
 
     def skip_current_step(self, reason: str = None):
         """跳过当前步骤"""
         with self._lock:
-            if self.current_step:
-                self.current_step.skip(reason)
+            if self._step_stack:
+                step = self._step_stack.pop()
+                step.skip(reason)
                 self.completed_steps += 1
 
                 # 触发回调
-                self._trigger_callbacks('step_finish', step=self.current_step)
+                self._trigger_callbacks('step_finish', step=step)
 
                 # 记录到Allure
-                self._log_step_to_allure(self.current_step)
+                self._log_step_to_allure(step)
 
-                self.current_step = None
+                self.current_step = (
+                    self._step_stack[-1] if self._step_stack else None
+                )
 
     def get_current_line(self) -> Optional[int]:
         """获取当前执行行号"""

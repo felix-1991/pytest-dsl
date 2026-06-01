@@ -121,6 +121,22 @@ def test_comparison_and_membership_expression_operators(expr, expected):
 @pytest.mark.parametrize(
     ("expr", "expected"),
     [
+        ("1 + 1 == 2", True),
+        ("10 + 5 * 2 == 20", True),
+        ("5 + 5 > 8", True),
+        ("8 < 5 + 5", True),
+        ("3 * 4 == 12", True),
+        ("20 / 4 == 5", True),
+        ("10 % 3 == 1", True),
+    ],
+)
+def test_comparison_operands_accept_arithmetic_expressions(expr, expected):
+    assert _eval_expr(expr) is expected
+
+
+@pytest.mark.parametrize(
+    ("expr", "expected"),
+    [
         ("True and False or True", True),
         ("True and (False or False)", False),
         ("not False", True),

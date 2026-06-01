@@ -176,7 +176,12 @@ class RemoteKeywordInvoker:
         with allure.step(f"远程关键字赋值: {var_name}"):
             try:
                 remote_keyword_call_node = node.children[0]
-                result = executor.execute(remote_keyword_call_node)
+                # Call execute_keyword_call directly instead of
+                # executor.execute() to avoid a nested dispatch cycle.
+                # A nested dispatch would overwrite tracker.current_step
+                # and prevent the outer finish_current_step() from
+                # working correctly.
+                result = self.execute_keyword_call(remote_keyword_call_node)
 
                 if result is None:
                     raise Exception("远程关键字没有返回结果")

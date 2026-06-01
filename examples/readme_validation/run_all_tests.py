@@ -50,6 +50,7 @@ EXECUTION_FILES = [
     "test_in_operator.dsl",
     "test_logical_operators.dsl",
     "test_contains_operators.dsl",
+    "expression_precedence_retry.dsl",
     "test_break_continue_final.dsl",
     "boolean_demo.dsl",
     "retry_block_every_until.dsl",

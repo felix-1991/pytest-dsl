@@ -4,7 +4,7 @@ Remote module for pytest-dsl.
 This module provides remote keyword server functionality.
 """
 
-__version__ = "0.29.9"
+__version__ = "0.30.0"
 
 # 导出远程关键字管理器和相关功能
 from .keyword_client import (
