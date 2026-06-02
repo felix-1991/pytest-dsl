@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>pytest-dsl Local Workbench</title>
+        <link rel="stylesheet" href="./styles.css" />
+    </head>
+    <body>
+        <div class="app">
+            <header class="topbar">
+                <div class="brand" title="pytest-dsl 本地工作台">
+                    <div class="brand-mark">DSL</div>
+                    <div class="brand-title">
+                        <strong id="projectName"
+                            >pytest-dsl Local Workbench</strong
+                        >
+                        <span id="projectRoot">未打开项目</span>
+                    </div>
+                    <button
+                        class="text-btn open-project-btn"
+                        id="openProjectBtn"
+                        type="button"
+                    >
+                        打开项目
+                    </button>
+                </div>
+
+                <label class="suite-target" aria-label="选择测试套目录">
+                    <span>测试套目录</span>
+                    <select id="suiteDirectory">
+                        <option value="">打开项目后自动识别</option>
+                    </select>
+                </label>
+
+                <div class="top-actions">
+                    <div class="config-picker" id="configPicker">
+                        <button
+                            class="config-trigger"
+                            id="configTrigger"
+                            type="button"
+                            aria-expanded="false"
+                        >
+                            <span class="config-main">
+                                <span id="configSummary">未加载配置</span>
+                                <span
+                                    class="remote-summary is-empty"
+                                    id="remoteStatusSummary"
+                                >
+                                    <span class="status-dot unchecked"></span>
+                                    <span>远程 未探测</span>
+                                </span>
+                            </span>
+                            <span aria-hidden="true">⌄</span>
+                        </button>
+                        <div class="config-menu" id="configMenu">
+                            <div class="config-menu-head">
+                                <strong>配置文件</strong>
+                                <span id="configCount">0</span>
+                            </div>
+                            <div class="config-list" id="configList"></div>
+                            <section
+                                class="remote-status-popover"
+                                id="remoteStatusPopover"
+                                aria-label="远程关键字服务状态"
+                            >
+                                <h3>远程关键字服务</h3>
+                                <div
+                                    class="remote-service-rows"
+                                    id="remoteServiceRows"
+                                ></div>
+                            </section>
+                            <section
+                                class="config-diagnostics"
+                                id="configDiagnostics"
+                                aria-label="配置诊断"
+                            >
+                                <h3>配置诊断</h3>
+                                <details class="config-detail">
+                                    <summary>合并结果</summary>
+                                    <pre class="json-view" id="configMerged">
+{}</pre
+                                    >
+                                </details>
+                                <details class="config-detail">
+                                    <summary>项目元数据</summary>
+                                    <dl
+                                        class="metadata-list compact"
+                                        id="metadataList"
+                                    ></dl>
+                                    <ul
+                                        class="deduction-list"
+                                        id="deductionList"
+                                    ></ul>
+                                </details>
+                            </section>
+                        </div>
+                    </div>
+                    <button
+                        class="icon-btn"
+                        id="refreshBtn"
+                        type="button"
+                        aria-label="刷新"
+                        title="刷新"
+                    >
+                        ↻
+                    </button>
+                    <button
+                        class="icon-btn"
+                        id="settingsBtn"
+                        type="button"
+                        aria-label="设置"
+                        title="设置"
+                    >
+                        ⚙
+                    </button>
+                    <button class="primary-btn" id="runAllBtn" type="button">
+                        运行测试套
+                    </button>
+                </div>
+            </header>
+
+            <div class="shell">
+                <aside class="nav-panel" aria-label="文件导航">
+                    <div class="rail">
+                        <div class="avatar">DSL</div>
+                        <nav class="rail-nav" aria-label="主导航">
+                            <button class="rail-btn is-active" type="button">
+                                <span class="rail-icon" aria-hidden="true"
+                                    >☰</span
+                                >
+                                <span>调试</span>
+                            </button>
+                            <button class="rail-btn" type="button">
+                                <span class="rail-icon" aria-hidden="true"
+                                    >☑</span
+                                >
+                                <span>构建</span>
+                            </button>
+                        </nav>
+                    </div>
+
+                    <section class="tree-pane">
+                        <div class="pane-head">
+                            <div class="section-title">
+                                <h2>目录树</h2>
+                                <span class="branch" id="branchName"
+                                    >local</span
+                                >
+                            </div>
+                            <div class="tree-actions" aria-label="目录树操作">
+                                <button
+                                    class="text-btn"
+                                    id="expandAllBtn"
+                                    type="button"
+                                >
+                                    展开目录
+                                </button>
+                                <button
+                                    class="text-btn"
+                                    id="collapseAllBtn"
+                                    type="button"
+                                >
+                                    收缩所有目录
+                                </button>
+                            </div>
+                            <label class="mini-search">
+                                <span aria-hidden="true">⌕</span>
+                                <input
+                                    id="fileFilter"
+                                    type="search"
+                                    placeholder="筛选文件"
+                                />
+                            </label>
+                        </div>
+                        <nav class="tree" id="fileTree" aria-label="项目文件树">
+                            <p class="empty">打开项目后显示可编辑文件</p>
+                        </nav>
+                    </section>
+                </aside>
+
+                <div
+                    class="panel-resizer"
+                    data-resizer="nav"
+                    role="separator"
+                    aria-label="调整目录树宽度"
+                    aria-orientation="vertical"
+                    tabindex="0"
+                ></div>
+
+                <main class="main-stage">
+                    <section class="workspace-panel">
+                        <div
+                            class="editor-tabs"
+                            role="tablist"
+                            aria-label="打开的文件"
+                        >
+                            <button
+                                class="editor-tab is-active"
+                                role="tab"
+                                type="button"
+                            >
+                                <span class="dot" id="dirtyDot"></span>
+                                <span id="activeTab">未选择文件</span>
+                            </button>
+                        </div>
+
+                        <section class="workarea">
+                            <header class="request-head">
+                                <div class="request-title">
+                                    <div class="title-line">
+                                        <h1 id="fileTitle">选择一个文件</h1>
+                                    </div>
+                                    <p id="filePath">从左侧打开文件</p>
+                                </div>
+                                <div class="head-actions" aria-label="文件操作">
+                                    <div
+                                        class="action-group"
+                                        id="editActionGroup"
+                                        aria-label="编辑操作"
+                                    >
+                                        <button
+                                            class="text-btn"
+                                            id="saveBtn"
+                                            type="button"
+                                        >
+                                            保存
+                                        </button>
+                                    </div>
+                                    <div
+                                        class="action-group"
+                                        id="executionActionGroup"
+                                        aria-label="执行操作"
+                                        hidden
+                                    >
+                                        <button
+                                            class="text-btn"
+                                            id="syntaxBtn"
+                                            type="button"
+                                        >
+                                            语法检查
+                                        </button>
+                                        <button
+                                            class="text-btn"
+                                            id="runBtn"
+                                            type="button"
+                                        >
+                                            运行文件
+                                        </button>
+                                        <button
+                                            class="primary-btn"
+                                            id="debugStepsBtn"
+                                            type="button"
+                                        >
+                                            单步调试
+                                        </button>
+                                    </div>
+                                    <div
+                                        class="action-group debug-session-group"
+                                        id="debugSessionGroup"
+                                        aria-label="调试会话"
+                                        hidden
+                                    >
+                                        <button
+                                            class="text-btn"
+                                            id="nextStepBtn"
+                                            type="button"
+                                        >
+                                            下一步
+                                        </button>
+                                        <button
+                                            class="text-btn"
+                                            id="continueDebugBtn"
+                                            type="button"
+                                        >
+                                            继续
+                                        </button>
+                                        <button
+                                            class="danger-btn"
+                                            id="stopBtn"
+                                            type="button"
+                                        >
+                                            停止
+                                        </button>
+                                    </div>
+                                </div>
+                            </header>
+
+                            <section class="editor-stack" aria-label="DSL 编辑区">
+                                <p class="notice" id="editorNotice">
+                                    当前工作台聚焦本地调试与构建入口：打开项目、编辑
+                                    DSL、运行/调试并查看输出。
+                                </p>
+                                <div class="param-head">
+                                    <strong>DSL 编辑器</strong>
+                                    <div
+                                        class="sub-tabs"
+                                        aria-label="编辑器视图"
+                                    >
+                                        <button
+                                            class="sub-tab is-active"
+                                            type="button"
+                                        >
+                                            代码
+                                        </button>
+                                        <button class="sub-tab" type="button">
+                                            问题
+                                            <span
+                                                class="pill orange"
+                                                id="problemCount"
+                                                >0</span
+                                            >
+                                        </button>
+                                        <button class="sub-tab" type="button">
+                                            变量
+                                            <span
+                                                class="pill green"
+                                                id="variableCount"
+                                                >0</span
+                                            >
+                                        </button>
+                                        <button class="sub-tab" type="button">
+                                            命令
+                                        </button>
+                                    </div>
+                                    <div class="inline-actions">
+                                        <button
+                                            class="text-btn"
+                                            id="keywordBtn"
+                                            type="button"
+                                        >
+                                            关键字
+                                        </button>
+                                        <button
+                                            class="text-btn"
+                                            id="commandBtn"
+                                            type="button"
+                                        >
+                                            生成命令
+                                        </button>
+                                        <span id="editorMeta"
+                                            >UTF-8 · Spaces: 4</span
+                                        >
+                                    </div>
+                                </div>
+                                <section
+                                    class="keyword-panel"
+                                    id="keywordPanel"
+                                    aria-label="关键字查找"
+                                    hidden
+                                >
+                                    <div class="keyword-head">
+                                        <label class="keyword-search">
+                                            <span aria-hidden="true">⌕</span>
+                                            <input
+                                                id="keywordSearch"
+                                                type="search"
+                                                placeholder="查找关键字"
+                                            />
+                                        </label>
+                                        <span id="keywordStatus">未加载</span>
+                                    </div>
+                                    <div
+                                        class="keyword-list"
+                                        id="keywordList"
+                                    ></div>
+                                </section>
+                                <div
+                                    class="code-editor"
+                                    id="codeEditor"
+                                    aria-label="代码编辑器"
+                                ></div>
+                            </section>
+                        </section>
+                    </section>
+
+                    <div
+                        class="panel-resizer is-horizontal"
+                        data-resizer="console"
+                        role="separator"
+                        aria-label="调整运行输出高度"
+                        aria-orientation="horizontal"
+                        tabindex="0"
+                    ></div>
+
+                    <section
+                        class="console bottom-console"
+                        id="bottomConsole"
+                        aria-label="运行输出"
+                    >
+                        <div class="console-head">
+                            <button class="console-tab is-active" type="button">
+                                运行输出
+                            </button>
+                            <span id="commandPreview">pytest-dsl</span>
+                        </div>
+                        <div class="console-body" id="consoleBody"></div>
+                    </section>
+                </main>
+            </div>
+
+            <footer class="statusbar">
+                <div class="status-left">
+                    <span class="status-item"
+                        ><span class="status-ok"></span
+                        ><span id="workspaceStatus">等待打开项目</span></span
+                    >
+                    <span class="status-item" id="gitStatus">local</span>
+                    <span class="status-item" id="remoteStatusBar"
+                        ><span class="status-dot unchecked"></span
+                        >远程: 未探测</span
+                    >
+                </div>
+                <div class="status-right">
+                    <span class="status-item">调试与构建入口</span>
+                </div>
+            </footer>
+        </div>
+
+        <script src="./editor-bundle.js"></script>
+        <script src="./renderer.js"></script>
+    </body>
+</html>

@@ -121,5 +121,4 @@ performance_report.json
 # Playwright认证状态文件
 playwright/.auth
 web-editor/
-electron-gui/
 examples/gui_validation/

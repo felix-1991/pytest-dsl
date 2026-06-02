@@ -1,0 +1,32 @@
+{
+  "name": "pytest-dsl-electron-gui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Electron GUI workbench for pytest-dsl projects",
+  "main": "main.js",
+  "scripts": {
+    "build:editor": "esbuild src/editor-bridge.js --bundle --format=iife --global-name=CM6 --outfile=src/editor-bundle.js",
+    "start": "npm run build:editor && electron .",
+    "test": "node --test",
+    "check": "npm test && node scripts/check-app-files.js"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.20.2",
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/search": "^6.7.0",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.43.0",
+    "@lezer/highlight": "^1.2.3",
+    "@replit/codemirror-minimap": "^0.5.2",
+    "codemirror": "^6.0.2",
+    "electron": "^30.5.1",
+    "js-yaml": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  }
+}
