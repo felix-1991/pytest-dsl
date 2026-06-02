@@ -297,3 +297,75 @@ end
     }
     assert teardown.type == "Teardown"
     assert teardown.children[0].children == []
+
+
+def test_remote_keyword_call_syntax_shapes_parse_consistently():
+    ast = _parse_dsl(
+        '''
+@remote: "http://localhost:8270/" as remote_server
+@remote: "http://${host}:${port}/" as ${dynamic_alias}
+
+item_id = 1
+
+remote_server|[无参关键字]
+remote_server|[打印], 内容: "远程有参调用", 次数: 1
+
+direct_result = remote_server|[返回结果], 结果: "ok"
+dynamic_result = ${dynamic_alias}|[fetch], id: item_id + 1
+
+retry 2 every 0 until direct_result == "ok" do
+    remote_server|[打印], 内容: "retry 内远程调用"
+end
+
+teardown do
+    ${dynamic_alias}|[清理], 状态: "done"
+end
+'''
+    )
+
+    remote_imports = [
+        item.value
+        for item in ast.children[0].children
+        if item.type == "RemoteImport"
+    ]
+    statements = _statements(ast).children
+    no_arg_call = statements[1]
+    arg_call = statements[2]
+    direct_assignment = statements[3]
+    dynamic_assignment = statements[4]
+    retry_call = statements[5].children[3].children[0]
+    teardown_call = ast.children[2].children[0].children[0]
+
+    assert remote_imports == [
+        {"url": "http://localhost:8270/", "alias": "remote_server"},
+        {"url": "http://${host}:${port}/", "alias": "${dynamic_alias}"},
+    ]
+    assert no_arg_call.type == "RemoteKeywordCall"
+    assert no_arg_call.value == {
+        "alias": "remote_server",
+        "keyword": "无参关键字",
+    }
+    assert no_arg_call.children == [[]]
+    assert arg_call.type == "RemoteKeywordCall"
+    assert arg_call.value == {"alias": "remote_server", "keyword": "打印"}
+    assert [param.value for param in arg_call.children[0]] == ["内容", "次数"]
+    assert direct_assignment.type == "AssignmentRemoteKeywordCall"
+    assert direct_assignment.children[0].value == {
+        "alias": "remote_server",
+        "keyword": "返回结果",
+    }
+    assert dynamic_assignment.type == "AssignmentRemoteKeywordCall"
+    assert dynamic_assignment.children[0].value == {
+        "alias": "${dynamic_alias}",
+        "keyword": "fetch",
+    }
+    assert dynamic_assignment.children[0].children[0][0].children[0].type == (
+        "ArithmeticExpr"
+    )
+    assert retry_call.type == "RemoteKeywordCall"
+    assert retry_call.value == {"alias": "remote_server", "keyword": "打印"}
+    assert teardown_call.type == "RemoteKeywordCall"
+    assert teardown_call.value == {
+        "alias": "${dynamic_alias}",
+        "keyword": "清理",
+    }

@@ -2,6 +2,7 @@ import pytest_dsl.keywords  # noqa: F401 - registers builtin keywords
 
 from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
 from pytest_dsl.core.dsl_executor import DSLExecutor
+from pytest_dsl.core.hookable_keyword_manager import hookable_keyword_manager
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.core.validator import validate_dsl
 
@@ -9,11 +10,13 @@ from pytest_dsl.core.validator import validate_dsl
 DEPENDENCY_KEYWORDS = [
     "依赖关键字_基础",
     "依赖关键字_组合",
+    "Hook注册语法关键字",
 ]
 
 
 def _remove_dependency_keywords():
     for name in DEPENDENCY_KEYWORDS:
+        hookable_keyword_manager.hook_keywords.pop(name, None)
         keyword_manager._keywords.pop(name, None)
 
 
@@ -69,3 +72,43 @@ def test_top_level_unknown_keyword_still_fails_validation():
 
     assert ok is False
     assert any("关键字错误: 未注册的关键字: 依赖关键字_基础" in str(item) for item in diagnostics)
+
+
+def test_hook_registered_keyword_parses_and_executes_current_dsl_syntax(monkeypatch):
+    _remove_dependency_keywords()
+    hook_keyword = """
+@name: "hook keyword syntax"
+function Hook注册语法关键字(base=2) do
+    value = base + 1
+    if value == base + 1 do
+        return "hook:" + value
+    else
+        return "bad"
+    end
+end
+"""
+
+    try:
+        hookable_keyword_manager.register_hook_keyword(
+            "Hook注册语法关键字",
+            hook_keyword,
+            {"source_type": "hook", "source_name": "syntax-test"},
+        )
+
+        assert hookable_keyword_manager.is_hook_keyword("Hook注册语法关键字")
+        assert keyword_manager.get_keyword_info("Hook注册语法关键字")[
+            "source_type"
+        ] == "hook"
+
+        monkeypatch.setenv("PYTEST_DSL_KEEP_VARIABLES", "1")
+        executor = DSLExecutor(enable_hooks=False, enable_tracking=False)
+        executor.execute_from_content(
+            """
+@name: "run hook keyword"
+result = [Hook注册语法关键字], base: 4
+"""
+        )
+
+        assert executor.variable_replacer.local_variables["result"] == "hook:5"
+    finally:
+        _remove_dependency_keywords()
