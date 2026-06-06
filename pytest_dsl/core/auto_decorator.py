@@ -166,6 +166,8 @@ def _create_data_driven_test(test_file: Path, data_source: Dict, test_title: Opt
         executor.set_current_data(test_data)
         execute_dsl_file(str(test_file), executor)
 
+    data_source = resolve_case_data_source(test_file, data_source)
+
     # 加载测试数据
     executor = DSLExecutor()
     test_data_list = executor._load_test_data(data_source)
@@ -179,6 +181,15 @@ def _create_data_driven_test(test_file: Path, data_source: Dict, test_title: Opt
         test_data_list,
         ids=test_ids
     )(test_method)
+
+
+def resolve_case_data_source(test_file: Path, data_source: Dict) -> Dict:
+    """将相对数据文件路径解析为相对DSL用例文件目录的绝对路径。"""
+    resolved = dict(data_source or {})
+    file_path = resolved.get('file')
+    if isinstance(file_path, str) and file_path and not os.path.isabs(file_path):
+        resolved['file'] = str((Path(test_file).resolve().parent / file_path).resolve())
+    return resolved
 
 
 def _generate_test_ids(test_data_list: List[Dict[str, Any]], base_name: str) -> List[str]:

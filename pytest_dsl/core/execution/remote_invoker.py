@@ -30,10 +30,21 @@ class RemoteKeywordInvoker:
         if not isinstance(alias, str):
             alias = str(alias)
 
-        success = remote_keyword_manager.register_remote_server(url, alias)
+        try:
+            success = remote_keyword_manager.register_remote_server(url, alias)
+        except Exception as exc:
+            print(
+                f"远程服务器 {alias} 暂不可用，跳过预连接: {url} ({exc})。"
+                f"如果用例执行到 {alias}|[...]，会在调用行失败。"
+            )
+            return False
 
         if not success:
-            raise Exception(f"无法连接远程服务器: {alias} ({url})")
+            print(
+                f"远程服务器 {alias} 暂不可用，跳过预连接: {url}。"
+                f"如果用例执行到 {alias}|[...]，会在调用行失败。"
+            )
+            return False
 
         print(f"远程服务器已连接: {alias} ({url})")
 
@@ -43,6 +54,7 @@ class RemoteKeywordInvoker:
             name="远程关键字导入",
             attachment_type=allure.attachment_type.TEXT,
         )
+        return True
 
     def notify_variable_changed(self, var_name, var_value):
         """通知远程服务器变量已发生变化"""

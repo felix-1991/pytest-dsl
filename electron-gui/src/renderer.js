@@ -6,6 +6,11 @@ const state = {
   dirty: false,
   filter: "",
   selectedConfigPaths: [],
+  selectedSuiteIds: [],
+  suiteSelectionTouched: false,
+  selectedTreePath: "",
+  selectedTreeKind: "directory",
+  collapsedTreeDirs: new Set(),
   configSignature: null,
   remoteStatus: emptyRemoteStatus(),
   remoteProbeSeq: 0,
@@ -23,6 +28,23 @@ const state = {
   keywordLoadSeq: 0,
   keywordLoading: false,
   keywords: [],
+  consoleLines: [],
+  commandOutputChunks: [],
+  console: {
+    wrap: true,
+    expanded: false,
+  },
+  commandPreview: {
+    command: "pytest-dsl",
+    context: "preview",
+    persistent: false,
+    taskId: null,
+  },
+  treeContext: null,
+  draggedTreeFile: null,
+  treeDropTargetPath: null,
+  entryDialogResolve: null,
+  entryDialogPreviousFocus: null,
 };
 
 const REMOTE_MONITOR_INTERVAL_MS = 5000;
@@ -50,12 +72,21 @@ const REMOTE_STATUS_LABELS = {
   unchecked: "未探测",
 };
 
+const COMMAND_CONTEXT_LABELS = {
+  preview: "当前命令",
+  syntax: "语法检查",
+  run: "文件运行",
+  debug: "调试",
+  suite: "测试套运行",
+};
+
 const el = {};
 
 document.addEventListener("DOMContentLoaded", () => {
   cacheElements();
   initializeLayoutSizing();
   bindEvents();
+  applyConsoleViewState();
   CM6.createEditor(el.codeEditor, {
     onContentChange() {
       state.debugSelection = null;
@@ -86,7 +117,11 @@ function cacheElements() {
   [
     "projectName",
     "projectRoot",
-    "suiteDirectory",
+    "suitePicker",
+    "suiteTrigger",
+    "suiteSummary",
+    "suiteMenu",
+    "suiteList",
     "configPicker",
     "configTrigger",
     "configSummary",
@@ -97,15 +132,18 @@ function cacheElements() {
     "refreshBtn",
     "settingsBtn",
     "runAllBtn",
+    "treeRefreshBtn",
     "expandAllBtn",
     "collapseAllBtn",
     "branchName",
     "fileFilter",
     "fileTree",
+    "treeContextMenu",
     "dirtyDot",
     "activeTab",
     "fileTitle",
     "filePath",
+    "mainStage",
     "editActionGroup",
     "executionActionGroup",
     "debugSessionGroup",
@@ -126,7 +164,13 @@ function cacheElements() {
     "editorMeta",
     "problemCount",
     "variableCount",
+    "commandContext",
     "commandPreview",
+    "bottomConsole",
+    "copyConsoleBtn",
+    "wrapConsoleBtn",
+    "expandConsoleBtn",
+    "clearConsoleBtn",
     "consoleBody",
     "configCount",
     "configList",
@@ -136,6 +180,13 @@ function cacheElements() {
     "workspaceStatus",
     "gitStatus",
     "remoteStatusBar",
+    "entryDialog",
+    "entryDialogForm",
+    "entryDialogTitle",
+    "entryDialogLabel",
+    "entryDialogInput",
+    "entryDialogError",
+    "entryDialogCancel",
   ].forEach((id) => {
     el[id] = document.getElementById(id);
   });
@@ -154,7 +205,52 @@ function bindEvents() {
   el.nextStepBtn.addEventListener("click", () => sendDebugCommand("next"));
   el.continueDebugBtn.addEventListener("click", () => sendDebugCommand("continue"));
   el.stopBtn.addEventListener("click", stopCurrentTask);
-  el.runAllBtn.addEventListener("click", previewRunSuite);
+  el.runAllBtn.addEventListener("click", runSuiteExecution);
+  el.copyConsoleBtn.addEventListener("click", copyConsoleOutput);
+  el.wrapConsoleBtn.addEventListener("click", toggleConsoleWrap);
+  el.expandConsoleBtn.addEventListener("click", toggleConsoleExpanded);
+  el.clearConsoleBtn.addEventListener("click", () => clearConsole());
+  el.treeRefreshBtn.addEventListener("click", () =>
+    refreshProject({ logMessage: "Refreshed project tree" }),
+  );
+  el.fileTree.addEventListener("contextmenu", handleFileTreeContextMenu);
+  el.fileTree.addEventListener("scroll", closeTreeContextMenu);
+  el.fileTree.addEventListener("dragstart", handleTreeDragStart);
+  el.fileTree.addEventListener("dragend", handleTreeDragEnd);
+  el.fileTree.addEventListener("dragover", handleTreeDragOver);
+  el.fileTree.addEventListener("dragleave", handleTreeDragLeave);
+  el.fileTree.addEventListener("drop", handleTreeDrop);
+  el.treeContextMenu.addEventListener("click", handleTreeContextMenuClick);
+  el.entryDialogForm.addEventListener("submit", handleEntryDialogSubmit);
+  el.entryDialogCancel.addEventListener("click", () => closeEntryDialog(null));
+  el.entryDialog.addEventListener("click", (event) => {
+    if (event.target === el.entryDialog) {
+      closeEntryDialog(null);
+    }
+  });
+  el.entryDialog.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeEntryDialog(null);
+    }
+  });
+  document.addEventListener("click", (event) => {
+    if (!el.treeContextMenu.contains(event.target)) {
+      closeTreeContextMenu();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeTreeContextMenu();
+    }
+  });
+  el.suiteTrigger.addEventListener("click", () => {
+    el.suitePicker.classList.toggle("is-open");
+    el.suiteTrigger.setAttribute(
+      "aria-expanded",
+      String(el.suitePicker.classList.contains("is-open")),
+    );
+  });
   el.expandAllBtn.addEventListener("click", () =>
     setAllTreeGroupsCollapsed(false),
   );
@@ -329,7 +425,7 @@ async function openProject() {
   }
 }
 
-async function refreshProject() {
+async function refreshProject(options = {}) {
   if (!state.snapshot) {
     appendLog("warn", "请先打开一个项目");
     return;
@@ -337,7 +433,13 @@ async function refreshProject() {
 
   try {
     const snapshot = await api.scanProject(state.snapshot.project.rootPath);
-    applySnapshot(snapshot, "Refreshed project", state.currentFile);
+    applySnapshot(
+      snapshot,
+      options.logMessage || "Refreshed project",
+      Object.prototype.hasOwnProperty.call(options, "preferredFile")
+        ? options.preferredFile
+        : state.currentFile,
+    );
   } catch (error) {
     appendLog("error", errorMessage(error));
   }
@@ -358,6 +460,11 @@ function applySnapshot(snapshot, logMessage, preferredFile = null) {
     : null;
   if (projectChanged) {
     resetKeywordBrowser();
+    state.suiteSelectionTouched = false;
+    state.selectedTreePath = "";
+    state.selectedTreeKind = "directory";
+    state.collapsedTreeDirs.clear();
+    closeEntryDialog(null);
   }
   initializeConfigSelection(snapshot, previousSelected);
 
@@ -389,6 +496,14 @@ function setEmptyProjectState() {
   state.currentFile = null;
   state.dirty = false;
   state.selectedConfigPaths = [];
+  state.selectedSuiteIds = [];
+  state.suiteSelectionTouched = false;
+  state.selectedTreePath = "";
+  state.selectedTreeKind = "directory";
+  state.collapsedTreeDirs.clear();
+  closeTreeContextMenu();
+  closeEntryDialog(null);
+  clearTreeDragState();
   state.configSignature = null;
   state.remoteStatus = emptyRemoteStatus();
   state.currentTaskId = null;
@@ -407,7 +522,8 @@ function setEmptyProjectState() {
   el.configCount.textContent = "0";
   el.configSummary.textContent = "未加载配置";
   renderRemoteStatus();
-  el.suiteDirectory.innerHTML = `<option value=".">.</option>`;
+  el.suiteSummary.textContent = "打开项目后自动识别";
+  el.suiteList.innerHTML = `<p class="empty">打开项目后显示 convention 测试套</p>`;
   el.fileTree.innerHTML = `<p class="empty">点击“打开项目”选择本地 pytest-dsl 项目</p>`;
   el.configList.innerHTML = `<p class="empty">打开项目后显示可加载的 YAML 配置</p>`;
   el.configMerged.textContent = "{}";
@@ -428,7 +544,7 @@ function renderProject() {
     : "local";
   el.workspaceStatus.textContent = `${editableFiles.length} 文件 · ${snapshot.dslFiles.length} DSL · ${state.selectedConfigPaths.length}/${snapshot.config.sources.length} config · score ${snapshot.score.value}`;
   el.configCount.textContent = `${state.selectedConfigPaths.length}/${snapshot.config.sources.length}`;
-  renderSuiteOptions(snapshot.dslFiles);
+  renderSuiteOptions(snapshot.suites || [], snapshot.suiteTree);
 }
 
 function renderFileTree() {
@@ -436,71 +552,646 @@ function renderFileTree() {
     return;
   }
 
-  const files = getEditableFiles().filter((file) => {
-    if (!state.filter) {
-      return true;
-    }
-    return file.relativePath.toLowerCase().includes(state.filter);
-  });
-
-  if (files.length === 0) {
-    el.fileTree.innerHTML = `<p class="empty">${state.filter ? "没有匹配的文件" : "项目中没有可编辑文本文件"}</p>`;
+  const tree = filterProjectTree(state.snapshot.tree, state.filter);
+  const children = tree && Array.isArray(tree.children) ? tree.children : [];
+  if (children.length === 0) {
+    el.fileTree.innerHTML = `<p class="empty">${state.filter ? "没有匹配的文件或目录" : "项目中没有可编辑文本文件"}</p>`;
     return;
   }
 
-  const groups = groupFilesByDirectory(files);
-  const rootFiles = (groups.find((group) => group.name === ".") || { files: [] }).files;
-  const directoryGroups = groups.filter((group) => group.name !== ".");
-  el.fileTree.innerHTML = [
-    ...rootFiles.map(renderFileRow),
-    ...directoryGroups.map(renderDirectoryGroup),
-  ].join("");
+  el.fileTree.innerHTML = children
+    .map((node) => renderProjectTreeNode(node, 0))
+    .join("");
 
-  el.fileTree.querySelectorAll(".tree-folder-row").forEach((button) => {
-    button.addEventListener("click", () => {
-      button.closest(".tree-group").classList.toggle("is-collapsed");
-    });
-  });
-
-  el.fileTree.querySelectorAll(".tree-row[data-path]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (
-        state.dirty &&
-        !window.confirm("当前文件尚未保存，是否继续打开其他文件？")
-      ) {
-        return;
-      }
-      selectFile(button.dataset.path);
-    });
+  el.fileTree.querySelectorAll("[data-tree-action]").forEach((button) => {
+    button.addEventListener("click", handleTreeAction);
   });
 }
 
-function renderDirectoryGroup(group) {
+function renderProjectTreeNode(node, depth = 0) {
+  if (!node) {
+    return "";
+  }
+  if (node.type === "directory") {
+    return renderDirectoryGroup(node, depth);
+  }
+  return renderFileRow(node, depth);
+}
+
+function renderDirectoryGroup(group, depth = 0) {
+  const collapsed = state.collapsedTreeDirs.has(group.path);
+  const selected = state.selectedTreeKind === "directory" && state.selectedTreePath === group.path;
   return `
-    <div class="tree-group">
-      <button class="tree-row tree-folder-row" type="button" data-directory="${escapeAttr(group.name)}">
-        <span class="folderIcon" aria-hidden="true">
-          <span class="folder-open">${folderIcon("open")}</span>
-          <span class="folder-closed">${folderIcon("closed")}</span>
-        </span>
-        <span class="name">${escapeHtml(group.name)}</span>
-        <span class="count">${group.files.length}</span>
-      </button>
+    <div class="tree-group${collapsed ? " is-collapsed" : ""}" data-directory="${escapeAttr(group.path)}">
+      <div class="tree-row tree-folder-row${selected ? " is-selected" : ""}" style="--depth: ${depth}" data-tree-row data-drop-target data-kind="directory" data-path="${escapeAttr(group.path)}">
+        <button class="tree-row-main" type="button" data-tree-action="toggle-directory" data-kind="directory" data-path="${escapeAttr(group.path)}">
+          <span class="folderIcon" aria-hidden="true">${folderIcon(collapsed ? "closed" : "open")}</span>
+          <span class="name" title="${escapeAttr(group.path || group.name)}">${escapeHtml(group.name)}</span>
+          <span class="count">${group.fileCount || 0}</span>
+        </button>
+      </div>
       <div class="tree-children">
-        ${group.files.map(renderFileRow).join("")}
+        ${(group.children || []).map((child) => renderProjectTreeNode(child, depth + 1)).join("")}
       </div>
     </div>
   `;
 }
 
-function renderFileRow(file) {
+function renderFileRow(file, depth = 0) {
+  const relativePath = file.relativePath || file.path;
+  const selected = state.currentFile === relativePath ||
+    (state.selectedTreeKind === "file" && state.selectedTreePath === relativePath);
   return `
-    <button class="tree-row${file.relativePath === state.currentFile ? " is-selected" : ""}" type="button" data-path="${escapeAttr(file.relativePath)}">
-      <span class="fileIcon ${fileKind(file)}" aria-hidden="true">${fileIcon(file)}</span>
-      <span class="name" title="${escapeAttr(file.relativePath)}">${escapeHtml(file.name)}</span>
-      <span class="count">${file.lineCount}</span>
-    </button>
+    <div class="tree-row tree-file-row${selected ? " is-selected" : ""}" style="--depth: ${depth}" data-tree-row data-draggable-file draggable="true" data-kind="file" data-path="${escapeAttr(relativePath)}">
+      <button class="tree-row-main" type="button" data-tree-action="open-file" data-kind="file" data-path="${escapeAttr(relativePath)}">
+        <span class="fileIcon ${fileKind(file)}" aria-hidden="true">${fileIcon(file)}</span>
+        <span class="name" title="${escapeAttr(relativePath)}">${escapeHtml(file.name)}</span>
+        <span class="count">${file.lineCount}</span>
+      </button>
+    </div>
   `;
+}
+
+function filterProjectTree(node, filter) {
+  if (!node) {
+    return null;
+  }
+  const needle = String(filter || "").trim().toLowerCase();
+  if (!needle) {
+    return node;
+  }
+  const matches = String(node.path || node.name || "").toLowerCase().includes(needle);
+  if (node.type === "file") {
+    return matches ? node : null;
+  }
+  const children = (node.children || [])
+    .map((child) => filterProjectTree(child, needle))
+    .filter(Boolean);
+  if (matches) {
+    return node;
+  }
+  return children.length > 0 ? { ...node, children } : null;
+}
+
+function handleTreeAction(event) {
+  const action = event.currentTarget.dataset.treeAction;
+  const kind = event.currentTarget.dataset.kind;
+  const relativePath = event.currentTarget.dataset.path || "";
+  closeTreeContextMenu();
+  if (action === "toggle-directory") {
+    toggleDirectory(relativePath);
+    return;
+  }
+  if (action === "open-file") {
+    openProjectTreeFile(relativePath);
+    return;
+  }
+  if (action === "create-file") {
+    handleCreateFile(relativePath);
+    return;
+  }
+  if (action === "create-folder") {
+    handleCreateFolder(relativePath);
+    return;
+  }
+  if (action === "rename") {
+    handleRenameEntry(kind, relativePath);
+    return;
+  }
+  if (action === "delete") {
+    handleDeleteEntry(kind, relativePath);
+  }
+}
+
+function handleFileTreeContextMenu(event) {
+  if (!state.snapshot) {
+    return;
+  }
+  event.preventDefault();
+
+  const row = event.target.closest("[data-tree-row]");
+  const target = row && el.fileTree.contains(row)
+    ? {
+        kind: row.dataset.kind || "directory",
+        path: row.dataset.path || "",
+      }
+    : {
+        kind: "directory",
+        path: "",
+      };
+
+  state.selectedTreeKind = target.kind;
+  state.selectedTreePath = target.path;
+  renderFileTree();
+  openTreeContextMenu(target.kind, target.path, event.clientX, event.clientY);
+}
+
+function handleTreeDragStart(event) {
+  const row = event.target.closest("[data-draggable-file]");
+  if (!row || !el.fileTree.contains(row)) {
+    return;
+  }
+  const relativePath = row.dataset.path || "";
+  if (!relativePath) {
+    return;
+  }
+
+  state.draggedTreeFile = relativePath;
+  row.classList.add("is-dragging");
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", relativePath);
+  }
+  closeTreeContextMenu();
+}
+
+function handleTreeDragEnd() {
+  clearTreeDragState();
+}
+
+function handleTreeDragOver(event) {
+  const target = treeDropTargetFromEvent(event);
+  if (!target || !canMoveTreeFileToDirectory(state.draggedTreeFile, target.path)) {
+    clearTreeDropTarget();
+    return;
+  }
+
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "move";
+  }
+  markTreeDropTarget(target.path);
+}
+
+function handleTreeDragLeave(event) {
+  const currentTarget = event.target.closest("[data-drop-target]");
+  if (!currentTarget || currentTarget.contains(event.relatedTarget)) {
+    return;
+  }
+  clearTreeDropTarget();
+}
+
+async function handleTreeDrop(event) {
+  const target = treeDropTargetFromEvent(event);
+  if (!target || !canMoveTreeFileToDirectory(state.draggedTreeFile, target.path)) {
+    clearTreeDragState();
+    return;
+  }
+
+  event.preventDefault();
+  const sourcePath = state.draggedTreeFile;
+  const targetDirectory = target.path || "";
+  clearTreeDragState();
+  await handleMoveEntry(sourcePath, targetDirectory);
+}
+
+function treeDropTargetFromEvent(event) {
+  const row = event.target.closest("[data-drop-target]");
+  if (!row || !el.fileTree.contains(row)) {
+    return null;
+  }
+  return {
+    path: row.dataset.path || "",
+  };
+}
+
+function canMoveTreeFileToDirectory(sourcePath, targetDirectory) {
+  if (!sourcePath) {
+    return false;
+  }
+  return normalizeTreeDirectory(parentDirectoryOf(sourcePath)) !== normalizeTreeDirectory(targetDirectory);
+}
+
+function markTreeDropTarget(relativePath) {
+  if (state.treeDropTargetPath === relativePath) {
+    return;
+  }
+  clearTreeDropTarget();
+  state.treeDropTargetPath = relativePath;
+  const selector = `[data-drop-target][data-path="${cssEscape(relativePath)}"]`;
+  const row = el.fileTree.querySelector(selector);
+  if (row) {
+    row.classList.add("is-drop-target");
+  }
+}
+
+function clearTreeDropTarget() {
+  state.treeDropTargetPath = null;
+  el.fileTree.querySelectorAll(".is-drop-target").forEach((row) => {
+    row.classList.remove("is-drop-target");
+  });
+}
+
+function clearTreeDragState() {
+  state.draggedTreeFile = null;
+  clearTreeDropTarget();
+  el.fileTree.querySelectorAll(".is-dragging").forEach((row) => {
+    row.classList.remove("is-dragging");
+  });
+}
+
+function openTreeContextMenu(kind, relativePath, x, y) {
+  if (!el.treeContextMenu) {
+    return;
+  }
+  state.treeContext = {
+    kind,
+    path: relativePath || "",
+  };
+
+  el.treeContextMenu.dataset.contextKind = kind;
+  el.treeContextMenu.dataset.contextPath = relativePath || "";
+  el.treeContextMenu.innerHTML = renderTreeContextMenu(kind, relativePath);
+  el.treeContextMenu.hidden = false;
+  el.treeContextMenu.style.left = "0px";
+  el.treeContextMenu.style.top = "0px";
+
+  const menuRect = el.treeContextMenu.getBoundingClientRect();
+  const maxLeft = Math.max(8, window.innerWidth - menuRect.width - 8);
+  const maxTop = Math.max(8, window.innerHeight - menuRect.height - 8);
+  const left = clamp(x, 8, maxLeft);
+  const top = clamp(y, 8, maxTop);
+  el.treeContextMenu.style.left = `${left}px`;
+  el.treeContextMenu.style.top = `${top}px`;
+
+  const firstAction = el.treeContextMenu.querySelector("[data-context-action]");
+  if (firstAction) {
+    firstAction.focus();
+  }
+}
+
+function renderTreeContextMenu(kind, relativePath) {
+  const label = relativePath || "项目根目录";
+  const items = [
+    `<div class="context-menu-label" title="${escapeAttr(label)}">${escapeHtml(label)}</div>`,
+  ];
+
+  if (kind === "directory") {
+    items.push(contextMenuItem("create-file", "新建文件"));
+    items.push(contextMenuItem("create-folder", "新建目录"));
+    if (relativePath) {
+      items.push(contextMenuSeparator());
+      items.push(contextMenuItem("rename", "重命名"));
+      items.push(contextMenuItem("delete", "删除", "danger"));
+    }
+  } else {
+    items.push(contextMenuItem("open-file", "打开文件"));
+    items.push(contextMenuSeparator());
+    items.push(contextMenuItem("rename", "重命名"));
+    items.push(contextMenuItem("delete", "删除", "danger"));
+  }
+
+  return items.join("");
+}
+
+function contextMenuItem(action, label, tone = "") {
+  const toneClass = tone ? ` ${tone}` : "";
+  return `<button class="context-menu-item${toneClass}" type="button" role="menuitem" data-context-action="${escapeAttr(action)}">${escapeHtml(label)}</button>`;
+}
+
+function contextMenuSeparator() {
+  return `<div class="context-menu-separator" role="separator"></div>`;
+}
+
+async function handleTreeContextMenuClick(event) {
+  const button = event.target.closest("[data-context-action]");
+  if (!button || !el.treeContextMenu.contains(button)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+
+  const action = button.dataset.contextAction;
+  const context = readTreeContextMenuContext();
+  if (!context) {
+    closeTreeContextMenu();
+    return;
+  }
+  closeTreeContextMenu();
+
+  if (action === "open-file") {
+    await openProjectTreeFile(context.path);
+    return;
+  }
+  if (action === "create-file") {
+    await handleCreateFile(context.path);
+    return;
+  }
+  if (action === "create-folder") {
+    await handleCreateFolder(context.path);
+    return;
+  }
+  if (action === "rename") {
+    await handleRenameEntry(context.kind, context.path);
+    return;
+  }
+  if (action === "delete") {
+    await handleDeleteEntry(context.kind, context.path);
+  }
+}
+
+function readTreeContextMenuContext() {
+  if (el.treeContextMenu.dataset.contextKind) {
+    return {
+      kind: el.treeContextMenu.dataset.contextKind,
+      path: el.treeContextMenu.dataset.contextPath || "",
+    };
+  }
+  return state.treeContext ? { ...state.treeContext } : null;
+}
+
+function closeTreeContextMenu() {
+  state.treeContext = null;
+  if (!el.treeContextMenu) {
+    return;
+  }
+  el.treeContextMenu.hidden = true;
+  el.treeContextMenu.innerHTML = "";
+  delete el.treeContextMenu.dataset.contextKind;
+  delete el.treeContextMenu.dataset.contextPath;
+}
+
+function toggleDirectory(relativePath) {
+  state.selectedTreeKind = "directory";
+  state.selectedTreePath = relativePath;
+  if (state.collapsedTreeDirs.has(relativePath)) {
+    state.collapsedTreeDirs.delete(relativePath);
+  } else {
+    state.collapsedTreeDirs.add(relativePath);
+  }
+  renderFileTree();
+}
+
+async function openProjectTreeFile(relativePath) {
+  state.selectedTreeKind = "file";
+  state.selectedTreePath = relativePath;
+  if (
+    state.dirty &&
+    !window.confirm("当前文件尚未保存，是否继续打开其他文件？")
+  ) {
+    renderFileTree();
+    return;
+  }
+  await selectFile(relativePath);
+}
+
+async function handleCreateFile(directory = null) {
+  await createTreeEntry("file", directory);
+}
+
+async function handleCreateFolder(directory = null) {
+  await createTreeEntry("directory", directory);
+}
+
+function requestEntryName({ title, label, defaultValue = "" }) {
+  if (state.entryDialogResolve) {
+    closeEntryDialog(null);
+  }
+
+  return new Promise((resolve) => {
+    state.entryDialogResolve = resolve;
+    state.entryDialogPreviousFocus =
+      document.activeElement && typeof document.activeElement.focus === "function"
+        ? document.activeElement
+        : null;
+    el.entryDialogTitle.textContent = title;
+    el.entryDialogLabel.textContent = label;
+    el.entryDialogInput.value = defaultValue;
+    el.entryDialogError.hidden = true;
+    el.entryDialogError.textContent = "";
+    el.entryDialog.hidden = false;
+    requestAnimationFrame(() => {
+      el.entryDialogInput.focus();
+      el.entryDialogInput.select();
+    });
+  });
+}
+
+function handleEntryDialogSubmit(event) {
+  event.preventDefault();
+  const value = el.entryDialogInput.value.trim();
+  if (!value) {
+    showEntryDialogError("名称不能为空");
+    return;
+  }
+  closeEntryDialog(value);
+}
+
+function showEntryDialogError(message) {
+  el.entryDialogError.textContent = message;
+  el.entryDialogError.hidden = false;
+  el.entryDialogInput.focus();
+}
+
+function closeEntryDialog(value) {
+  if (!el.entryDialog) {
+    return;
+  }
+  const resolve = state.entryDialogResolve;
+  const previousFocus = state.entryDialogPreviousFocus;
+  state.entryDialogResolve = null;
+  state.entryDialogPreviousFocus = null;
+  el.entryDialog.hidden = true;
+  el.entryDialogInput.value = "";
+  el.entryDialogError.hidden = true;
+  el.entryDialogError.textContent = "";
+  if (resolve) {
+    resolve(value);
+  }
+  if (previousFocus && document.contains(previousFocus)) {
+    previousFocus.focus();
+  }
+}
+
+async function createTreeEntry(kind, directory = null) {
+  if (!state.snapshot) {
+    appendLog("warn", "请先打开一个项目");
+    return;
+  }
+  const targetDirectory = normalizeTreeDirectory(
+    directory === null ? selectedTargetDirectory() : directory,
+  );
+  const defaultName = kind === "directory" ? "new_folder" : "new_file.dsl";
+  const name = await requestEntryName({
+    title: kind === "directory" ? "新建目录" : "新建文件",
+    label: kind === "directory" ? "目录名称" : "文件名称",
+    defaultValue: defaultName,
+  });
+  if (!name) {
+    return;
+  }
+  const relativePath = joinRelativePath(targetDirectory, name);
+  try {
+    const result = await api.createEntry(state.snapshot.project.rootPath, {
+      kind,
+      relativePath,
+      content: kind === "file" ? "" : undefined,
+    });
+    if (kind === "directory") {
+      state.selectedTreeKind = "directory";
+      state.selectedTreePath = result.relativePath;
+      state.collapsedTreeDirs.delete(result.relativePath);
+    } else {
+      state.selectedTreeKind = "file";
+      state.selectedTreePath = result.relativePath;
+    }
+    await refreshProject({
+      logMessage: `${kind === "directory" ? "Created folder" : "Created file"} ${result.relativePath}`,
+      preferredFile: kind === "file" ? result.relativePath : state.currentFile,
+    });
+  } catch (error) {
+    appendLog("error", errorMessage(error));
+  }
+}
+
+async function handleRenameEntry(kind, relativePath) {
+  if (!state.snapshot || !relativePath) {
+    return;
+  }
+  if (!confirmDirtyTreeMutation(kind, relativePath)) {
+    return;
+  }
+  const currentName = fileNameFromPath(relativePath);
+  const newName = await requestEntryName({
+    title: "重命名",
+    label: "新名称",
+    defaultValue: currentName,
+  });
+  if (!newName || newName === currentName) {
+    return;
+  }
+  try {
+    const result = await api.renameEntry(state.snapshot.project.rootPath, {
+      relativePath,
+      newName,
+    });
+    const preferredFile = remapPathAfterRename(relativePath, result.relativePath, state.currentFile);
+    state.selectedTreeKind = kind;
+    state.selectedTreePath = result.relativePath;
+    await refreshProject({
+      logMessage: `Renamed ${relativePath} -> ${result.relativePath}`,
+      preferredFile,
+    });
+  } catch (error) {
+    appendLog("error", errorMessage(error));
+  }
+}
+
+async function handleMoveEntry(relativePath, targetDirectory) {
+  if (!state.snapshot || !relativePath) {
+    return;
+  }
+  const normalizedTargetDirectory = normalizeTreeDirectory(targetDirectory);
+  if (!canMoveTreeFileToDirectory(relativePath, normalizedTargetDirectory)) {
+    appendLog("info", `File already in ${normalizedTargetDirectory || "project root"}: ${relativePath}`);
+    return;
+  }
+  if (!confirmDirtyTreeMutation("file", relativePath)) {
+    return;
+  }
+
+  try {
+    const result = await api.moveEntry(state.snapshot.project.rootPath, {
+      relativePath,
+      targetDirectory: normalizedTargetDirectory,
+    });
+    state.selectedTreeKind = "file";
+    state.selectedTreePath = result.relativePath;
+    state.collapsedTreeDirs.delete(normalizedTargetDirectory);
+    await refreshProject({
+      logMessage: `Moved ${relativePath} -> ${result.relativePath}`,
+      preferredFile: state.currentFile === relativePath ? result.relativePath : state.currentFile,
+    });
+  } catch (error) {
+    appendLog("error", errorMessage(error));
+  }
+}
+
+async function handleDeleteEntry(kind, relativePath) {
+  if (!state.snapshot || !relativePath) {
+    return;
+  }
+  if (!confirmDirtyTreeMutation(kind, relativePath)) {
+    return;
+  }
+  const label = kind === "directory" ? `目录 ${relativePath} 及其内容` : `文件 ${relativePath}`;
+  if (!window.confirm(`确认删除${label}？`)) {
+    return;
+  }
+  try {
+    const affectsCurrent = pathAffectsCurrentFile(kind, relativePath);
+    const result = await api.deleteEntry(state.snapshot.project.rootPath, {
+      relativePath,
+      recursive: kind === "directory",
+    });
+    state.selectedTreeKind = "directory";
+    state.selectedTreePath = parentDirectoryOf(relativePath);
+    await refreshProject({
+      logMessage: `Deleted ${result.relativePath}`,
+      preferredFile: affectsCurrent ? null : state.currentFile,
+    });
+  } catch (error) {
+    appendLog("error", errorMessage(error));
+  }
+}
+
+function selectedTargetDirectory() {
+  if (state.selectedTreeKind === "directory") {
+    return state.selectedTreePath || "";
+  }
+  if (state.selectedTreeKind === "file" && state.selectedTreePath) {
+    return parentDirectoryOf(state.selectedTreePath);
+  }
+  if (state.currentFile) {
+    return parentDirectoryOf(state.currentFile);
+  }
+  return "";
+}
+
+function confirmDirtyTreeMutation(kind, relativePath) {
+  if (!state.dirty || !pathAffectsCurrentFile(kind, relativePath)) {
+    return true;
+  }
+  return window.confirm("当前文件尚未保存，继续操作会丢失未保存内容，是否继续？");
+}
+
+function pathAffectsCurrentFile(kind, relativePath) {
+  if (!state.currentFile) {
+    return false;
+  }
+  if (kind === "file") {
+    return state.currentFile === relativePath;
+  }
+  return state.currentFile === relativePath || state.currentFile.startsWith(`${relativePath}/`);
+}
+
+function remapPathAfterRename(oldPath, newPath, currentPath) {
+  if (!currentPath) {
+    return currentPath;
+  }
+  if (currentPath === oldPath) {
+    return newPath;
+  }
+  if (currentPath.startsWith(`${oldPath}/`)) {
+    return `${newPath}${currentPath.slice(oldPath.length)}`;
+  }
+  return currentPath;
+}
+
+function parentDirectoryOf(relativePath) {
+  const parts = String(relativePath || "").split("/").filter(Boolean);
+  parts.pop();
+  return parts.join("/");
+}
+
+function normalizeTreeDirectory(relativePath) {
+  return String(relativePath || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+}
+
+function joinRelativePath(directory, name) {
+  return [normalizeTreeDirectory(directory), String(name || "").trim()]
+    .filter(Boolean)
+    .join("/");
 }
 
 async function selectFile(relativePath) {
@@ -550,7 +1241,7 @@ function renderActiveFile() {
     Object.keys(selectedMergedConfig()).length,
   );
   updateFileActionState();
-  updateCommandPreview(currentCommand());
+  previewCommand(currentCommand(), { force: true });
 }
 
 function renderConfig() {
@@ -675,20 +1366,19 @@ function updateFileActionState() {
   el.executionActionGroup.hidden = !executable;
   el.debugSessionGroup.hidden = !isRunning;
   el.saveBtn.disabled = !hasFile || readonlySource;
-  el.keywordBtn.disabled = !executable || isRunning;
+  el.keywordBtn.disabled = !hasFile || readonlySource || !isExecutableFile(state.currentFile);
+  el.commandBtn.disabled = false;
   el.syntaxBtn.disabled = !executable || isRunning;
   el.runBtn.disabled = !canRun || isRunning;
   el.debugStepsBtn.disabled = !canDebug || isRunning;
   el.nextStepBtn.disabled = !isDebugRunning || !state.debugPaused;
   el.continueDebugBtn.disabled = !isDebugRunning || !state.debugPaused;
   el.stopBtn.disabled = !isRunning;
-  if (!executable && state.keywordPanelOpen) {
+  if (el.keywordBtn.disabled && state.keywordPanelOpen) {
     closeKeywordPanel();
   }
   updateExecutionActionLabels(selection);
-  if (!isRunning) {
-    updateCommandPreview(currentCommand());
-  }
+  previewCommand(currentCommand());
 }
 
 function updateExecutionActionLabels(selection = null) {
@@ -769,7 +1459,7 @@ function handleConfigSelectionChange() {
   if (state.currentFile) {
     renderActiveFile();
   } else {
-    updateCommandPreview(currentCommand());
+    previewCommand(currentCommand(), { force: true });
   }
 }
 
@@ -870,7 +1560,7 @@ async function refreshProjectConfigIfChanged() {
   if (state.currentFile) {
     renderActiveFile();
   } else {
-    updateCommandPreview(currentCommand());
+    previewCommand(currentCommand());
   }
   appendLog("info", "Config files changed; remote status will refresh");
   return true;
@@ -1209,10 +1899,6 @@ function toggleKeywordPanel() {
     appendLog("warn", "请先打开一个项目");
     return;
   }
-  if (!state.currentFile || !isExecutableFile(state.currentFile)) {
-    appendLog("warn", "当前文件不支持关键字插入");
-    return;
-  }
 
   state.keywordPanelOpen = !state.keywordPanelOpen;
   el.keywordPanel.hidden = !state.keywordPanelOpen;
@@ -1323,9 +2009,21 @@ function insertKeyword(index) {
   if (!keyword) {
     return;
   }
+  if (!canInsertKeywordIntoCurrentFile()) {
+    appendLog("warn", "打开可编辑的 DSL 或 Resource 文件后可插入关键字");
+    return;
+  }
   const snippet = buildKeywordSnippet(keyword);
   CM6.insertText(snippet);
   appendLog("info", `Inserted keyword: ${keyword.name}`);
+}
+
+function canInsertKeywordIntoCurrentFile() {
+  return Boolean(
+    state.currentFile &&
+      !state.readonlySource &&
+      isExecutableFile(state.currentFile),
+  );
 }
 
 function buildKeywordSnippet(keyword) {
@@ -1340,7 +2038,7 @@ function buildKeywordSnippet(keyword) {
 
 async function generateCurrentCommand() {
   const command = currentCommand();
-  updateCommandPreview(command);
+  previewCommand(command, { force: true });
   appendLog("info", `Generated command: ${command}`);
 
   if (typeof api.copyText !== "function") {
@@ -1426,8 +2124,9 @@ async function runExecutionTask(mode, options = {}) {
   state.debugSelection = selection;
   state.currentDebugLine = null;
   CM6.setDebugState({ debugStartLine: state.debugStartLine, currentDebugLine: null, debugSelection: selection });
+  resetConsoleForExecution();
   setRunningState(true, taskId, mode);
-  updateCommandPreview(command);
+  setExecutionCommand(command, { mode, taskId });
   appendLog("info", `${executionModeLabel(mode)} started: ${sourceLabel}`);
 
   try {
@@ -1444,6 +2143,7 @@ async function runExecutionTask(mode, options = {}) {
   } catch (error) {
     appendLog("error", errorMessage(error));
     if (state.currentTaskId === taskId) {
+      releaseExecutionCommand(taskId);
       setRunningState(false);
     }
   }
@@ -1474,7 +2174,7 @@ function debugFromLine(lineNumber) {
   state.currentDebugLine = null;
   CM6.setDebugState({ debugStartLine: state.debugStartLine, currentDebugLine: null, debugSelection: null });
   updateFileActionState();
-  updateCommandPreview(currentCommand());
+  previewCommand(currentCommand(), { force: true });
 }
 
 function normalizeDebugScope(debugScope) {
@@ -1501,15 +2201,44 @@ function executionSourceLabel(relativePath, selection, debugScope) {
   return relativePath;
 }
 
-function previewRunSuite() {
+async function runSuiteExecution() {
   if (!state.snapshot) {
     appendLog("warn", "No project loaded");
     return;
   }
-  const suite = el.suiteDirectory.value || ".";
-  const command = `pytest-dsl ${suite} ${configArgs()}`;
-  updateCommandPreview(command);
-  appendLog("info", `Run suite preview: ${command}`);
+  if (state.currentTaskId) {
+    appendLog("warn", "已有任务正在运行，请先停止或等待完成");
+    return;
+  }
+
+  const selectedSuiteIds = currentSelectedSuiteIds();
+  if (selectedSuiteIds.length === 0) {
+    appendLog("warn", "没有可运行的测试套");
+    return;
+  }
+  const yamlVars = selectedConfigSources().map((source) => source.relativePath);
+  const taskId = createTaskId("suite");
+  const command = suiteCommandLabel(selectedSuiteIds, yamlVars);
+  resetConsoleForExecution();
+  setRunningState(true, taskId, "suite");
+  setExecutionCommand(command, { mode: "suite", taskId });
+  appendLog("info", `测试套运行 started: ${selectedSuiteIds.join(", ")}`);
+
+  try {
+    await api.startExecution({
+      taskId,
+      mode: "suite",
+      projectRoot: state.snapshot.project.rootPath,
+      selectedSuiteIds,
+      yamlVars,
+    });
+  } catch (error) {
+    appendLog("error", errorMessage(error));
+    if (state.currentTaskId === taskId) {
+      releaseExecutionCommand(taskId);
+      setRunningState(false);
+    }
+  }
 }
 
 async function stopCurrentTask() {
@@ -1560,7 +2289,11 @@ function handleExecutionEvent(event) {
   }
 
   if (event.type === "started") {
-    updateCommandPreview(event.command || currentCommand());
+    updateCommandPreview(event.command || currentCommand(), {
+      context: commandContextForMode(event.mode),
+      persistent: true,
+      taskId: event.taskId,
+    });
     return;
   }
 
@@ -1584,6 +2317,7 @@ function handleExecutionEvent(event) {
       level,
       `${executionModeLabel(event.mode)} ${event.status} (${event.durationMs}ms)`,
     );
+    releaseExecutionCommand(event.taskId);
     setRunningState(false);
   }
 }
@@ -1636,11 +2370,16 @@ function setRunningState(isRunning, taskId = null, mode = null) {
 }
 
 function appendProcessOutput(level, text) {
+  state.commandOutputChunks.push(String(text || ""));
   String(text || "")
     .replace(/\r\n/g, "\n")
     .split("\n")
     .filter((line) => line.length > 0)
     .forEach((line) => appendLog(level, line));
+}
+
+function resetConsoleForExecution() {
+  clearConsole();
 }
 
 function createTaskId(mode) {
@@ -1662,13 +2401,17 @@ function executionModeLabel(mode) {
     syntax: "语法检查",
     run: "运行",
     debug: "调试",
+    suite: "测试套运行",
   };
   return labels[mode] || "执行";
 }
 
 function currentCommand() {
+  if (!state.snapshot) {
+    return "pytest-dsl";
+  }
   if (!state.currentFile || !isExecutableFile(state.currentFile)) {
-    return `pytest-dsl ${el.suiteDirectory.value || "."} ${configArgs()}`;
+    return suiteCommandLabel(currentSelectedSuiteIds(), selectedConfigSources().map((source) => source.relativePath));
   }
   const selection = CM6.getSelection();
   const sourceLabel = executionSourceLabel(state.currentFile, selection, null);
@@ -1699,7 +2442,7 @@ function clearEditor(message) {
   el.fileTitle.textContent = message;
   el.filePath.textContent = "从左侧打开文件";
   el.editorMeta.textContent = "UTF-8 · Spaces: 4";
-  updateCommandPreview("pytest-dsl");
+  resetCommandPreview();
   updateFileActionState();
 }
 
@@ -1711,46 +2454,380 @@ function setDirty(isDirty) {
   }
 }
 
-function updateCommandPreview(command) {
-  el.commandPreview.textContent = command.replace(/\s+/g, " ").trim();
+function previewCommand(command = currentCommand(), options = {}) {
+  if (state.currentTaskId || state.commandPreview.taskId) {
+    return state.commandPreview.command;
+  }
+  if (state.commandPreview.persistent && !options.force) {
+    return state.commandPreview.command;
+  }
+  return updateCommandPreview(command, {
+    context: "preview",
+    persistent: false,
+    taskId: null,
+  });
+}
+
+function setExecutionCommand(command, options = {}) {
+  return updateCommandPreview(command, {
+    context: commandContextForMode(options.mode),
+    persistent: true,
+    taskId: options.taskId || null,
+  });
+}
+
+function releaseExecutionCommand(taskId) {
+  if (
+    taskId &&
+    state.commandPreview.taskId &&
+    state.commandPreview.taskId !== taskId
+  ) {
+    return state.commandPreview.command;
+  }
+  state.commandPreview.taskId = null;
+  state.commandPreview.persistent = true;
+  return state.commandPreview.command;
+}
+
+function resetCommandPreview(command = "pytest-dsl") {
+  return updateCommandPreview(command, {
+    context: "preview",
+    persistent: false,
+    taskId: null,
+  });
+}
+
+function updateCommandPreview(command, options = {}) {
+  const normalized = String(command || "pytest-dsl").replace(/\s+/g, " ").trim() || "pytest-dsl";
+  state.commandPreview.command = normalized;
+  state.commandPreview.context = options.context || state.commandPreview.context || "preview";
+  state.commandPreview.persistent = Boolean(options.persistent);
+  state.commandPreview.taskId = options.taskId || null;
+
+  const label = commandContextLabel(state.commandPreview.context);
+  el.commandContext.textContent = label;
+  el.commandContext.title = label;
+  el.commandPreview.textContent = normalized;
+  el.commandPreview.title = normalized;
+  return normalized;
+}
+
+function commandContextForMode(mode) {
+  return COMMAND_CONTEXT_LABELS[mode] ? mode : "preview";
+}
+
+function commandContextLabel(context) {
+  return COMMAND_CONTEXT_LABELS[context] || COMMAND_CONTEXT_LABELS.preview;
 }
 
 function appendLog(level, message) {
   const row = document.createElement("div");
   const now = new Date();
+  const timestamp = now.toTimeString().slice(0, 8);
+  const normalizedMessage = String(message ?? "");
+  state.consoleLines.push(`[${timestamp}] ${level.toUpperCase()} ${normalizedMessage}`);
   row.className = "log-line";
   row.innerHTML = `
-    <span class="log-time">${now.toTimeString().slice(0, 8)}</span>
+    <span class="log-time">${timestamp}</span>
     <span class="log-level ${level}">${level.toUpperCase()}</span>
-    <span>${escapeHtml(message)}</span>
+    <span class="log-message">${escapeHtml(normalizedMessage)}</span>
   `;
   el.consoleBody.appendChild(row);
   el.consoleBody.scrollTop = el.consoleBody.scrollHeight;
 }
 
+function clearConsole() {
+  state.consoleLines = [];
+  state.commandOutputChunks = [];
+  el.consoleBody.textContent = "";
+}
+
+async function copyConsoleOutput() {
+  const text = state.commandOutputChunks.join("");
+  if (!text) {
+    appendLog("warn", "没有命令行输出可复制");
+    return "";
+  }
+  if (typeof api.copyText !== "function") {
+    appendLog("warn", "当前环境不支持复制命令行输出");
+    return text;
+  }
+  try {
+    await api.copyText(text);
+    appendLog("pass", "命令行输出已复制");
+  } catch (error) {
+    appendLog("warn", `复制命令行输出失败: ${errorMessage(error)}`);
+  }
+  return text;
+}
+
+function toggleConsoleWrap() {
+  state.console.wrap = !state.console.wrap;
+  applyConsoleViewState();
+}
+
+function toggleConsoleExpanded() {
+  state.console.expanded = !state.console.expanded;
+  applyConsoleViewState();
+}
+
+function applyConsoleViewState() {
+  if (el.bottomConsole) {
+    el.bottomConsole.classList.toggle("is-unwrapped", !state.console.wrap);
+  }
+  if (el.mainStage) {
+    el.mainStage.classList.toggle("is-console-expanded", state.console.expanded);
+  }
+  if (el.wrapConsoleBtn) {
+    el.wrapConsoleBtn.textContent = state.console.wrap ? "不换行" : "自动换行";
+    el.wrapConsoleBtn.title = state.console.wrap
+      ? "长输出改为横向滚动"
+      : "长输出改为自动换行";
+    el.wrapConsoleBtn.setAttribute("aria-pressed", String(!state.console.wrap));
+  }
+  if (el.expandConsoleBtn) {
+    el.expandConsoleBtn.textContent = state.console.expanded ? "还原" : "展开";
+    el.expandConsoleBtn.title = state.console.expanded
+      ? "还原运行输出高度"
+      : "展开运行输出";
+    el.expandConsoleBtn.setAttribute("aria-pressed", String(state.console.expanded));
+  }
+}
+
 function setAllTreeGroupsCollapsed(collapsed) {
-  el.fileTree.querySelectorAll(".tree-group").forEach((group) => {
-    group.classList.toggle("is-collapsed", collapsed);
+  if (!state.snapshot || !state.snapshot.tree) {
+    return;
+  }
+  if (collapsed) {
+    collectProjectDirectoryPaths(state.snapshot.tree)
+      .filter(Boolean)
+      .forEach((directory) => state.collapsedTreeDirs.add(directory));
+  } else {
+    state.collapsedTreeDirs.clear();
+  }
+  renderFileTree();
+}
+
+function collectProjectDirectoryPaths(node) {
+  if (!node || node.type !== "directory") {
+    return [];
+  }
+  return [
+    node.path,
+    ...(node.children || []).flatMap(collectProjectDirectoryPaths),
+  ];
+}
+
+function renderSuiteOptions(suites, suiteTree = null) {
+  const availableSuites = Array.isArray(suites) ? suites : [];
+  const ids = availableSuites.map((suite) => suite.id);
+  const previous = state.selectedSuiteIds.filter((id) => ids.includes(id));
+  state.selectedSuiteIds = state.suiteSelectionTouched ? previous : ids;
+  updateSuiteSummary(availableSuites);
+  el.suiteList.innerHTML =
+    availableSuites.length === 0
+      ? `<p class="empty">未找到 convention 测试套</p>`
+      : renderSuiteTreeNode(suiteTree || buildFlatSuiteTree(availableSuites), 0);
+  el.suiteList.querySelectorAll("[data-suite-checkbox]").forEach((input) => {
+    input.addEventListener("change", handleSuiteSelectionChange);
+  });
+  syncSuiteTreeCheckboxStates();
+  previewCommand(currentCommand());
+}
+
+function renderSuiteTreeNode(node, depth = 0) {
+  if (!node) {
+    return "";
+  }
+  const suiteId = node.suiteId;
+  const suiteIds = collectSuiteNodeSuiteIds(node);
+  const checked = suiteIds.length > 0 && suiteIds.every((id) => state.selectedSuiteIds.includes(id))
+    ? " checked"
+    : "";
+  const counts = `${node.dslCaseCount || 0} DSL / ${node.pythonTestCount || 0} py`;
+  const label = suiteId === "__root__" ? "根目录 (__root__)" : node.name;
+  return `
+    <div class="suite-node" style="--depth: ${depth}">
+      <label class="suite-option${suiteId ? "" : " is-group"}">
+        ${suiteIds.length > 0
+          ? `<input type="checkbox" data-suite-checkbox data-suite-id="${escapeAttr(suiteId || "")}" data-suite-ids="${escapeAttr(JSON.stringify(suiteIds))}"${checked}>`
+          : `<span class="suite-spacer"></span>`}
+        <span title="${escapeAttr(node.rootPath || node.path || label)}">${escapeHtml(label)}</span>
+        <small>${suiteId ? escapeHtml(counts) : ""}</small>
+      </label>
+      <div class="suite-children">
+        ${(node.children || []).map((child) => renderSuiteTreeNode(child, depth + 1)).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function buildFlatSuiteTree(suites) {
+  return {
+    type: "directory",
+    path: "tests",
+    name: "tests",
+    suiteId: null,
+    children: suites.map((suite) => ({
+      ...suite,
+      type: "directory",
+      path: suite.id,
+      suiteId: suite.id,
+      children: [],
+    })),
+  };
+}
+
+function handleSuiteSelectionChange(event) {
+  state.suiteSelectionTouched = true;
+  const input = event.currentTarget;
+  const suiteIds = suiteIdsFromSuiteInput(input);
+  const selected = new Set(state.selectedSuiteIds);
+
+  suiteIds.forEach((suiteId) => {
+    if (input.checked) {
+      selected.add(suiteId);
+    } else {
+      selected.delete(suiteId);
+    }
+  });
+
+  state.selectedSuiteIds = normalizeSelectedSuiteIds([...selected]);
+  syncSuiteTreeCheckboxStates();
+  updateSuiteSummary(state.snapshot ? state.snapshot.suites || [] : []);
+  previewCommand(
+    suiteCommandLabel(state.selectedSuiteIds, selectedConfigSources().map((source) => source.relativePath)),
+    { force: true },
+  );
+}
+
+function collectSuiteNodeSuiteIds(node) {
+  if (!node) {
+    return [];
+  }
+  return [
+    node.suiteId,
+    ...(node.children || []).flatMap(collectSuiteNodeSuiteIds),
+  ].filter(Boolean);
+}
+
+function syncSuiteTreeCheckboxStates() {
+  const selected = new Set(state.selectedSuiteIds);
+  el.suiteList.querySelectorAll("[data-suite-checkbox]").forEach((input) => {
+    const suiteIds = suiteIdsFromSuiteInput(input);
+    const selectedCount = suiteIds.filter((suiteId) => selected.has(suiteId)).length;
+    const checked = suiteIds.length > 0 && selectedCount === suiteIds.length;
+    const partial = selectedCount > 0 && selectedCount < suiteIds.length;
+    input.checked = checked;
+    input.indeterminate = partial;
+    input.closest(".suite-option")?.classList.toggle("is-partial", partial);
   });
 }
 
-function renderSuiteOptions(files) {
-  const directories = Array.from(
-    new Set(files.map((file) => file.directory || ".")),
-  ).sort((left, right) => left.localeCompare(right));
-  const preferred = el.suiteDirectory.value;
-  el.suiteDirectory.innerHTML =
-    directories.length === 0
-      ? `<option value=".">.</option>`
-      : directories
-          .map(
-            (directory) =>
-              `<option value="${escapeAttr(directory)}">${escapeHtml(directory)}</option>`,
-          )
-          .join("");
-  if (directories.includes(preferred)) {
-    el.suiteDirectory.value = preferred;
+function suiteIdsFromSuiteInput(input) {
+  try {
+    const parsed = JSON.parse(input.dataset.suiteIds || "[]");
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch (_error) {
+    return [];
   }
+}
+
+function normalizeSelectedSuiteIds(suiteIds) {
+  const selected = new Set(Array.isArray(suiteIds) ? suiteIds : []);
+  return availableSuiteIds().filter((suiteId) => selected.has(suiteId));
+}
+
+function availableSuiteIds() {
+  if (!state.snapshot || !Array.isArray(state.snapshot.suites)) {
+    return [];
+  }
+  return state.snapshot.suites.map((suite) => suite.id);
+}
+
+function updateSuiteSummary(suites) {
+  const total = Array.isArray(suites) ? suites.length : 0;
+  const selected = currentSelectedSuiteIds();
+  if (total === 0) {
+    el.suiteSummary.textContent = "无测试套";
+    return;
+  }
+  if (selected.length === 0) {
+    el.suiteSummary.textContent = "未选择测试套";
+    return;
+  }
+  if (selected.length === total) {
+    el.suiteSummary.textContent = `全部测试套 (${total})`;
+    return;
+  }
+  if (selected.length === 1) {
+    const suite = suites.find((item) => item.id === selected[0]);
+    el.suiteSummary.textContent = suite ? suiteDisplayName(suite) : selected[0];
+    return;
+  }
+  el.suiteSummary.textContent = `${selected.length}/${total} 已选`;
+}
+
+function currentSelectedSuiteIds() {
+  if (!state.snapshot || !Array.isArray(state.snapshot.suites)) {
+    return [];
+  }
+  const availableIds = state.snapshot.suites.map((suite) => suite.id);
+  return state.selectedSuiteIds.filter((id) => availableIds.includes(id));
+}
+
+function suiteCommandLabel(selectedSuiteIds, yamlVars) {
+  const targets = suiteTargetPathsForSelection(selectedSuiteIds);
+  const suiteLabel = targets.length > 0
+    ? targets.join(" ")
+    : "<未选择测试套>";
+  const args = yamlVars.length > 0
+    ? ` ${yamlVars.map((item) => `--yaml-vars ${item}`).join(" ")}`
+    : "";
+  return `pytest ${suiteLabel}${args}`;
+}
+
+function suiteTargetPathsForSelection(selectedSuiteIds) {
+  const selected = Array.isArray(selectedSuiteIds) ? selectedSuiteIds : [];
+  if (selected.length === 0) {
+    return [];
+  }
+  if (selected.includes("all")) {
+    return ["tests"];
+  }
+  if (!state.snapshot || !Array.isArray(state.snapshot.suites)) {
+    return selected;
+  }
+
+  const suitesById = new Map(state.snapshot.suites.map((suite) => [suite.id, suite]));
+  const targets = selected
+    .map((suiteId) => suitesById.get(suiteId))
+    .filter(Boolean)
+    .map((suite) => suite.rootPath || suite.id)
+    .filter(Boolean);
+  return compactRelativeTargets(targets);
+}
+
+function compactRelativeTargets(paths) {
+  const unique = [...new Set(paths.map((item) => String(item || "").replace(/\\/g, "/")).filter(Boolean))]
+    .sort((left, right) => {
+      const depthDiff = left.split("/").length - right.split("/").length;
+      return depthDiff || left.localeCompare(right);
+    });
+  const compacted = [];
+  unique.forEach((target) => {
+    if (!compacted.some((selected) => target === selected || target.startsWith(`${selected}/`))) {
+      compacted.push(target);
+    }
+  });
+  return compacted;
+}
+
+function suiteDisplayName(suite) {
+  if (!suite) {
+    return "";
+  }
+  return suite.id === "__root__" ? "根目录 (__root__)" : suite.name || suite.id;
 }
 
 function groupFilesByDirectory(files) {
@@ -1778,8 +2855,8 @@ function countLines(content) {
 }
 
 function fileKind(file) {
-  const language = file.language || detectLanguage(file.relativePath || file.name);
-  const name = file.name.toLowerCase();
+  const language = file.language || detectLanguage(file.relativePath || file.path || file.name);
+  const name = String(file.name || file.path || file.relativePath || "").toLowerCase();
   if (language === "yaml") return "yaml";
   if (language === "python") return "python";
   if (language === "markdown") return "markdown";
@@ -1838,4 +2915,11 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value);
+}
+
+function cssEscape(value) {
+  if (window.CSS && typeof window.CSS.escape === "function") {
+    return window.CSS.escape(String(value || ""));
+  }
+  return String(value || "").replace(/["\\]/g, "\\$&");
 }

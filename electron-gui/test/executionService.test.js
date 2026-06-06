@@ -94,6 +94,39 @@ test("execution plans use public CLI executables instead of Python module paths"
   assert.deepEqual(runPlan.args.slice(0, 1), [runPlan.targetRelativePath]);
 });
 
+test("suite execution plans use directory pytest targets for selected suites", () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/root_case.dsl", "[打印], 内容: \"root\"\n");
+  writeFile(root, "tests/api/auth/login.dsl", "[打印], 内容: \"login\"\n");
+  writeFile(root, "tests/api/auth/logout.dsl", "[打印], 内容: \"logout\"\n");
+  writeFile(root, "tests/api/test_contract.py", "def test_contract():\n    pass\n");
+  writeFile(root, "tests/ui/pages/dashboard.dsl", "[打印], 内容: \"dashboard\"\n");
+
+  const plan = createExecutionPlan({
+    taskId: "suite-plan",
+    projectRoot: root,
+    mode: "suite",
+    selectedSuiteIds: ["api", "api/auth"],
+    yamlVars: ["config/dev.yaml"],
+  });
+
+  assert.equal(plan.mode, "suite");
+  assert.equal(plan.command, "pytest");
+  assert.equal(plan.targetPath, null);
+  assert.equal(plan.cleanupDir, null);
+  assert.equal(plan.source.kind, "suite");
+  assert.deepEqual(plan.args, [
+    "tests/api",
+    "--yaml-vars",
+    "config/dev.yaml",
+  ]);
+  assert.match(plan.displayCommand, /^pytest tests\/api --yaml-vars config\/dev\.yaml$/);
+  assert.equal(
+    fs.existsSync(path.join(root, "tests/api/auth/.pytest-dsl-generated/test_dsl_cases.py")),
+    false,
+  );
+});
+
 test("execution plans mirror source paths for temporary materialization", () => {
   const root = makeTempProject();
   writeFile(root, "tests/nested/case.dsl", "@import: \"helpers.resource\"\n[打印], 内容: \"ok\"\n");

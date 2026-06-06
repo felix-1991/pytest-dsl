@@ -2,9 +2,13 @@ const path = require("node:path");
 const { app, BrowserWindow, clipboard, dialog, ipcMain } = require("electron");
 
 const {
+  createProjectEntry,
+  deleteProjectEntry,
   getProjectConfigSnapshot,
   getProjectSnapshot,
+  moveProjectEntry,
   readProjectFile,
+  renameProjectEntry,
   saveProjectFile
 } = require("./src/services/projectService");
 const {
@@ -60,6 +64,18 @@ function registerIpc() {
   ipcMain.handle("file:read", (_event, projectRoot, relativePath) => readProjectFile(projectRoot, relativePath));
   ipcMain.handle("file:save", (_event, projectRoot, relativePath, content) => (
     saveProjectFile(projectRoot, relativePath, content)
+  ));
+  ipcMain.handle("file:create", (_event, projectRoot, options) => (
+    createProjectEntry(projectRoot, options)
+  ));
+  ipcMain.handle("file:rename", (_event, projectRoot, options) => (
+    renameProjectEntry(projectRoot, options)
+  ));
+  ipcMain.handle("file:move", (_event, projectRoot, options) => (
+    moveProjectEntry(projectRoot, options)
+  ));
+  ipcMain.handle("file:delete", (_event, projectRoot, options) => (
+    deleteProjectEntry(projectRoot, options)
   ));
   ipcMain.handle("remote:check", (_event, servers) => checkRemoteServers(servers));
   ipcMain.handle("keyword:list", (_event, options = {}) => listKeywords({

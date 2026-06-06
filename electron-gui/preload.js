@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld("pytestDslGui", {
   saveFile: (projectRoot, relativePath, content) => (
     ipcRenderer.invoke("file:save", projectRoot, relativePath, content)
   ),
+  createEntry: (projectRoot, options) => ipcRenderer.invoke("file:create", projectRoot, options),
+  renameEntry: (projectRoot, options) => ipcRenderer.invoke("file:rename", projectRoot, options),
+  moveEntry: (projectRoot, options) => ipcRenderer.invoke("file:move", projectRoot, options),
+  deleteEntry: (projectRoot, options) => ipcRenderer.invoke("file:delete", projectRoot, options),
   checkRemoteServers: (servers) => ipcRenderer.invoke("remote:check", servers),
   listKeywords: (options) => ipcRenderer.invoke("keyword:list", options),
   findKeywordDefinitions: (options) => ipcRenderer.invoke("keyword:definition", options),

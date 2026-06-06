@@ -26,12 +26,25 @@
                     </button>
                 </div>
 
-                <label class="suite-target" aria-label="选择测试套目录">
-                    <span>测试套目录</span>
-                    <select id="suiteDirectory">
-                        <option value="">打开项目后自动识别</option>
-                    </select>
-                </label>
+                <div class="suite-picker" id="suitePicker">
+                    <button
+                        class="suite-trigger"
+                        id="suiteTrigger"
+                        type="button"
+                        aria-expanded="false"
+                    >
+                        <span class="suite-label">测试套</span>
+                        <span id="suiteSummary">打开项目后自动识别</span>
+                        <span aria-hidden="true">⌄</span>
+                    </button>
+                    <div class="suite-menu" id="suiteMenu">
+                        <div class="suite-menu-head">
+                            <strong>Convention 测试套</strong>
+                            <span>可多选</span>
+                        </div>
+                        <div class="suite-list" id="suiteList"></div>
+                    </div>
+                </div>
 
                 <div class="top-actions">
                     <div class="config-picker" id="configPicker">
@@ -150,18 +163,29 @@
                             </div>
                             <div class="tree-actions" aria-label="目录树操作">
                                 <button
+                                    class="icon-btn tree-tool-btn"
+                                    id="treeRefreshBtn"
+                                    type="button"
+                                    aria-label="刷新目录树"
+                                    title="刷新目录树"
+                                >
+                                    ↻
+                                </button>
+                                <button
                                     class="text-btn"
                                     id="expandAllBtn"
                                     type="button"
+                                    title="展开全部目录"
                                 >
-                                    展开目录
+                                    展开
                                 </button>
                                 <button
                                     class="text-btn"
                                     id="collapseAllBtn"
                                     type="button"
+                                    title="收缩全部目录"
                                 >
-                                    收缩所有目录
+                                    收缩
                                 </button>
                             </div>
                             <label class="mini-search">
@@ -176,6 +200,12 @@
                         <nav class="tree" id="fileTree" aria-label="项目文件树">
                             <p class="empty">打开项目后显示可编辑文件</p>
                         </nav>
+                        <div
+                            class="tree-context-menu"
+                            id="treeContextMenu"
+                            role="menu"
+                            hidden
+                        ></div>
                     </section>
                 </aside>
 
@@ -188,7 +218,7 @@
                     tabindex="0"
                 ></div>
 
-                <main class="main-stage">
+                <main class="main-stage" id="mainStage">
                     <section class="workspace-panel">
                         <div
                             class="editor-tabs"
@@ -231,7 +261,6 @@
                                         class="action-group"
                                         id="executionActionGroup"
                                         aria-label="执行操作"
-                                        hidden
                                     >
                                         <button
                                             class="text-btn"
@@ -283,6 +312,25 @@
                                             停止
                                         </button>
                                     </div>
+                                    <div class="inline-actions">
+                                        <button
+                                            class="text-btn"
+                                            id="keywordBtn"
+                                            type="button"
+                                        >
+                                            关键字
+                                        </button>
+                                        <button
+                                            class="text-btn"
+                                            id="commandBtn"
+                                            type="button"
+                                        >
+                                            生成命令
+                                        </button>
+                                        <span id="editorMeta"
+                                            >UTF-8 · Spaces: 4</span
+                                        >
+                                    </div>
                                 </div>
                             </header>
 
@@ -322,25 +370,6 @@
                                         <button class="sub-tab" type="button">
                                             命令
                                         </button>
-                                    </div>
-                                    <div class="inline-actions">
-                                        <button
-                                            class="text-btn"
-                                            id="keywordBtn"
-                                            type="button"
-                                        >
-                                            关键字
-                                        </button>
-                                        <button
-                                            class="text-btn"
-                                            id="commandBtn"
-                                            type="button"
-                                        >
-                                            生成命令
-                                        </button>
-                                        <span id="editorMeta"
-                                            >UTF-8 · Spaces: 4</span
-                                        >
                                     </div>
                                 </div>
                                 <section
@@ -392,7 +421,46 @@
                             <button class="console-tab is-active" type="button">
                                 运行输出
                             </button>
+                            <span class="command-context" id="commandContext"
+                                >当前命令</span
+                            >
                             <span id="commandPreview">pytest-dsl</span>
+                            <button
+                                class="text-btn console-tool-btn"
+                                id="copyConsoleBtn"
+                                type="button"
+                                aria-label="复制全部运行输出"
+                                title="复制全部运行输出"
+                            >
+                                复制输出
+                            </button>
+                            <button
+                                class="text-btn console-tool-btn"
+                                id="wrapConsoleBtn"
+                                type="button"
+                                aria-label="切换运行输出换行"
+                                title="切换运行输出换行"
+                            >
+                                不换行
+                            </button>
+                            <button
+                                class="text-btn console-tool-btn"
+                                id="expandConsoleBtn"
+                                type="button"
+                                aria-label="展开运行输出"
+                                title="展开运行输出"
+                            >
+                                展开
+                            </button>
+                            <button
+                                class="text-btn console-tool-btn"
+                                id="clearConsoleBtn"
+                                type="button"
+                                aria-label="清空运行输出"
+                                title="清空运行输出"
+                            >
+                                清空
+                            </button>
                         </div>
                         <div class="console-body" id="consoleBody"></div>
                     </section>
@@ -415,6 +483,39 @@
                     <span class="status-item">调试与构建入口</span>
                 </div>
             </footer>
+        </div>
+
+        <div class="modal-backdrop" id="entryDialog" hidden>
+            <form
+                class="entry-dialog"
+                id="entryDialogForm"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="entryDialogTitle"
+            >
+                <h2 id="entryDialogTitle">新建条目</h2>
+                <label class="entry-field">
+                    <span id="entryDialogLabel">名称</span>
+                    <input id="entryDialogInput" type="text" autocomplete="off" />
+                </label>
+                <p class="entry-dialog-error" id="entryDialogError" hidden></p>
+                <div class="entry-dialog-actions">
+                    <button
+                        class="text-btn"
+                        id="entryDialogCancel"
+                        type="button"
+                    >
+                        取消
+                    </button>
+                    <button
+                        class="primary-btn"
+                        id="entryDialogConfirm"
+                        type="submit"
+                    >
+                        确认
+                    </button>
+                </div>
+            </form>
         </div>
 
         <script src="./editor-bundle.js"></script>

@@ -6,9 +6,13 @@ const { execFileSync } = require("node:child_process");
 const test = require("node:test");
 
 const {
+  createProjectEntry,
+  deleteProjectEntry,
   getProjectConfigSnapshot,
   getProjectSnapshot,
+  moveProjectEntry,
   readProjectFile,
+  renameProjectEntry,
   saveProjectFile
 } = require("../src/services/projectService");
 
@@ -57,6 +61,62 @@ test("non-git projects display local, list DSL files, and load config defaults",
   assert.equal(snapshot.config.merged.environment, "local");
   assert.equal(snapshot.config.merged.api.base_url, "http://localhost");
   assert.equal(snapshot.score.value, 100);
+});
+
+test("project snapshots include convention suite metadata and ignore generated files", () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/setup.dsl", "[打印], 内容: \"setup\"\n");
+  writeFile(root, "tests/root_case.dsl", "[打印], 内容: \"root\"\n");
+  writeFile(root, "tests/test_smoke.py", "def test_smoke():\n    pass\n");
+  writeFile(root, "tests/api/auth/login.dsl", "[打印], 内容: \"login\"\n");
+  writeFile(root, "tests/api/auth/logout.auto", "[打印], 内容: \"logout\"\n");
+  writeFile(root, "tests/api/auth/teardown.dsl", "[打印], 内容: \"teardown\"\n");
+  writeFile(root, "tests/api/test_contract.py", "def test_contract():\n    pass\n");
+  writeFile(root, "tests/ui/pages/dashboard.dsl", "[打印], 内容: \"dashboard\"\n");
+  writeFile(root, "tests/api/auth/.pytest-dsl-generated/test_dsl_cases.py", "def test_generated():\n    pass\n");
+
+  const snapshot = getProjectSnapshot(root);
+  const suites = new Map(snapshot.suites.map((suite) => [suite.id, suite]));
+
+  assert.deepEqual(snapshot.suites.map((suite) => suite.id), ["__root__", "api", "api/auth", "ui/pages"]);
+  assert.equal(suites.get("__root__").dslCaseCount, 1);
+  assert.equal(suites.get("__root__").pythonTestCount, 1);
+  assert.equal(suites.get("api").dslCaseCount, 0);
+  assert.equal(suites.get("api").pythonTestCount, 1);
+  assert.equal(suites.get("api/auth").dslCaseCount, 2);
+  assert.equal(suites.get("api/auth").pythonTestCount, 0);
+  assert.deepEqual(suites.get("api/auth").generatedFiles, []);
+  assert.deepEqual(suites.get("api").pythonTestFiles, ["tests/api/test_contract.py"]);
+  assert.equal(suites.get("ui/pages").dslCaseCount, 1);
+  assert.equal(snapshot.suiteTree.path, "tests");
+  assert.equal(findTreeNode(snapshot.suiteTree, "api/auth").suiteId, "api/auth");
+  assert.equal(findTreeNode(snapshot.suiteTree, "ui/pages").suiteId, "ui/pages");
+  assert.equal(
+    snapshot.editableFiles.some((file) => file.relativePath.includes(".pytest-dsl-generated")),
+    false
+  );
+});
+
+test("project snapshots include a recursive editable tree with empty directories", () => {
+  const root = makeTempProject();
+  fs.mkdirSync(path.join(root, "tests/empty/nested"), { recursive: true });
+  writeFile(root, "README.md", "# Project\n");
+  writeFile(root, "tests/nested/case.dsl", "@name: \"Nested\"\n");
+  writeFile(root, "config/app.yaml", "name: gui\n");
+  writeFile(root, ".pytest-dsl-generated/ignored.dsl", "[打印], 内容: \"ignored\"\n");
+  writeFile(root, "assets/blob.bin", Buffer.from([0, 1, 2, 3]).toString("binary"));
+
+  const snapshot = getProjectSnapshot(root);
+
+  assert.equal(snapshot.tree.type, "directory");
+  assert.equal(snapshot.tree.path, "");
+  assert.equal(findTreeNode(snapshot.tree, "README.md").type, "file");
+  assert.equal(findTreeNode(snapshot.tree, "tests").type, "directory");
+  assert.equal(findTreeNode(snapshot.tree, "tests/empty/nested").type, "directory");
+  assert.equal(findTreeNode(snapshot.tree, "tests/nested/case.dsl").language, "dsl");
+  assert.equal(findTreeNode(snapshot.tree, "config/app.yaml").lineCount, 1);
+  assert.equal(findTreeNode(snapshot.tree, ".pytest-dsl-generated/ignored.dsl"), null);
+  assert.equal(findTreeNode(snapshot.tree, "assets/blob.bin"), null);
 });
 
 test("config discovery includes extra YAML candidates but defaults to project config", () => {
@@ -193,6 +253,86 @@ test("reading a DSL file records it as the last opened file", () => {
   assert.equal(metadata.lastOpenedFile, "tests/read.dsl");
 });
 
+test("project entry CRUD creates renames and deletes files and folders", () => {
+  const root = makeTempProject();
+  fs.mkdirSync(path.join(root, "tests"), { recursive: true });
+
+  const createdDir = createProjectEntry(root, {
+    kind: "directory",
+    relativePath: "tests/new_suite"
+  });
+  const createdFile = createProjectEntry(root, {
+    kind: "file",
+    relativePath: "tests/new_suite/case.dsl",
+    content: "@name: \"New\"\n"
+  });
+  const renamedFile = renameProjectEntry(root, {
+    relativePath: createdFile.relativePath,
+    newName: "renamed.dsl"
+  });
+  const renamedDir = renameProjectEntry(root, {
+    relativePath: createdDir.relativePath,
+    newName: "renamed_suite"
+  });
+
+  assert.equal(createdDir.kind, "directory");
+  assert.equal(createdFile.kind, "file");
+  assert.equal(renamedFile.relativePath, "tests/new_suite/renamed.dsl");
+  assert.equal(renamedDir.relativePath, "tests/renamed_suite");
+  assert.equal(
+    fs.readFileSync(path.join(root, "tests/renamed_suite/renamed.dsl"), "utf8"),
+    "@name: \"New\"\n"
+  );
+
+  assert.throws(
+    () => deleteProjectEntry(root, { relativePath: "tests/renamed_suite" }),
+    /non-empty directory/
+  );
+  const deleted = deleteProjectEntry(root, {
+    relativePath: "tests/renamed_suite",
+    recursive: true
+  });
+
+  assert.equal(deleted.relativePath, "tests/renamed_suite");
+  assert.equal(fs.existsSync(path.join(root, "tests/renamed_suite")), false);
+});
+
+test("project entry move relocates files into directories without overwriting", () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/source/case.dsl", "@name: \"Move\"\n");
+  fs.mkdirSync(path.join(root, "tests/target"), { recursive: true });
+
+  const moved = moveProjectEntry(root, {
+    relativePath: "tests/source/case.dsl",
+    targetDirectory: "tests/target"
+  });
+
+  assert.equal(moved.kind, "file");
+  assert.equal(moved.relativePath, "tests/target/case.dsl");
+  assert.equal(moved.previousPath, "tests/source/case.dsl");
+  assert.equal(fs.existsSync(path.join(root, "tests/source/case.dsl")), false);
+  assert.equal(
+    fs.readFileSync(path.join(root, "tests/target/case.dsl"), "utf8"),
+    "@name: \"Move\"\n"
+  );
+
+  writeFile(root, "tests/source/case.dsl", "@name: \"Conflict\"\n");
+  assert.throws(
+    () => moveProjectEntry(root, {
+      relativePath: "tests/source/case.dsl",
+      targetDirectory: "tests/target"
+    }),
+    /already exists/
+  );
+  assert.throws(
+    () => moveProjectEntry(root, {
+      relativePath: "tests/source",
+      targetDirectory: "tests/target"
+    }),
+    /Only files can be moved/
+  );
+});
+
 test("path traversal is rejected for project files", () => {
   const root = makeTempProject();
 
@@ -200,7 +340,46 @@ test("path traversal is rejected for project files", () => {
     () => readProjectFile(root, "../outside.dsl"),
     /outside project root/
   );
+  assert.throws(
+    () => createProjectEntry(root, {
+      kind: "file",
+      relativePath: "../outside.dsl",
+      content: ""
+    }),
+    /outside project root/
+  );
+  assert.throws(
+    () => renameProjectEntry(root, {
+      relativePath: "missing.dsl",
+      newName: "../outside.dsl"
+    }),
+    /name cannot contain path separators/
+  );
+  assert.throws(
+    () => moveProjectEntry(root, {
+      relativePath: "missing.dsl",
+      targetDirectory: "../outside"
+    }),
+    /outside project root/
+  );
 });
+
+function findTreeNode(root, relativePath) {
+  const target = String(relativePath || "").replace(/\\/g, "/");
+  if (!root) {
+    return null;
+  }
+  if ((root.path || "") === target) {
+    return root;
+  }
+  for (const child of root.children || []) {
+    const result = findTreeNode(child, target);
+    if (result) {
+      return result;
+    }
+  }
+  return null;
+}
 
 function hasGit() {
   try {

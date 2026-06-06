@@ -3,6 +3,8 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 
+const { buildPytestTargets } = require("./suiteService");
+
 const STRUCTURED_EVENT_PREFIX = "__PYTEST_DSL_GUI_EVENT__";
 const runningTasks = new Map();
 
@@ -10,8 +12,31 @@ function createExecutionPlan(options) {
   const projectRoot = assertProjectRoot(options.projectRoot);
   const taskId = sanitizeTaskId(options.taskId || randomUUID());
   const mode = normalizeMode(options.mode);
-  const relativePath = normalizeRelative(options.relativePath);
   const yamlVars = normalizeYamlVars(options.yamlVars);
+  if (mode === "suite") {
+    const selectedSuiteIds = normalizeSelectedSuiteIds(options.selectedSuiteIds);
+    const targets = buildPytestTargets(projectRoot, selectedSuiteIds);
+    const command = commandForMode(mode, options);
+    const args = [...targets, ...yamlArgs(yamlVars)];
+    return {
+      taskId,
+      mode,
+      cwd: projectRoot,
+      command,
+      args,
+      displayCommand: displaySuiteCommand(targets, yamlVars),
+      targetPath: null,
+      targetRelativePath: null,
+      source: {
+        kind: "suite",
+        selectedSuiteIds,
+        label: selectedSuiteIds.length > 0 ? selectedSuiteIds.join(", ") : "all suites",
+      },
+      cleanupDir: null,
+    };
+  }
+
+  const relativePath = normalizeRelative(options.relativePath);
   const source = describeSource(mode, relativePath, options.selection, options.debugScope);
   const target = materializeTaskFile(projectRoot, taskId, relativePath, {
     ...options,
@@ -170,7 +195,7 @@ function assertProjectRoot(projectRoot) {
 }
 
 function normalizeMode(mode) {
-  if (["syntax", "run", "debug"].includes(mode)) {
+  if (["syntax", "run", "debug", "suite"].includes(mode)) {
     return mode;
   }
   throw new Error(`Unsupported execution mode: ${mode}`);
@@ -187,6 +212,12 @@ function normalizeRelative(relativePath) {
 function normalizeYamlVars(yamlVars) {
   return (Array.isArray(yamlVars) ? yamlVars : [])
     .map(normalizeRelative)
+    .filter(Boolean);
+}
+
+function normalizeSelectedSuiteIds(selectedSuiteIds) {
+  return (Array.isArray(selectedSuiteIds) ? selectedSuiteIds : [])
+    .map((item) => String(item || "").trim())
     .filter(Boolean);
 }
 
@@ -291,6 +322,11 @@ function commandForMode(mode, options = {}) {
       process.env.PYTEST_DSL_WORKBENCH ||
       "pytest-dsl-workbench";
   }
+  if (mode === "suite") {
+    return options.pytestExecutable ||
+      process.env.PYTEST_DSL_PYTEST ||
+      "pytest";
+  }
   return options.pytestExecutable ||
     process.env.PYTEST_DSL_CLI ||
     "pytest-dsl";
@@ -305,6 +341,14 @@ function displayCommand(mode, source, yamlVars) {
     : "";
   const prefix = mode === "debug" ? "debug" : "pytest-dsl";
   return `${prefix} ${source.label}${args}`;
+}
+
+function displaySuiteCommand(targets, yamlVars) {
+  const targetArgs = targets.join(" ");
+  const configArgs = yamlVars.length > 0
+    ? ` ${yamlArgs(yamlVars).join(" ")}`
+    : "";
+  return targetArgs ? `pytest ${targetArgs}${configArgs}` : `pytest${configArgs}`;
 }
 
 function handleStdoutChunk(task, text, callbacks) {
@@ -388,6 +432,13 @@ function resolveSpawnTarget(plan, options = {}, env = process.env) {
     return {
       command: fallbackPythonExecutable(options),
       args: ["-m", "pytest_dsl.workbench.runner", ...plan.args],
+    };
+  }
+
+  if (plan.mode === "suite") {
+    return {
+      command: fallbackPythonExecutable(options),
+      args: ["-m", "pytest", ...plan.args],
     };
   }
 

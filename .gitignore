@@ -52,6 +52,7 @@ allure-report/
 allure-results/
 pytest-dsl.code-workspace
 .pytest-dsl-gui/
+**/.pytest-dsl-generated/
 
 # uv相关
 .uv/

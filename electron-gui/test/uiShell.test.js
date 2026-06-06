@@ -30,7 +30,10 @@ const css = fs.readFileSync(
 
 test("renderer keeps the demo-aligned workbench shell", () => {
   [
-    "suiteDirectory",
+    "suitePicker",
+    "suiteTrigger",
+    "suiteSummary",
+    "suiteList",
     "configPicker",
     "configTrigger",
     "configSummary",
@@ -43,6 +46,7 @@ test("renderer keeps the demo-aligned workbench shell", () => {
     "continueDebugBtn",
     "bottomConsole",
     "consoleBody",
+    "clearConsoleBtn",
     "commandPreview",
     "configDiagnostics",
     "configMerged",
@@ -61,11 +65,43 @@ test("renderer keeps the demo-aligned workbench shell", () => {
   assert.doesNotMatch(html, /class="agent-chip"/);
 });
 
+test("suite runner uses multi-select suite controls", () => {
+  assert.match(html, /id="suitePicker"/);
+  assert.match(html, /id="suiteTrigger"/);
+  assert.match(html, /id="suiteSummary"/);
+  assert.match(html, /id="suiteList"/);
+  assert.doesNotMatch(html, /multiple/);
+  assert.doesNotMatch(html, /id="suiteDirectory"/);
+  assert.match(renderer, /selectedSuiteIds/);
+  assert.match(renderer, /renderSuiteOptions\(snapshot\.suites[\s\S]*snapshot\.suiteTree/);
+  assert.match(renderer, /renderSuiteTreeNode/);
+  assert.match(renderer, /handleSuiteSelectionChange/);
+  assert.match(renderer, /suiteSelectionTouched/);
+  assert.match(renderer, /data-suite-checkbox/);
+  assert.match(renderer, /data-suite-ids/);
+  assert.match(renderer, /collectSuiteNodeSuiteIds/);
+  assert.match(renderer, /syncSuiteTreeCheckboxStates/);
+  assert.match(renderer, /suiteIdsFromSuiteInput/);
+  assert.match(renderer, /normalizeSelectedSuiteIds/);
+  assert.match(renderer, /indeterminate/);
+  assert.doesNotMatch(renderer, /return selected\.length > 0 \? selected : availableIds/);
+  assert.match(renderer, /runSuiteExecution/);
+  assert.match(renderer, /mode:\s*"suite"/);
+  assert.match(css, /\.suite-node/);
+  assert.match(css, /\.suite-option\.is-partial/);
+});
+
 test("renderer removes fake window dots and exposes project tree controls", () => {
   assert.doesNotMatch(html, /class="window-dots"/);
   assert.match(html, /id="openProjectBtn"/);
+  assert.match(html, /id="treeRefreshBtn"/);
+  assert.doesNotMatch(html, /id="createFileBtn"/);
+  assert.doesNotMatch(html, /id="createFolderBtn"/);
   assert.match(html, /id="expandAllBtn"/);
   assert.match(html, /id="collapseAllBtn"/);
+  assert.match(html, /id="treeContextMenu"/);
+  assert.match(html, /id="entryDialog"/);
+  assert.match(html, /id="entryDialogInput"/);
   assert.match(html, /打开项目/);
 });
 
@@ -115,22 +151,63 @@ test("renderer exposes tree icons and a CodeMirror 6 editor", () => {
   assert.doesNotMatch(css, /resize:\s*none/);
 });
 
-test("file tree renders root files inline and uses folder open/closed icons", () => {
+test("file tree renders root files inline and uses a single stateful folder icon", () => {
   assert.match(renderer, /renderFileRow/);
-  assert.match(renderer, /renderDirectoryGroup/);
-  assert.match(renderer, /group\.name !== "\."/);
-  assert.match(renderer, /folderIcon\("open"\)/);
-  assert.match(renderer, /folderIcon\("closed"\)/);
-  assert.match(css, /\.tree-group\.is-collapsed\s+\.folder-open/);
-  assert.match(css, /\.tree-group:not\(\.is-collapsed\)\s+\.folder-closed/);
+  assert.match(renderer, /renderProjectTreeNode/);
+  assert.match(renderer, /filterProjectTree/);
+  assert.match(renderer, /folderIcon\(collapsed \? "closed" : "open"\)/);
+  assert.doesNotMatch(renderer, /class="folder-open"/);
+  assert.doesNotMatch(renderer, /class="folder-closed"/);
+  assert.match(renderer, /handleCreateFile/);
+  assert.match(renderer, /handleCreateFolder/);
+  assert.match(renderer, /requestEntryName/);
+  assert.match(renderer, /handleEntryDialogSubmit/);
+  assert.doesNotMatch(renderer, /window\.prompt/);
+  assert.match(renderer, /handleRenameEntry/);
+  assert.match(renderer, /handleDeleteEntry/);
+  assert.match(renderer, /handleMoveEntry/);
+  assert.match(main, /file:create/);
+  assert.match(main, /file:rename/);
+  assert.match(main, /file:delete/);
+  assert.match(main, /file:move/);
+  assert.match(preload, /createEntry/);
+  assert.match(preload, /renameEntry/);
+  assert.match(preload, /deleteEntry/);
+  assert.match(preload, /moveEntry/);
+  assert.doesNotMatch(css, /\.tree-group\.is-collapsed\s+\.folder-open/);
+  assert.doesNotMatch(css, /\.tree-group:not\(\.is-collapsed\)\s+\.folder-closed/);
+  assert.doesNotMatch(renderer, /class="tree-node-actions"/);
+  assert.match(renderer, /contextmenu/);
+  assert.match(renderer, /openTreeContextMenu/);
+  assert.match(renderer, /treeContextMenu\.dataset\.contextKind/);
+  assert.match(renderer, /treeContextMenu\.dataset\.contextPath/);
+  assert.match(renderer, /event\.stopPropagation\(\)/);
+  assert.match(renderer, /data-tree-row/);
+  assert.match(renderer, /draggable="true"/);
+  assert.match(renderer, /handleTreeDragStart/);
+  assert.match(renderer, /handleTreeDrop/);
+  assert.match(renderer, /data-drop-target/);
+  assert.match(css, /\.tree-context-menu/);
+  assert.match(css, /\.context-menu-item/);
+  assert.match(css, /\.tree-row\.is-drop-target/);
+  assert.match(css, /\.modal-backdrop/);
+  assert.match(css, /\.entry-dialog/);
+  assert.doesNotMatch(css, /\.tree-node-actions/);
   assert.doesNotMatch(css, /transform:\s*rotate\(-90deg\)/);
 });
 
 test("editor chrome is compact so code keeps vertical space", () => {
-  assert.match(html, /class="param-head"[\s\S]*class="sub-tabs"[\s\S]*class="inline-actions"/);
+  assert.match(html, /class="param-head"[\s\S]*class="sub-tabs"/);
+  assert.match(html, /class="head-actions"[\s\S]*class="inline-actions"/);
   assert.match(css, /\.workspace-panel\s*\{[\s\S]*grid-template-rows:\s*34px minmax\(0,\s*1fr\)/);
   assert.match(css, /\.main-stage\s*\{[\s\S]*grid-template-rows:\s*minmax\(260px,\s*1fr\) 6px var\(--console-height\)/);
   assert.match(css, /\.editor-stack\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)/);
+  assert.match(css, /\.workarea\s*\{[\s\S]*height:\s*100%/);
+  assert.match(css, /\.editor-stack\s*\{[\s\S]*height:\s*100%/);
+  assert.match(css, /\.editor-stack\s*\{[\s\S]*overflow:\s*hidden/);
+  assert.match(css, /\.code-editor\s*\{[\s\S]*min-height:\s*280px/);
+  assert.match(css, /\.code-editor \.cm-scroller\s*\{[\s\S]*height:\s*100%/);
+  assert.match(css, /\.code-editor \.cm-content\s*\{[\s\S]*min-height:\s*100%/);
   assert.match(css, /\.notice\s*\{[\s\S]*display:\s*none/);
   assert.match(css, /\.request-head\s*\{[\s\S]*padding:\s*8px 14px/);
   assert.match(css, /\.param-head\s*\{[\s\S]*min-height:\s*36px/);
@@ -168,11 +245,98 @@ test("file toolbar separates edit, execution, and debug session controls", () =>
   assert.match(renderer, /debugStartLine/);
 });
 
+test("editor tools stay in the normal toolbar and execution tools are file-aware", () => {
+  assert.match(
+    html,
+    /class="head-actions"[\s\S]*id="executionActionGroup"[\s\S]*id="keywordBtn"[\s\S]*id="commandBtn"[\s\S]*id="editorMeta"/,
+  );
+  assert.doesNotMatch(html, /class="param-head"[\s\S]*id="keywordBtn"/);
+  assert.doesNotMatch(
+    html,
+    /id="executionActionGroup"[\s\S]{0,120}\s+hidden\b/,
+  );
+  assert.match(renderer, /executionActionGroup\.hidden = !executable/);
+  assert.match(renderer, /commandBtn\.disabled = false/);
+  assert.doesNotMatch(html, /id="editorToolGroup"/);
+});
+
+test("console output can be cleared manually and resets before each execution", () => {
+  assert.match(html, /id="clearConsoleBtn"/);
+  assert.match(html, /title="清空运行输出"/);
+  assert.match(renderer, /consoleLines:\s*\[\]/);
+  assert.match(renderer, /commandOutputChunks:\s*\[\]/);
+  assert.match(renderer, /clearConsoleBtn/);
+  assert.match(renderer, /clearConsoleBtn\.addEventListener\("click",\s*\(\) =>\s*clearConsole\(\)/);
+  assert.match(renderer, /function clearConsole\(\)\s*\{[\s\S]*consoleBody\.textContent = ""/);
+  assert.match(renderer, /state\.consoleLines = \[\]/);
+  assert.match(renderer, /state\.commandOutputChunks = \[\]/);
+  assert.match(renderer, /function resetConsoleForExecution\(\)\s*\{[\s\S]*clearConsole\(\)/);
+  assert.match(renderer, /resetConsoleForExecution\(\);[\s\S]*appendLog\("info", `\$\{executionModeLabel\(mode\)\} started:/);
+  assert.match(renderer, /resetConsoleForExecution\(\);[\s\S]*appendLog\("info", `测试套运行 started:/);
+});
+
+test("console supports long output reading and copying", () => {
+  [
+    "copyConsoleBtn",
+    "wrapConsoleBtn",
+    "expandConsoleBtn",
+  ].forEach((id) => {
+    assert.match(html, new RegExp(`id="${id}"`), `missing #${id}`);
+    assert.match(renderer, new RegExp(`${id}`), `renderer missing ${id}`);
+  });
+  assert.match(renderer, /copyConsoleOutput/);
+  assert.match(renderer, /toggleConsoleWrap/);
+  assert.match(renderer, /toggleConsoleExpanded/);
+  assert.match(renderer, /state\.commandOutputChunks\.join\(""\)/);
+  assert.doesNotMatch(renderer, /copyConsoleOutput\(\)[\s\S]*state\.consoleLines\.join\("\\n"\)/);
+  assert.match(renderer, /console\.wrap/);
+  assert.match(renderer, /console\.expanded/);
+  assert.match(css, /\.console-body\s*\{[\s\S]*user-select:\s*text/);
+  assert.match(css, /\.console\.is-unwrapped\s+\.log-message/);
+  assert.match(css, /\.main-stage\.is-console-expanded/);
+});
+
+test("console header keeps its label stable when command preview is long", () => {
+  assert.match(css, /\.console-head\s*\{[\s\S]*min-width:\s*0/);
+  assert.match(css, /\.console-head\s*\{[\s\S]*justify-content:\s*flex-start/);
+  assert.match(css, /\.console-tab\s*\{[\s\S]*flex:\s*0 0 auto/);
+  assert.match(css, /\.console-tab\s*\{[\s\S]*white-space:\s*nowrap/);
+  assert.match(html, /id="commandContext"/);
+  assert.match(renderer, /preview:\s*"当前命令"/);
+  assert.doesNotMatch(renderer, /preview:\s*"预览"/);
+  assert.match(css, /\.command-context\s*\{[\s\S]*flex:\s*0 0 auto/);
+  assert.doesNotMatch(css, /\.command-context\s*\{[^}]*border:/);
+  assert.doesNotMatch(css, /\.command-context\s*\{[^}]*background:/);
+  assert.match(css, /#commandPreview\s*\{[\s\S]*flex:\s*1 1 0%/);
+  assert.match(css, /#commandPreview\s*\{[\s\S]*min-width:\s*0/);
+  assert.match(css, /\.console-tool-btn\s*\{[\s\S]*flex:\s*0 0 auto/);
+});
+
+test("console command preview preserves the last actual execution context", () => {
+  assert.match(renderer, /commandPreview:\s*\{/);
+  assert.match(renderer, /function previewCommand\(/);
+  assert.match(renderer, /function setExecutionCommand\(/);
+  assert.match(renderer, /function releaseExecutionCommand\(/);
+  assert.match(renderer, /updateCommandPreview\(event\.command \|\| currentCommand\(\),\s*\{[\s\S]*taskId:\s*event\.taskId/);
+  assert.match(renderer, /releaseExecutionCommand\(event\.taskId\)/);
+  assert.doesNotMatch(renderer, /if \(!isRunning\) \{\s*updateCommandPreview\(currentCommand\(\)\);\s*\}/);
+});
+
+test("editor keyword tools stay available outside active debug sessions", () => {
+  assert.match(html, /class="head-actions"[\s\S]*id="keywordBtn"[\s\S]*id="commandBtn"/);
+  assert.doesNotMatch(renderer, /keywordBtn\.disabled = !executable/);
+  assert.match(renderer, /keywordBtn\.disabled = !hasFile \|\| readonlySource \|\| !isExecutableFile\(state\.currentFile\)/);
+  assert.doesNotMatch(renderer, /!state\.currentFile \|\| !isExecutableFile\(state\.currentFile\)[\s\S]*当前文件不支持关键字插入/);
+  assert.match(renderer, /renderActiveFile\(\)[\s\S]*updateFileActionState\(\)/);
+  assert.match(css, /\.param-head\s*\{[\s\S]*grid-template-columns:/);
+  assert.match(css, /\.inline-actions\s*\{[\s\S]*overflow:\s*visible/);
+});
+
 test("renderer limits execution controls to DSL and resource files", () => {
   assert.match(renderer, /function isExecutableFile/);
   assert.match(renderer, /language === "dsl" \|\| language === "resource"/);
   assert.match(renderer, /CM6\.getSelection\(\)/);
-  assert.match(renderer, /executionActionGroup\.hidden/);
+  assert.match(renderer, /executionActionGroup\.hidden = !executable/);
   assert.match(renderer, /debugSessionGroup\.hidden/);
   assert.doesNotMatch(renderer, /当前文件不是 DSL 文件/);
 });
@@ -180,7 +344,7 @@ test("renderer limits execution controls to DSL and resource files", () => {
 test("workspace title removes the redundant DSL badge", () => {
   assert.doesNotMatch(html, /<span class="pill violet">DSL<\/span>/);
   assert.match(css, /\.tree-row\s*\{/);
-  assert.match(css, /grid-template-columns:\s*34px minmax\(0,\s*1fr\) auto/);
+  assert.match(css, /grid-template-columns:\s*24px minmax\(0,\s*1fr\) auto/);
 });
 
 test("renderer wires syntax, run, debug, and stop to real execution IPC", () => {

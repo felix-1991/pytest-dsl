@@ -844,7 +844,12 @@ class RemoteKeywordManager:
         """
         client = self.get_client(alias)
         if not client:
-            raise Exception(f"未找到别名为 {alias} 的远程服务器")
+            raise Exception(
+                f"未找到别名为 {alias} 的远程服务器。"
+                "请确认运行命令已加载包含 remote_servers 的YAML配置，"
+                "或 @remote 预连接成功；"
+                f"当前调用: {alias}|[{keyword_name}]"
+            )
 
         return client._execute_remote_keyword(name=keyword_name, **kwargs)
 

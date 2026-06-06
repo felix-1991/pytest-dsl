@@ -5,12 +5,17 @@ const { TextDecoder } = require("node:util");
 
 const { loadProjectConfig } = require("./configService");
 const { readMetadata, recordOpenedFile } = require("./metadataStore");
+const {
+  buildSuiteTree,
+  discoverConventionSuites
+} = require("./suiteService");
 
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
 
 const IGNORED_DIRS = new Set([
   ".git",
   ".pytest-dsl-gui",
+  ".pytest-dsl-generated",
   ".venv",
   "__pycache__",
   "node_modules",
@@ -22,10 +27,13 @@ const IGNORED_DIRS = new Set([
 function getProjectSnapshot(projectRoot) {
   const root = assertProjectRoot(projectRoot);
   const config = loadProjectConfig(root);
-  const editableFiles = listEditableFiles(root);
+  const tree = buildProjectTree(root);
+  const editableFiles = flattenProjectTreeFiles(tree);
   const dslFiles = editableFiles.filter((file) => file.language === "dsl");
   const metadata = readMetadata(root);
   const git = detectGit(root);
+  const suites = discoverConventionSuites(root);
+  const suiteTree = buildSuiteTree(suites);
 
   return {
     project: {
@@ -35,8 +43,11 @@ function getProjectSnapshot(projectRoot) {
     },
     git,
     score: calculateScore(dslFiles, config),
+    tree,
     editableFiles,
     dslFiles,
+    suites,
+    suiteTree,
     config,
     metadata
   };
@@ -93,6 +104,109 @@ function saveProjectFile(projectRoot, relativePath, content) {
   };
 }
 
+function createProjectEntry(projectRoot, options = {}) {
+  const root = assertProjectRoot(projectRoot);
+  const kind = options.kind === "directory" ? "directory" : "file";
+  const normalized = normalizeRelative(options.relativePath);
+  assertMutableRelativePath(normalized);
+  const target = resolveProjectFile(root, normalized);
+  assertParentDirectoryExists(target, normalized);
+  if (fs.existsSync(target)) {
+    throw new Error(`Project entry already exists: ${normalized}`);
+  }
+
+  if (kind === "directory") {
+    fs.mkdirSync(target);
+  } else {
+    const content = options.content || "";
+    assertTextContent(content, normalized);
+    fs.writeFileSync(target, content, "utf8");
+  }
+
+  return projectEntryResult(root, target);
+}
+
+function renameProjectEntry(projectRoot, options = {}) {
+  const root = assertProjectRoot(projectRoot);
+  const normalized = normalizeRelative(options.relativePath);
+  assertMutableRelativePath(normalized);
+  const newName = assertSimpleEntryName(options.newName);
+  const source = resolveProjectFile(root, normalized);
+  if (!fs.existsSync(source)) {
+    throw new Error(`Project entry does not exist: ${normalized}`);
+  }
+
+  const targetRelative = normalizeRelative(path.join(path.dirname(normalized), newName));
+  const target = resolveProjectFile(root, targetRelative);
+  if (fs.existsSync(target)) {
+    throw new Error(`Project entry already exists: ${targetRelative}`);
+  }
+
+  fs.renameSync(source, target);
+  return projectEntryResult(root, target);
+}
+
+function moveProjectEntry(projectRoot, options = {}) {
+  const root = assertProjectRoot(projectRoot);
+  const normalized = normalizeRelative(options.relativePath);
+  assertMutableRelativePath(normalized);
+  const targetDirectory = normalizeRelative(options.targetDirectory || "");
+  const targetDirectoryPath = resolveProjectFile(root, targetDirectory);
+  if (!fs.existsSync(targetDirectoryPath) || !fs.statSync(targetDirectoryPath).isDirectory()) {
+    throw new Error(`Target directory does not exist: ${targetDirectory || "."}`);
+  }
+
+  const source = resolveProjectFile(root, normalized);
+  if (!fs.existsSync(source)) {
+    throw new Error(`Project entry does not exist: ${normalized}`);
+  }
+  if (!fs.statSync(source).isFile()) {
+    throw new Error(`Only files can be moved from the file tree: ${normalized}`);
+  }
+
+  const targetRelative = normalizeRelative(path.join(targetDirectory, path.basename(normalized)));
+  const target = resolveProjectFile(root, targetRelative);
+  if (target === source) {
+    return {
+      ...projectEntryResult(root, source),
+      previousPath: normalized,
+      moved: false
+    };
+  }
+  if (fs.existsSync(target)) {
+    throw new Error(`Project entry already exists: ${targetRelative}`);
+  }
+
+  fs.renameSync(source, target);
+  return {
+    ...projectEntryResult(root, target),
+    previousPath: normalized,
+    moved: true
+  };
+}
+
+function deleteProjectEntry(projectRoot, options = {}) {
+  const root = assertProjectRoot(projectRoot);
+  const normalized = normalizeRelative(options.relativePath);
+  assertMutableRelativePath(normalized);
+  const target = resolveProjectFile(root, normalized);
+  if (!fs.existsSync(target)) {
+    throw new Error(`Project entry does not exist: ${normalized}`);
+  }
+
+  const stats = fs.statSync(target);
+  if (stats.isDirectory() && fs.readdirSync(target).length > 0 && !options.recursive) {
+    throw new Error(`Cannot delete non-empty directory without confirmation: ${normalized}`);
+  }
+
+  fs.rmSync(target, { recursive: stats.isDirectory(), force: false });
+  return {
+    kind: stats.isDirectory() ? "directory" : "file",
+    relativePath: normalized,
+    deleted: true
+  };
+}
+
 function assertProjectRoot(projectRoot) {
   if (!projectRoot) {
     throw new Error("projectRoot is required");
@@ -102,6 +216,50 @@ function assertProjectRoot(projectRoot) {
     throw new Error(`Project root does not exist: ${projectRoot}`);
   }
   return root;
+}
+
+function assertMutableRelativePath(relativePath) {
+  if (!relativePath || relativePath === ".") {
+    throw new Error("Project root cannot be modified from the file tree");
+  }
+}
+
+function assertSimpleEntryName(name) {
+  const value = String(name || "").trim();
+  if (!value) {
+    throw new Error("Project entry name is required");
+  }
+  if (value === "." || value === ".." || value.includes("/") || value.includes("\\")) {
+    throw new Error("Project entry name cannot contain path separators");
+  }
+  return value;
+}
+
+function assertParentDirectoryExists(target, relativePath) {
+  const parent = path.dirname(target);
+  if (!fs.existsSync(parent) || !fs.statSync(parent).isDirectory()) {
+    throw new Error(`Parent directory does not exist: ${relativePath}`);
+  }
+}
+
+function projectEntryResult(projectRoot, target) {
+  const stats = fs.statSync(target);
+  const relativePath = normalizeRelative(path.relative(projectRoot, target));
+  if (stats.isDirectory()) {
+    return {
+      kind: "directory",
+      relativePath
+    };
+  }
+
+  const content = readTextFileContent(target);
+  return {
+    kind: "file",
+    relativePath,
+    language: detectLanguage(relativePath),
+    bytes: stats.size,
+    lineCount: content === null ? null : countLines(content)
+  };
 }
 
 function resolveProjectFile(projectRoot, relativePath) {
@@ -139,25 +297,86 @@ function listDslFiles(projectRoot) {
 }
 
 function listEditableFiles(projectRoot) {
-  const files = [];
-  walk(projectRoot, (filePath, stats) => {
-    const content = readTextFileContent(filePath);
-    if (content === null) {
-      return;
-    }
+  const root = assertProjectRoot(projectRoot);
+  return flattenProjectTreeFiles(buildProjectTree(root));
+}
 
-    const relativePath = path.relative(projectRoot, filePath).replace(/\\/g, "/");
-    files.push({
-      relativePath,
-      name: path.basename(filePath),
-      directory: path.dirname(relativePath) === "." ? "" : path.dirname(relativePath).replace(/\\/g, "/"),
-      language: detectLanguage(relativePath),
-      size: stats.size,
-      lineCount: countLines(content)
+function buildProjectTree(projectRoot) {
+  const root = assertProjectRoot(projectRoot);
+  return buildDirectoryNode(root, "");
+}
+
+function buildDirectoryNode(projectRoot, relativePath) {
+  const directory = relativePath ? path.join(projectRoot, relativePath) : projectRoot;
+  const children = fs.readdirSync(directory, { withFileTypes: true })
+    .sort(compareDirectoryEntries)
+    .flatMap((entry) => {
+      const childRelative = normalizeRelative(path.join(relativePath, entry.name));
+      const childPath = path.join(projectRoot, childRelative);
+      if (entry.isDirectory()) {
+        if (IGNORED_DIRS.has(entry.name)) {
+          return [];
+        }
+        return [buildDirectoryNode(projectRoot, childRelative)];
+      }
+      if (!entry.isFile()) {
+        return [];
+      }
+      const content = readTextFileContent(childPath);
+      if (content === null) {
+        return [];
+      }
+      const stats = fs.statSync(childPath);
+      return [{
+        type: "file",
+        path: childRelative,
+        name: entry.name,
+        language: detectLanguage(childRelative),
+        size: stats.size,
+        lineCount: countLines(content)
+      }];
     });
-  });
 
+  return {
+    type: "directory",
+    path: normalizeRelative(relativePath),
+    name: relativePath ? path.basename(relativePath) : path.basename(projectRoot),
+    fileCount: children.reduce((total, child) => (
+      total + (child.type === "file" ? 1 : child.fileCount)
+    ), 0),
+    children
+  };
+}
+
+function flattenProjectTreeFiles(tree) {
+  const files = [];
+  collectTreeFiles(tree, files);
   return files.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+}
+
+function collectTreeFiles(node, files) {
+  if (!node) {
+    return;
+  }
+  if (node.type === "file") {
+    files.push({
+      relativePath: node.path,
+      name: node.name,
+      directory: path.dirname(node.path) === "." ? "" : normalizeRelative(path.dirname(node.path)),
+      language: node.language,
+      size: node.size,
+      lineCount: node.lineCount
+    });
+    return;
+  }
+  (node.children || []).forEach((child) => collectTreeFiles(child, files));
+}
+
+function compareDirectoryEntries(left, right) {
+  if (left.isDirectory() !== right.isDirectory()) {
+    return left.isDirectory() ? -1 : 1;
+  }
+  return left.name.localeCompare(right.name);
 }
 
 function readTextFileContent(filePath) {
@@ -188,24 +407,6 @@ function detectLanguage(relativePath) {
   if (name.endsWith(".py")) return "python";
   if (name.endsWith(".md") || name.endsWith(".markdown")) return "markdown";
   return "plain";
-}
-
-function walk(directory, onFile) {
-  const entries = fs.readdirSync(directory, { withFileTypes: true })
-    .sort((left, right) => left.name.localeCompare(right.name));
-
-  for (const entry of entries) {
-    const fullPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      if (!IGNORED_DIRS.has(entry.name)) {
-        walk(fullPath, onFile);
-      }
-      continue;
-    }
-    if (entry.isFile()) {
-      onFile(fullPath, fs.statSync(fullPath));
-    }
-  }
 }
 
 function countLines(content) {
@@ -269,10 +470,15 @@ function calculateScore(dslFiles, config) {
 }
 
 module.exports = {
+  createProjectEntry,
+  deleteProjectEntry,
   getProjectConfigSnapshot,
   getProjectSnapshot,
+  moveProjectEntry,
   readProjectFile,
+  renameProjectEntry,
   saveProjectFile,
+  buildProjectTree,
   listEditableFiles,
   listDslFiles,
   detectGit,

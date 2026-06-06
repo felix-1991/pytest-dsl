@@ -40,6 +40,63 @@ LOCK_FILE_SUFFIX = ".lock"
 EXECUTED_FILE_SUFFIX = ".lock.executed"
 
 
+def reset_hook_execution_state() -> None:
+    """重置本进程内已执行的目录hook记录。"""
+    _setup_executed.clear()
+    _teardown_executed.clear()
+
+
+def discover_hook_chain(hook_root: Union[str, Path], case_path: Union[str, Path]) -> List[Path]:
+    """获取从hook根目录到用例所在目录的目录链。"""
+    root = Path(hook_root).resolve()
+    case_dir = Path(case_path).resolve().parent
+    case_dir.relative_to(root)
+
+    chain = [root]
+    relative_parts = case_dir.relative_to(root).parts
+    current = root
+    for part in relative_parts:
+        current = current / part
+        chain.append(current)
+    return chain
+
+
+def find_setup_file(directory: Union[str, Path]) -> Optional[Path]:
+    """查找目录级setup文件。"""
+    path = Path(directory)
+    for name in [SETUP_DSL_FILE_NAME, SETUP_FILE_NAME]:
+        candidate = path / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def find_teardown_file(directory: Union[str, Path]) -> Optional[Path]:
+    """查找目录级teardown文件。"""
+    path = Path(directory)
+    for name in [TEARDOWN_DSL_FILE_NAME, TEARDOWN_FILE_NAME]:
+        candidate = path / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def execute_directory_setup(directory: Union[str, Path]) -> None:
+    """执行目录级setup文件（如果存在）。"""
+    path = Path(directory).resolve()
+    setup_file = find_setup_file(path)
+    if setup_file:
+        execute_hook_file(setup_file, True, str(path))
+
+
+def execute_directory_teardown(directory: Union[str, Path]) -> None:
+    """执行目录级teardown文件（如果存在）。"""
+    path = Path(directory).resolve()
+    teardown_file = find_teardown_file(path)
+    if teardown_file:
+        execute_hook_file(teardown_file, False, str(path))
+
+
 def get_lock_file_path(dir_path: str, is_setup: bool) -> str:
     """获取锁文件路径
 
