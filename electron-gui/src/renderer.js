@@ -7,6 +7,8 @@ const state = {
   filter: "",
   selectedConfigPaths: [],
   selectedSuiteIds: [],
+  selectedFileOverrides: {},
+  expandedSuiteNodes: new Set(),
   suiteSelectionTouched: false,
   selectedTreePath: "",
   selectedTreeKind: "directory",
@@ -234,17 +236,17 @@ function bindEvents() {
       closeEntryDialog(null);
     }
   });
-  document.addEventListener("click", (event) => {
-    if (!el.treeContextMenu.contains(event.target)) {
-      closeTreeContextMenu();
-    }
-  });
+  document.addEventListener("click", closeTransientPanelsForOutsideClick);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeTreeContextMenu();
+      closeTopPickers();
+      closeKeywordPanel();
     }
   });
   el.suiteTrigger.addEventListener("click", () => {
+    closeConfigPicker();
+    closeKeywordPanel();
     el.suitePicker.classList.toggle("is-open");
     el.suiteTrigger.setAttribute(
       "aria-expanded",
@@ -268,6 +270,8 @@ function bindEvents() {
   );
   el.keywordSearch.addEventListener("input", handleKeywordSearchInput);
   el.configTrigger.addEventListener("click", () => {
+    closeSuitePicker();
+    closeKeywordPanel();
     el.configPicker.classList.toggle("is-open");
     el.configTrigger.setAttribute(
       "aria-expanded",
@@ -280,6 +284,39 @@ function bindEvents() {
   });
   if (typeof api.onExecutionEvent === "function") {
     api.onExecutionEvent(handleExecutionEvent);
+  }
+}
+
+function closeSuitePicker() {
+  el.suitePicker.classList.remove("is-open");
+  el.suiteTrigger.setAttribute("aria-expanded", "false");
+}
+
+function closeConfigPicker() {
+  el.configPicker.classList.remove("is-open");
+  el.configTrigger.setAttribute("aria-expanded", "false");
+}
+
+function closeTopPickers() {
+  closeSuitePicker();
+  closeConfigPicker();
+}
+
+function closeTransientPanelsForOutsideClick(event) {
+  if (!el.treeContextMenu.contains(event.target)) {
+    closeTreeContextMenu();
+  }
+  if (!el.suitePicker.contains(event.target)) {
+    closeSuitePicker();
+  }
+  if (!el.configPicker.contains(event.target)) {
+    closeConfigPicker();
+  }
+  if (
+    !el.keywordPanel.contains(event.target) &&
+    !el.keywordBtn.contains(event.target)
+  ) {
+    closeKeywordPanel();
   }
 }
 
@@ -464,6 +501,8 @@ function applySnapshot(snapshot, logMessage, preferredFile = null) {
     state.selectedTreePath = "";
     state.selectedTreeKind = "directory";
     state.collapsedTreeDirs.clear();
+    state.selectedFileOverrides = {};
+    state.expandedSuiteNodes.clear();
     closeEntryDialog(null);
   }
   initializeConfigSelection(snapshot, previousSelected);
@@ -497,6 +536,8 @@ function setEmptyProjectState() {
   state.dirty = false;
   state.selectedConfigPaths = [];
   state.selectedSuiteIds = [];
+  state.selectedFileOverrides = {};
+  state.expandedSuiteNodes.clear();
   state.suiteSelectionTouched = false;
   state.selectedTreePath = "";
   state.selectedTreeKind = "directory";
@@ -1354,6 +1395,7 @@ function updateFileActionState() {
   const hasFile = Boolean(state.snapshot && state.currentFile);
   const readonlySource = Boolean(state.readonlySource);
   const executable = hasFile && !readonlySource && isExecutableFile(state.currentFile);
+  const showKeywordTools = hasFile && isExecutableFile(state.currentFile);
   const runnableWholeFile = hasFile && !readonlySource && isRunnableWholeFile(state.currentFile);
   const selection = executable ? CM6.getSelection() : null;
   const hasSelection = Boolean(selection);
@@ -1365,16 +1407,18 @@ function updateFileActionState() {
 
   el.executionActionGroup.hidden = !executable;
   el.debugSessionGroup.hidden = !isRunning;
+  el.keywordBtn.hidden = !showKeywordTools;
+  el.commandBtn.hidden = !showKeywordTools;
   el.saveBtn.disabled = !hasFile || readonlySource;
   el.keywordBtn.disabled = !hasFile || readonlySource || !isExecutableFile(state.currentFile);
-  el.commandBtn.disabled = false;
+  el.commandBtn.disabled = !showKeywordTools;
   el.syntaxBtn.disabled = !executable || isRunning;
   el.runBtn.disabled = !canRun || isRunning;
   el.debugStepsBtn.disabled = !canDebug || isRunning;
   el.nextStepBtn.disabled = !isDebugRunning || !state.debugPaused;
   el.continueDebugBtn.disabled = !isDebugRunning || !state.debugPaused;
   el.stopBtn.disabled = !isRunning;
-  if (el.keywordBtn.disabled && state.keywordPanelOpen) {
+  if ((el.keywordBtn.hidden || el.keywordBtn.disabled) && state.keywordPanelOpen) {
     closeKeywordPanel();
   }
   updateExecutionActionLabels(selection);
@@ -2225,11 +2269,13 @@ async function runSuiteExecution() {
   appendLog("info", `测试套运行 started: ${selectedSuiteIds.join(", ")}`);
 
   try {
+    const selectedFiles = computeSelectedFiles();
     await api.startExecution({
       taskId,
       mode: "suite",
       projectRoot: state.snapshot.project.rootPath,
       selectedSuiteIds,
+      selectedFiles,
       yamlVars,
     });
   } catch (error) {
@@ -2628,9 +2674,17 @@ function renderSuiteOptions(suites, suiteTree = null) {
     availableSuites.length === 0
       ? `<p class="empty">未找到 convention 测试套</p>`
       : renderSuiteTreeNode(suiteTree || buildFlatSuiteTree(availableSuites), 0);
+  
   el.suiteList.querySelectorAll("[data-suite-checkbox]").forEach((input) => {
     input.addEventListener("change", handleSuiteSelectionChange);
   });
+  el.suiteList.querySelectorAll("[data-file-checkbox]").forEach((input) => {
+    input.addEventListener("change", handleFileSelectionChange);
+  });
+  el.suiteList.querySelectorAll("[data-suite-toggle]").forEach((toggle) => {
+    toggle.addEventListener("click", handleSuiteToggleClick);
+  });
+  
   syncSuiteTreeCheckboxStates();
   previewCommand(currentCommand());
 }
@@ -2639,6 +2693,25 @@ function renderSuiteTreeNode(node, depth = 0) {
   if (!node) {
     return "";
   }
+  
+  if (node.type === "file") {
+    const isChecked = isFileSelected(node.suiteId, node.path);
+    const fileCheckedStr = isChecked ? " checked" : "";
+    const fileIcon = node.fileType === "dsl" ? "📄" : "🐍";
+    return `
+      <div class="suite-node suite-file-node" style="--depth: ${depth}">
+        <label class="suite-option is-file">
+          <span class="suite-spacer"></span>
+          <input type="checkbox" data-file-checkbox 
+                 data-suite-id="${escapeAttr(node.suiteId || "")}" 
+                 data-file-path="${escapeAttr(node.path || "")}"${fileCheckedStr}>
+          <span class="file-icon">${fileIcon}</span>
+          <span title="${escapeAttr(node.path)}">${escapeHtml(node.name)}</span>
+        </label>
+      </div>
+    `;
+  }
+
   const suiteId = node.suiteId;
   const suiteIds = collectSuiteNodeSuiteIds(node);
   const checked = suiteIds.length > 0 && suiteIds.every((id) => state.selectedSuiteIds.includes(id))
@@ -2646,18 +2719,29 @@ function renderSuiteTreeNode(node, depth = 0) {
     : "";
   const counts = `${node.dslCaseCount || 0} DSL / ${node.pythonTestCount || 0} py`;
   const label = suiteId === "__root__" ? "根目录 (__root__)" : node.name;
+  
+  const hasChildren = node.children && node.children.length > 0;
+  const isExpanded = state.expandedSuiteNodes.has(node.path);
+  
+  const toggleArrow = hasChildren
+    ? `<span class="suite-toggle ${isExpanded ? 'is-open' : ''}" data-suite-toggle="${escapeAttr(node.path)}">▶</span>`
+    : `<span class="suite-spacer"></span>`;
+
   return `
     <div class="suite-node" style="--depth: ${depth}">
       <label class="suite-option${suiteId ? "" : " is-group"}">
+        ${toggleArrow}
         ${suiteIds.length > 0
           ? `<input type="checkbox" data-suite-checkbox data-suite-id="${escapeAttr(suiteId || "")}" data-suite-ids="${escapeAttr(JSON.stringify(suiteIds))}"${checked}>`
           : `<span class="suite-spacer"></span>`}
         <span title="${escapeAttr(node.rootPath || node.path || label)}">${escapeHtml(label)}</span>
         <small>${suiteId ? escapeHtml(counts) : ""}</small>
       </label>
-      <div class="suite-children">
-        ${(node.children || []).map((child) => renderSuiteTreeNode(child, depth + 1)).join("")}
-      </div>
+      ${hasChildren ? `
+        <div class="suite-children ${isExpanded ? '' : 'is-collapsed'}">
+          ${isExpanded ? (node.children || []).map((child) => renderSuiteTreeNode(child, depth + 1)).join("") : ""}
+        </div>
+      ` : ""}
     </div>
   `;
 }
@@ -2690,37 +2774,209 @@ function handleSuiteSelectionChange(event) {
     } else {
       selected.delete(suiteId);
     }
+    delete state.selectedFileOverrides[suiteId];
   });
 
   state.selectedSuiteIds = normalizeSelectedSuiteIds([...selected]);
   syncSuiteTreeCheckboxStates();
   updateSuiteSummary(state.snapshot ? state.snapshot.suites || [] : []);
-  previewCommand(
-    suiteCommandLabel(state.selectedSuiteIds, selectedConfigSources().map((source) => source.relativePath)),
-    { force: true },
-  );
+  previewCommand(currentCommand(), { force: true });
+}
+
+function handleFileSelectionChange(event) {
+  state.suiteSelectionTouched = true;
+  const input = event.currentTarget;
+  const suiteId = input.dataset.suiteId;
+  const filePath = input.dataset.filePath;
+  
+  if (!state.selectedFileOverrides[suiteId]) {
+    const isSuiteSelected = state.selectedSuiteIds.includes(suiteId);
+    const files = getSuiteFiles(suiteId);
+    if (isSuiteSelected) {
+      state.selectedFileOverrides[suiteId] = new Set(files);
+    } else {
+      state.selectedFileOverrides[suiteId] = new Set();
+    }
+  }
+  
+  if (input.checked) {
+    state.selectedFileOverrides[suiteId].add(filePath);
+  } else {
+    state.selectedFileOverrides[suiteId].delete(filePath);
+  }
+  
+  syncSuiteCheckboxFromFiles(suiteId);
+  syncSuiteTreeCheckboxStates();
+  updateSuiteSummary(state.snapshot ? state.snapshot.suites || [] : []);
+  
+  previewCommand(currentCommand(), { force: true });
+}
+
+function handleSuiteToggleClick(event) {
+  event.stopPropagation();
+  event.preventDefault();
+  const toggle = event.currentTarget;
+  const path = toggle.dataset.suiteToggle;
+  const parentNode = toggle.closest(".suite-node");
+  const childrenContainer = parentNode?.querySelector(".suite-children");
+  
+  if (!childrenContainer) return;
+  
+  if (state.expandedSuiteNodes.has(path)) {
+    state.expandedSuiteNodes.delete(path);
+    toggle.classList.remove("is-open");
+    childrenContainer.classList.add("is-collapsed");
+  } else {
+    state.expandedSuiteNodes.add(path);
+    toggle.classList.add("is-open");
+    
+    // Check if children need to be rendered dynamically (lazy rendering)
+    if (childrenContainer.children.length === 0 && state.snapshot && state.snapshot.suiteTree) {
+      const node = findSuiteTreeNodeByPath(state.snapshot.suiteTree, path);
+      if (node && node.children) {
+        const depth = Number(parentNode.style.getPropertyValue("--depth") || "0");
+        childrenContainer.innerHTML = node.children
+          .map((child) => renderSuiteTreeNode(child, depth + 1))
+          .join("");
+        
+        // Bind event listeners to new child nodes
+        childrenContainer.querySelectorAll("[data-suite-checkbox]").forEach((input) => {
+          input.addEventListener("change", handleSuiteSelectionChange);
+        });
+        childrenContainer.querySelectorAll("[data-file-checkbox]").forEach((input) => {
+          input.addEventListener("change", handleFileSelectionChange);
+        });
+        childrenContainer.querySelectorAll("[data-suite-toggle]").forEach((toggleBtn) => {
+          toggleBtn.addEventListener("click", handleSuiteToggleClick);
+        });
+        
+        // Synchronize the checkbox states of the newly rendered children
+        syncSuiteTreeCheckboxStates();
+      }
+    }
+    
+    childrenContainer.classList.remove("is-collapsed");
+  }
+}
+
+function findSuiteTreeNodeByPath(root, targetPath) {
+  if (!root) return null;
+  if (root.path === targetPath) return root;
+  for (const child of root.children || []) {
+    const found = findSuiteTreeNodeByPath(child, targetPath);
+    if (found) return found;
+  }
+  return null;
+}
+
+
+function syncSuiteCheckboxFromFiles(suiteId) {
+  const files = getSuiteFiles(suiteId);
+  const override = state.selectedFileOverrides[suiteId];
+  
+  if (override) {
+    if (override.size === 0) {
+      state.selectedSuiteIds = state.selectedSuiteIds.filter((id) => id !== suiteId);
+    } else {
+      if (!state.selectedSuiteIds.includes(suiteId)) {
+        state.selectedSuiteIds.push(suiteId);
+        state.selectedSuiteIds = normalizeSelectedSuiteIds(state.selectedSuiteIds);
+      }
+      if (override.size === files.length) {
+        delete state.selectedFileOverrides[suiteId];
+      }
+    }
+  }
 }
 
 function collectSuiteNodeSuiteIds(node) {
-  if (!node) {
+  if (!node || node.type === "file") {
     return [];
   }
   return [
     node.suiteId,
-    ...(node.children || []).flatMap(collectSuiteNodeSuiteIds),
+    ...(node.children || []).filter(c => c.type !== "file").flatMap(collectSuiteNodeSuiteIds),
   ].filter(Boolean);
 }
 
 function syncSuiteTreeCheckboxStates() {
-  const selected = new Set(state.selectedSuiteIds);
+  el.suiteList.querySelectorAll("[data-file-checkbox]").forEach((input) => {
+    const suiteId = input.dataset.suiteId;
+    const filePath = input.dataset.filePath;
+    input.checked = isFileSelected(suiteId, filePath);
+  });
+
   el.suiteList.querySelectorAll("[data-suite-checkbox]").forEach((input) => {
+    const suiteId = input.dataset.suiteId;
     const suiteIds = suiteIdsFromSuiteInput(input);
-    const selectedCount = suiteIds.filter((suiteId) => selected.has(suiteId)).length;
-    const checked = suiteIds.length > 0 && selectedCount === suiteIds.length;
-    const partial = selectedCount > 0 && selectedCount < suiteIds.length;
+    
+    if (suiteIds.length === 0) {
+      input.checked = false;
+      input.indeterminate = false;
+      return;
+    }
+    
+    let totalFilesCount = 0;
+    let selectedFilesCount = 0;
+    let anySuiteChecked = false;
+    let anySuiteUnchecked = false;
+    let anySuitePartial = false;
+    
+    suiteIds.forEach((id) => {
+      const isSuiteSelected = state.selectedSuiteIds.includes(id);
+      const files = getSuiteFiles(id);
+      
+      if (files.length === 0) {
+        if (isSuiteSelected) {
+          anySuiteChecked = true;
+        } else {
+          anySuiteUnchecked = true;
+        }
+        return;
+      }
+      
+      totalFilesCount += files.length;
+      
+      if (!isSuiteSelected) {
+        anySuiteUnchecked = true;
+        return;
+      }
+      
+      const override = state.selectedFileOverrides[id];
+      if (!override) {
+        selectedFilesCount += files.length;
+        anySuiteChecked = true;
+      } else {
+        selectedFilesCount += override.size;
+        if (override.size === files.length) {
+          anySuiteChecked = true;
+        } else if (override.size === 0) {
+          anySuiteUnchecked = true;
+        } else {
+          anySuitePartial = true;
+        }
+      }
+    });
+    
+    let checked = false;
+    let indeterminate = false;
+    
+    if (totalFilesCount > 0) {
+      checked = (selectedFilesCount === totalFilesCount);
+      indeterminate = (selectedFilesCount > 0 && selectedFilesCount < totalFilesCount);
+    } else {
+      checked = anySuiteChecked && !anySuiteUnchecked;
+      indeterminate = anySuiteChecked && anySuiteUnchecked;
+    }
+    
+    if (anySuitePartial) {
+      indeterminate = true;
+      checked = false;
+    }
+    
     input.checked = checked;
-    input.indeterminate = partial;
-    input.closest(".suite-option")?.classList.toggle("is-partial", partial);
+    input.indeterminate = indeterminate;
+    input.closest(".suite-option")?.classList.toggle("is-partial", indeterminate);
   });
 }
 
@@ -2756,16 +3012,51 @@ function updateSuiteSummary(suites) {
     el.suiteSummary.textContent = "未选择测试套";
     return;
   }
+  
+  let hasOverride = false;
+  let totalFiles = 0;
+  let selectedFiles = 0;
+  
+  selected.forEach((suiteId) => {
+    const files = getSuiteFiles(suiteId);
+    totalFiles += files.length;
+    
+    const override = state.selectedFileOverrides[suiteId];
+    if (override) {
+      hasOverride = true;
+      selectedFiles += override.size;
+    } else {
+      selectedFiles += files.length;
+    }
+  });
+  
   if (selected.length === total) {
-    el.suiteSummary.textContent = `全部测试套 (${total})`;
+    if (!hasOverride) {
+      el.suiteSummary.textContent = `全部测试套 (${total})`;
+    } else {
+      el.suiteSummary.textContent = `全部测试套 (${selectedFiles}/${totalFiles} 文件)`;
+    }
     return;
   }
+  
   if (selected.length === 1) {
     const suite = suites.find((item) => item.id === selected[0]);
-    el.suiteSummary.textContent = suite ? suiteDisplayName(suite) : selected[0];
+    const name = suite ? suiteDisplayName(suite) : selected[0];
+    const override = state.selectedFileOverrides[selected[0]];
+    if (override) {
+      const files = getSuiteFiles(selected[0]);
+      el.suiteSummary.textContent = `${name} (${override.size}/${files.length} 文件)`;
+    } else {
+      el.suiteSummary.textContent = name;
+    }
     return;
   }
-  el.suiteSummary.textContent = `${selected.length}/${total} 已选`;
+  
+  if (hasOverride) {
+    el.suiteSummary.textContent = `${selected.length}/${total} 已选 · 部分文件`;
+  } else {
+    el.suiteSummary.textContent = `${selected.length}/${total} 已选`;
+  }
 }
 
 function currentSelectedSuiteIds() {
@@ -2777,7 +3068,8 @@ function currentSelectedSuiteIds() {
 }
 
 function suiteCommandLabel(selectedSuiteIds, yamlVars) {
-  const targets = suiteTargetPathsForSelection(selectedSuiteIds);
+  const selectedFiles = computeSelectedFiles();
+  const targets = selectedFiles ? selectedFiles : suiteTargetPathsForSelection(selectedSuiteIds);
   const suiteLabel = targets.length > 0
     ? targets.join(" ")
     : "<未选择测试套>";
@@ -2785,6 +3077,52 @@ function suiteCommandLabel(selectedSuiteIds, yamlVars) {
     ? ` ${yamlVars.map((item) => `--yaml-vars ${item}`).join(" ")}`
     : "";
   return `pytest ${suiteLabel}${args}`;
+}
+
+function computeSelectedFiles() {
+  const selectedFiles = [];
+  const selectedSuiteIds = currentSelectedSuiteIds();
+  let hasOverride = false;
+  
+  selectedSuiteIds.forEach((suiteId) => {
+    const override = state.selectedFileOverrides[suiteId];
+    if (override) {
+      hasOverride = true;
+      override.forEach((file) => {
+        selectedFiles.push(file);
+      });
+    } else {
+      const files = getSuiteFiles(suiteId);
+      files.forEach((file) => {
+        selectedFiles.push(file);
+      });
+    }
+  });
+  
+  return hasOverride ? selectedFiles : null;
+}
+
+function isFileSelected(suiteId, filePath) {
+  const isSuiteSelected = state.selectedSuiteIds.includes(suiteId);
+  if (!isSuiteSelected) {
+    return false;
+  }
+  const override = state.selectedFileOverrides[suiteId];
+  if (!override) {
+    return true;
+  }
+  return override.has(filePath);
+}
+
+function getSuiteFiles(suiteId) {
+  if (!state.snapshot || !Array.isArray(state.snapshot.suites)) {
+    return [];
+  }
+  const suite = state.snapshot.suites.find((s) => s.id === suiteId);
+  if (!suite) {
+    return [];
+  }
+  return (suite.dslCaseFiles || []).concat(suite.pythonTestFiles || []);
 }
 
 function suiteTargetPathsForSelection(selectedSuiteIds) {

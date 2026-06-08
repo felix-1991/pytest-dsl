@@ -121,6 +121,20 @@ test("config picker supports multi-select and remote status UI", () => {
   assert.match(css, /\.remote-service-row/);
 });
 
+test("temporary overlay controls close predictably without collapsing persistent search", () => {
+  assert.match(renderer, /function closeSuitePicker\(\)/);
+  assert.match(renderer, /function closeConfigPicker\(\)/);
+  assert.match(renderer, /function closeTopPickers\(\)/);
+  assert.match(renderer, /function closeTransientPanelsForOutsideClick\(event\)/);
+  assert.match(renderer, /closeTopPickers\(\);[\s\S]*closeKeywordPanel\(\);/);
+  assert.match(renderer, /el\.suiteTrigger\.addEventListener\("click"[\s\S]*closeConfigPicker\(\)/);
+  assert.match(renderer, /el\.configTrigger\.addEventListener\("click"[\s\S]*closeSuitePicker\(\)/);
+  assert.match(renderer, /event\.key === "Escape"[\s\S]*closeTopPickers\(\)/);
+  assert.match(renderer, /event\.key === "Escape"[\s\S]*closeKeywordPanel\(\)/);
+  assert.doesNotMatch(renderer, /fileFilter[\s\S]{0,160}closeKeywordPanel/);
+  assert.doesNotMatch(renderer, /fileFilter[\s\S]{0,160}closeTopPickers/);
+});
+
 test("renderer dynamically monitors remote services and config changes", () => {
   assert.match(renderer, /REMOTE_MONITOR_INTERVAL_MS\s*=\s*5000/);
   assert.match(renderer, /startDynamicRemoteMonitoring/);
@@ -256,7 +270,7 @@ test("editor tools stay in the normal toolbar and execution tools are file-aware
     /id="executionActionGroup"[\s\S]{0,120}\s+hidden\b/,
   );
   assert.match(renderer, /executionActionGroup\.hidden = !executable/);
-  assert.match(renderer, /commandBtn\.disabled = false/);
+  assert.match(renderer, /commandBtn\.disabled = !showKeywordTools/);
   assert.doesNotMatch(html, /id="editorToolGroup"/);
 });
 
@@ -325,11 +339,26 @@ test("console command preview preserves the last actual execution context", () =
 test("editor keyword tools stay available outside active debug sessions", () => {
   assert.match(html, /class="head-actions"[\s\S]*id="keywordBtn"[\s\S]*id="commandBtn"/);
   assert.doesNotMatch(renderer, /keywordBtn\.disabled = !executable/);
+  assert.match(renderer, /const showKeywordTools = hasFile && isExecutableFile\(state\.currentFile\)/);
+  assert.match(renderer, /keywordBtn\.hidden = !showKeywordTools/);
+  assert.match(renderer, /commandBtn\.hidden = !showKeywordTools/);
   assert.match(renderer, /keywordBtn\.disabled = !hasFile \|\| readonlySource \|\| !isExecutableFile\(state\.currentFile\)/);
   assert.doesNotMatch(renderer, /!state\.currentFile \|\| !isExecutableFile\(state\.currentFile\)[\s\S]*当前文件不支持关键字插入/);
   assert.match(renderer, /renderActiveFile\(\)[\s\S]*updateFileActionState\(\)/);
   assert.match(css, /\.param-head\s*\{[\s\S]*grid-template-columns:/);
   assert.match(css, /\.inline-actions\s*\{[\s\S]*overflow:\s*visible/);
+});
+
+test("renderer hides keyword tools for YAML, Python, and Markdown files", () => {
+  assert.match(renderer, /function detectLanguage/);
+  assert.match(renderer, /name\.endsWith\("\.yaml"\) \|\| name\.endsWith\("\.yml"\)/);
+  assert.match(renderer, /name\.endsWith\("\.py"\)/);
+  assert.match(renderer, /name\.endsWith\("\.md"\) \|\| name\.endsWith\("\.markdown"\)/);
+  assert.match(renderer, /const showKeywordTools = hasFile && isExecutableFile\(state\.currentFile\)/);
+  assert.match(renderer, /keywordBtn\.hidden = !showKeywordTools/);
+  assert.match(renderer, /commandBtn\.hidden = !showKeywordTools/);
+  assert.match(renderer, /language === "dsl" \|\| language === "resource"/);
+  assert.match(css, /(?:^|\n)\[hidden\]\s*\{[\s\S]*display:\s*none\s*!important/);
 });
 
 test("renderer limits execution controls to DSL and resource files", () => {

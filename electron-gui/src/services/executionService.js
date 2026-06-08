@@ -15,7 +15,8 @@ function createExecutionPlan(options) {
   const yamlVars = normalizeYamlVars(options.yamlVars);
   if (mode === "suite") {
     const selectedSuiteIds = normalizeSelectedSuiteIds(options.selectedSuiteIds);
-    const targets = buildPytestTargets(projectRoot, selectedSuiteIds);
+    const selectedFiles = options.selectedFiles || null;
+    const targets = buildPytestTargets(projectRoot, selectedSuiteIds, selectedFiles);
     const command = commandForMode(mode, options);
     const args = [...targets, ...yamlArgs(yamlVars)];
     return {
@@ -30,6 +31,7 @@ function createExecutionPlan(options) {
       source: {
         kind: "suite",
         selectedSuiteIds,
+        selectedFiles,
         label: selectedSuiteIds.length > 0 ? selectedSuiteIds.join(", ") : "all suites",
       },
       cleanupDir: null,

@@ -81,15 +81,29 @@ test("project snapshots include convention suite metadata and ignore generated f
   assert.deepEqual(snapshot.suites.map((suite) => suite.id), ["__root__", "api", "api/auth", "ui/pages"]);
   assert.equal(suites.get("__root__").dslCaseCount, 1);
   assert.equal(suites.get("__root__").pythonTestCount, 1);
+  assert.deepEqual(suites.get("__root__").dslCaseFiles, ["tests/root_case.dsl"]);
   assert.equal(suites.get("api").dslCaseCount, 0);
   assert.equal(suites.get("api").pythonTestCount, 1);
   assert.equal(suites.get("api/auth").dslCaseCount, 2);
   assert.equal(suites.get("api/auth").pythonTestCount, 0);
+  assert.deepEqual(suites.get("api/auth").dslCaseFiles, ["tests/api/auth/login.dsl", "tests/api/auth/logout.auto"]);
   assert.deepEqual(suites.get("api/auth").generatedFiles, []);
   assert.deepEqual(suites.get("api").pythonTestFiles, ["tests/api/test_contract.py"]);
   assert.equal(suites.get("ui/pages").dslCaseCount, 1);
   assert.equal(snapshot.suiteTree.path, "tests");
-  assert.equal(findTreeNode(snapshot.suiteTree, "api/auth").suiteId, "api/auth");
+  
+  const rootNode = snapshot.suiteTree;
+  const rootDslFileNode = rootNode.children.find(c => c.type === "file" && c.name === "root_case.dsl");
+  assert.ok(rootDslFileNode);
+  assert.equal(rootDslFileNode.fileType, "dsl");
+
+  const authNode = findTreeNode(snapshot.suiteTree, "api/auth");
+  assert.equal(authNode.suiteId, "api/auth");
+  assert.equal(authNode.children.length, 2);
+  assert.equal(authNode.children[0].type, "file");
+  assert.equal(authNode.children[0].name, "login.dsl");
+  assert.equal(authNode.children[1].name, "logout.auto");
+
   assert.equal(findTreeNode(snapshot.suiteTree, "ui/pages").suiteId, "ui/pages");
   assert.equal(
     snapshot.editableFiles.some((file) => file.relativePath.includes(".pytest-dsl-generated")),

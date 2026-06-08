@@ -85,11 +85,14 @@ function generatePytestFiles(projectRoot, selectedSuiteIds = []) {
   return [];
 }
 
-function buildPytestTargets(projectRoot, selectedSuiteIds = []) {
+function buildPytestTargets(projectRoot, selectedSuiteIds = [], selectedFiles = null) {
   const root = path.resolve(projectRoot);
   const testsRoot = path.join(root, "tests");
   if (!fs.existsSync(testsRoot) || !fs.statSync(testsRoot).isDirectory()) {
     return [];
+  }
+  if (selectedFiles && Array.isArray(selectedFiles) && selectedFiles.length > 0) {
+    return selectedFiles.map((f) => relativeToRoot(root, path.resolve(root, f)));
   }
   const selected = Array.isArray(selectedSuiteIds) ? selectedSuiteIds : [];
   if (selected.length === 0 || selected.includes("all")) {
@@ -166,6 +169,7 @@ function toSuiteMetadata(suite, projectRoot) {
     rootPath: relativeToRoot(projectRoot, suite.rootPath),
     dslCaseCount: suite.dslCaseFiles.length,
     pythonTestCount: suite.pythonTestFiles.length,
+    dslCaseFiles: suite.dslCaseFiles.sort().map((filePath) => relativeToRoot(projectRoot, filePath)),
     generatedFiles: suite.generatedFiles.sort().map((filePath) => relativeToRoot(projectRoot, filePath)),
     pythonTestFiles: suite.pythonTestFiles.sort().map((filePath) => relativeToRoot(projectRoot, filePath)),
     diagnostics: [...suite.diagnostics],
@@ -201,11 +205,50 @@ function applySuiteToNode(node, suite) {
   node.dslCaseCount = suite.dslCaseCount || 0;
   node.pythonTestCount = suite.pythonTestCount || 0;
   node.diagnostics = suite.diagnostics || [];
+
+  if (!node.children) {
+    node.children = [];
+  }
+
+  if (suite.dslCaseFiles) {
+    suite.dslCaseFiles.forEach((file) => {
+      node.children.push({
+        type: "file",
+        path: file,
+        name: path.basename(file),
+        suiteId: suite.id,
+        filePath: file,
+        fileType: "dsl"
+      });
+    });
+  }
+
+  if (suite.pythonTestFiles) {
+    suite.pythonTestFiles.forEach((file) => {
+      node.children.push({
+        type: "file",
+        path: file,
+        name: path.basename(file),
+        suiteId: suite.id,
+        filePath: file,
+        fileType: "python"
+      });
+    });
+  }
 }
 
 function sortSuiteTree(node) {
-  node.children.sort((left, right) => left.name.localeCompare(right.name));
-  node.children.forEach(sortSuiteTree);
+  if (node.children) {
+    node.children.sort((left, right) => {
+      const leftIsDir = left.type === "directory";
+      const rightIsDir = right.type === "directory";
+      if (leftIsDir !== rightIsDir) {
+        return leftIsDir ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name);
+    });
+    node.children.forEach(sortSuiteTree);
+  }
 }
 
 function isPytestFile(basename) {

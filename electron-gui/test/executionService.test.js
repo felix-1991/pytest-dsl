@@ -127,6 +127,33 @@ test("suite execution plans use directory pytest targets for selected suites", (
   );
 });
 
+test("suite execution plans support file level filtering via selectedFiles", () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/root_case.dsl", "[打印], 内容: \"root\"\n");
+  writeFile(root, "tests/api/auth/login.dsl", "[打印], 内容: \"login\"\n");
+  writeFile(root, "tests/api/auth/logout.dsl", "[打印], 内容: \"logout\"\n");
+
+  const plan = createExecutionPlan({
+    taskId: "suite-file-plan",
+    projectRoot: root,
+    mode: "suite",
+    selectedSuiteIds: ["api/auth"],
+    selectedFiles: ["tests/api/auth/login.dsl"],
+    yamlVars: ["config/dev.yaml"],
+  });
+
+  assert.equal(plan.mode, "suite");
+  assert.equal(plan.command, "pytest");
+  assert.equal(plan.source.kind, "suite");
+  assert.deepEqual(plan.source.selectedFiles, ["tests/api/auth/login.dsl"]);
+  assert.deepEqual(plan.args, [
+    "tests/api/auth/login.dsl",
+    "--yaml-vars",
+    "config/dev.yaml",
+  ]);
+  assert.match(plan.displayCommand, /^pytest tests\/api\/auth\/login\.dsl --yaml-vars config\/dev\.yaml$/);
+});
+
 test("execution plans mirror source paths for temporary materialization", () => {
   const root = makeTempProject();
   writeFile(root, "tests/nested/case.dsl", "@import: \"helpers.resource\"\n[打印], 内容: \"ok\"\n");
