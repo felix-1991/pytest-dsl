@@ -1,17 +1,46 @@
 const api = window.pytestDslGui;
 
+function createConsoleBuffer() {
+  return {
+    lines: [],
+    commandOutputChunks: [],
+  };
+}
+
+function createConsoleView() {
+  return {
+    wrap: true,
+    open: false,
+    expanded: false,
+  };
+}
+
+function createCommandPreview(command = "pytest-dsl") {
+  return {
+    command,
+    context: "preview",
+    persistent: false,
+    taskId: null,
+  };
+}
+
 const state = {
   snapshot: null,
   currentFile: null,
   dirty: false,
   filter: "",
+  buildCaseFilter: "",
   selectedConfigPaths: [],
   selectedSuiteIds: [],
   selectedFileOverrides: {},
+  selectedBuildSuiteIds: [],
+  selectedBuildFileOverrides: {},
   expandedSuiteNodes: new Set(),
   suiteSelectionTouched: false,
+  buildSelectionTouched: false,
   selectedTreePath: "",
   selectedTreeKind: "directory",
+  activeView: "debug",
   collapsedTreeDirs: new Set(),
   configSignature: null,
   remoteStatus: emptyRemoteStatus(),
@@ -20,6 +49,13 @@ const state = {
   remoteMonitorRunning: false,
   currentTaskId: null,
   currentTaskMode: null,
+  currentBuildId: null,
+  currentBuildReportUrl: "",
+  currentBuildReportText: "",
+  currentBuildResultsDir: "",
+  buildReportReloadTimer: null,
+  buildReportReloadSeq: 0,
+  buildHistory: [],
   currentDebugLine: null,
   debugStartLine: null,
   debugPaused: false,
@@ -30,17 +66,18 @@ const state = {
   keywordLoadSeq: 0,
   keywordLoading: false,
   keywords: [],
-  consoleLines: [],
-  commandOutputChunks: [],
-  console: {
-    wrap: true,
-    expanded: false,
+  consoleBuffers: {
+    debug: createConsoleBuffer(),
+    build: createConsoleBuffer(),
   },
-  commandPreview: {
-    command: "pytest-dsl",
-    context: "preview",
-    persistent: false,
-    taskId: null,
+  console: {
+    activeScope: "debug",
+    debug: createConsoleView(),
+    build: createConsoleView(),
+  },
+  commandPreviews: {
+    debug: createCommandPreview(),
+    build: createCommandPreview(),
   },
   treeContext: null,
   draggedTreeFile: null,
@@ -80,6 +117,13 @@ const COMMAND_CONTEXT_LABELS = {
   run: "文件运行",
   debug: "调试",
   suite: "测试套运行",
+  build: "构建运行",
+};
+
+const BUILD_STATUS_LABELS = {
+  passed: "构建通过",
+  failed: "构建失败",
+  stopped: "构建已停止",
 };
 
 const el = {};
@@ -119,6 +163,7 @@ function cacheElements() {
   [
     "projectName",
     "projectRoot",
+    "topbar",
     "suitePicker",
     "suiteTrigger",
     "suiteSummary",
@@ -134,18 +179,39 @@ function cacheElements() {
     "refreshBtn",
     "settingsBtn",
     "runAllBtn",
+    "debugNavBtn",
+    "buildNavBtn",
     "treeRefreshBtn",
     "expandAllBtn",
     "collapseAllBtn",
     "branchName",
+    "treePaneTitle",
     "fileFilter",
     "fileTree",
+    "buildCaseTree",
     "treeContextMenu",
     "dirtyDot",
     "activeTab",
     "fileTitle",
     "filePath",
     "mainStage",
+    "debugWorkspace",
+    "buildPanel",
+    "buildRunBtn",
+    "buildStopBtn",
+    "buildOpenReportBtn",
+    "buildToggleConsoleBtn",
+    "buildStatus",
+    "buildScope",
+    "buildConfigSummary",
+    "buildPytestArgs",
+    "buildAllureStatus",
+    "buildCommand",
+    "buildResultsDir",
+    "buildReportUrl",
+    "buildReportFrame",
+    "buildReportEmpty",
+    "buildHistoryList",
     "editActionGroup",
     "executionActionGroup",
     "debugSessionGroup",
@@ -169,6 +235,9 @@ function cacheElements() {
     "commandContext",
     "commandPreview",
     "bottomConsole",
+    "consoleToggleBtn",
+    "consoleStatusToggleBtn",
+    "consoleActions",
     "copyConsoleBtn",
     "wrapConsoleBtn",
     "expandConsoleBtn",
@@ -180,6 +249,7 @@ function cacheElements() {
     "metadataList",
     "deductionList",
     "workspaceStatus",
+    "actionStatus",
     "gitStatus",
     "remoteStatusBar",
     "entryDialog",
@@ -204,10 +274,18 @@ function bindEvents() {
   el.debugStepsBtn.addEventListener("click", () =>
     runExecutionTask("debug", currentDebugRunOptions()),
   );
+  el.debugNavBtn.addEventListener("click", () => switchWorkspaceView("debug"));
+  el.buildNavBtn.addEventListener("click", () => switchWorkspaceView("build"));
+  el.buildRunBtn.addEventListener("click", runBuildExecution);
+  el.buildStopBtn.addEventListener("click", stopCurrentTask);
+  el.buildOpenReportBtn.addEventListener("click", openCurrentBuildReport);
+  el.buildToggleConsoleBtn.addEventListener("click", toggleConsoleOpen);
   el.nextStepBtn.addEventListener("click", () => sendDebugCommand("next"));
   el.continueDebugBtn.addEventListener("click", () => sendDebugCommand("continue"));
   el.stopBtn.addEventListener("click", stopCurrentTask);
   el.runAllBtn.addEventListener("click", runSuiteExecution);
+  el.consoleToggleBtn.addEventListener("click", toggleConsoleOpen);
+  el.consoleStatusToggleBtn.addEventListener("click", toggleConsoleOpen);
   el.copyConsoleBtn.addEventListener("click", copyConsoleOutput);
   el.wrapConsoleBtn.addEventListener("click", toggleConsoleWrap);
   el.expandConsoleBtn.addEventListener("click", toggleConsoleExpanded);
@@ -253,12 +331,20 @@ function bindEvents() {
       String(el.suitePicker.classList.contains("is-open")),
     );
   });
-  el.expandAllBtn.addEventListener("click", () =>
-    setAllTreeGroupsCollapsed(false),
-  );
-  el.collapseAllBtn.addEventListener("click", () =>
-    setAllTreeGroupsCollapsed(true),
-  );
+  el.expandAllBtn.addEventListener("click", () => {
+    if (state.activeView === "build") {
+      setAllBuildCaseGroupsExpanded(true);
+    } else {
+      setAllTreeGroupsCollapsed(false);
+    }
+  });
+  el.collapseAllBtn.addEventListener("click", () => {
+    if (state.activeView === "build") {
+      setAllBuildCaseGroupsExpanded(false);
+    } else {
+      setAllTreeGroupsCollapsed(true);
+    }
+  });
   el.settingsBtn.addEventListener("click", () =>
     appendLog("info", "Settings shell is not implemented in this MVP"),
   );
@@ -279,11 +365,20 @@ function bindEvents() {
     );
   });
   el.fileFilter.addEventListener("input", () => {
-    state.filter = el.fileFilter.value.trim().toLowerCase();
+    const value = el.fileFilter.value.trim().toLowerCase();
+    if (state.activeView === "build") {
+      state.buildCaseFilter = value;
+      renderBuildCaseTree();
+      return;
+    }
+    state.filter = value;
     renderFileTree();
   });
   if (typeof api.onExecutionEvent === "function") {
     api.onExecutionEvent(handleExecutionEvent);
+  }
+  if (typeof api.onBuildEvent === "function") {
+    api.onBuildEvent(handleBuildEvent);
   }
 }
 
@@ -300,6 +395,46 @@ function closeConfigPicker() {
 function closeTopPickers() {
   closeSuitePicker();
   closeConfigPicker();
+}
+
+function switchWorkspaceView(view) {
+  const nextView = view === "build" ? "build" : "debug";
+  const isBuildView = nextView === "build";
+  if (isBuildView && !confirmDiscardDirtyBeforeBuild()) {
+    return;
+  }
+  state.activeView = nextView;
+  el.debugWorkspace.hidden = isBuildView;
+  el.buildPanel.hidden = !isBuildView;
+  el.topbar.classList.toggle("is-build-view", isBuildView);
+  el.suitePicker.hidden = isBuildView;
+  el.runAllBtn.hidden = isBuildView;
+  if (isBuildView) {
+    closeSuitePicker();
+  }
+  el.debugNavBtn.classList.toggle("is-active", !isBuildView);
+  el.buildNavBtn.classList.toggle("is-active", isBuildView);
+  updateTreePaneForActiveView();
+  setConsoleScope(nextView);
+  if (isBuildView) {
+    ensureBuildCaseTreeExpanded();
+    renderBuildCaseTree();
+    updateBuildSummary();
+    previewCommand(buildCommandLabel(), { force: true, scope: "build" });
+  } else {
+    previewCommand(currentCommand(), { force: true, scope: "debug" });
+  }
+}
+
+function confirmDiscardDirtyBeforeBuild() {
+  if (!state.dirty) {
+    return true;
+  }
+  const confirmed = window.confirm("当前文件有未保存修改，切换到构建页面前请确认。继续切换？");
+  if (!confirmed) {
+    showActionFeedback("当前文件有未保存修改，已停留在调试页面", "warn");
+  }
+  return confirmed;
 }
 
 function closeTransientPanelsForOutsideClick(event) {
@@ -349,12 +484,23 @@ function startPanelResize(kind, event) {
     return;
   }
   event.preventDefault();
+  const resizer = event.currentTarget;
+  if (resizer && typeof resizer.setPointerCapture === "function") {
+    resizer.setPointerCapture(event.pointerId);
+  }
   const config = LAYOUT_SIZES[kind];
   const startPosition = config.axis === "y" ? event.clientY : event.clientX;
   const startSize = getLayoutSize(kind);
+  let pendingSize = startSize;
+  let animationFrame = null;
   document.body.classList.add(
     config.axis === "y" ? "is-resizing-console" : "is-resizing-layout",
   );
+
+  const flushResize = () => {
+    animationFrame = null;
+    setLayoutSize(kind, pendingSize, { persist: false });
+  };
 
   const handlePointerMove = (moveEvent) => {
     const currentPosition = config.axis === "y"
@@ -364,16 +510,35 @@ function startPanelResize(kind, event) {
     const nextSize = config.axis === "y"
       ? startSize - delta
       : startSize + delta;
-    setLayoutSize(kind, nextSize);
+    pendingSize = nextSize;
+    if (animationFrame === null) {
+      animationFrame = requestAnimationFrame(flushResize);
+    }
   };
 
-  const stopResize = () => {
+  const stopResize = (event) => {
+    if (animationFrame !== null) {
+      cancelAnimationFrame(animationFrame);
+      flushResize();
+    }
+    persistLayoutSizing();
+    if (
+      resizer &&
+      typeof resizer.releasePointerCapture === "function" &&
+      typeof resizer.hasPointerCapture === "function" &&
+      event &&
+      resizer.hasPointerCapture(event.pointerId)
+    ) {
+      resizer.releasePointerCapture(event.pointerId);
+    }
     document.body.classList.remove("is-resizing-layout", "is-resizing-console");
     document.removeEventListener("pointermove", handlePointerMove);
+    document.removeEventListener("pointercancel", stopResize);
   };
 
   document.addEventListener("pointermove", handlePointerMove);
   document.addEventListener("pointerup", stopResize, { once: true });
+  document.addEventListener("pointercancel", stopResize, { once: true });
 }
 
 function handleResizerKeydown(kind, event) {
@@ -497,11 +662,17 @@ function applySnapshot(snapshot, logMessage, preferredFile = null) {
     : null;
   if (projectChanged) {
     resetKeywordBrowser();
+    state.currentBuildId = null;
+    state.currentBuildResultsDir = "";
+    state.buildHistory = [];
+    resetBuildReport();
     state.suiteSelectionTouched = false;
+    state.buildSelectionTouched = false;
     state.selectedTreePath = "";
     state.selectedTreeKind = "directory";
     state.collapsedTreeDirs.clear();
     state.selectedFileOverrides = {};
+    state.selectedBuildFileOverrides = {};
     state.expandedSuiteNodes.clear();
     closeEntryDialog(null);
   }
@@ -537,10 +708,16 @@ function setEmptyProjectState() {
   state.selectedConfigPaths = [];
   state.selectedSuiteIds = [];
   state.selectedFileOverrides = {};
+  state.selectedBuildSuiteIds = [];
+  state.selectedBuildFileOverrides = {};
   state.expandedSuiteNodes.clear();
   state.suiteSelectionTouched = false;
+  state.buildSelectionTouched = false;
   state.selectedTreePath = "";
   state.selectedTreeKind = "directory";
+  state.activeView = "debug";
+  state.filter = "";
+  state.buildCaseFilter = "";
   state.collapsedTreeDirs.clear();
   closeTreeContextMenu();
   closeEntryDialog(null);
@@ -549,14 +726,21 @@ function setEmptyProjectState() {
   state.remoteStatus = emptyRemoteStatus();
   state.currentTaskId = null;
   state.currentTaskMode = null;
+  state.currentBuildId = null;
+  state.currentBuildReportUrl = "";
+  state.currentBuildReportText = "";
+  state.currentBuildResultsDir = "";
+  state.buildHistory = [];
   state.currentDebugLine = null;
   state.debugStartLine = null;
   state.debugPaused = false;
   state.debugSelection = null;
   state.readonlySource = null;
+  resetAllConsoleState();
   resetKeywordBrowser();
   el.projectName.textContent = "pytest-dsl Local Workbench";
   el.projectRoot.textContent = "选择一个外部项目开始";
+  showActionFeedback("就绪", "info");
   el.branchName.textContent = "local";
   el.gitStatus.textContent = "local";
   el.workspaceStatus.textContent = "未打开项目";
@@ -565,6 +749,11 @@ function setEmptyProjectState() {
   renderRemoteStatus();
   el.suiteSummary.textContent = "打开项目后自动识别";
   el.suiteList.innerHTML = `<p class="empty">打开项目后显示 convention 测试套</p>`;
+  el.buildCaseTree.innerHTML = `<p class="empty">打开项目后显示可构建案例</p>`;
+  resetBuildReport();
+  renderBuildHistory();
+  switchWorkspaceView("debug");
+  updateBuildSummary();
   el.fileTree.innerHTML = `<p class="empty">点击“打开项目”选择本地 pytest-dsl 项目</p>`;
   el.configList.innerHTML = `<p class="empty">打开项目后显示可加载的 YAML 配置</p>`;
   el.configMerged.textContent = "{}";
@@ -586,6 +775,29 @@ function renderProject() {
   el.workspaceStatus.textContent = `${editableFiles.length} 文件 · ${snapshot.dslFiles.length} DSL · ${state.selectedConfigPaths.length}/${snapshot.config.sources.length} config · score ${snapshot.score.value}`;
   el.configCount.textContent = `${state.selectedConfigPaths.length}/${snapshot.config.sources.length}`;
   renderSuiteOptions(snapshot.suites || [], snapshot.suiteTree);
+  updateBuildSummary();
+}
+
+function showActionFeedback(message, level = "info") {
+  if (!el.actionStatus) {
+    return;
+  }
+  el.actionStatus.textContent = message;
+  el.actionStatus.title = message;
+  el.actionStatus.classList.remove("is-info", "is-pass", "is-warn", "is-error");
+  el.actionStatus.classList.add(`is-${level}`);
+}
+
+function updateTreePaneForActiveView() {
+  const isBuildView = state.activeView === "build";
+  el.treePaneTitle.textContent = isBuildView ? "构建案例" : "目录树";
+  el.fileTree.hidden = isBuildView;
+  el.buildCaseTree.hidden = !isBuildView;
+  el.fileFilter.placeholder = isBuildView ? "筛选案例" : "筛选文件";
+  const nextFilter = isBuildView ? state.buildCaseFilter : state.filter;
+  if (el.fileFilter.value !== nextFilter) {
+    el.fileFilter.value = nextFilter;
+  }
 }
 
 function renderFileTree() {
@@ -1322,6 +1534,7 @@ function renderConfig() {
   });
 
   el.configMerged.textContent = JSON.stringify(selectedMergedConfig(), null, 2);
+  updateBuildSummary();
 }
 
 function renderMetadata(metadata) {
@@ -1406,7 +1619,7 @@ function updateFileActionState() {
   const canDebug = executable && (runnableWholeFile || hasSelection || hasDebugStart);
 
   el.executionActionGroup.hidden = !executable;
-  el.debugSessionGroup.hidden = !isRunning;
+  el.debugSessionGroup.hidden = !isDebugRunning;
   el.keywordBtn.hidden = !showKeywordTools;
   el.commandBtn.hidden = !showKeywordTools;
   el.saveBtn.disabled = !hasFile || readonlySource;
@@ -1423,6 +1636,172 @@ function updateFileActionState() {
   }
   updateExecutionActionLabels(selection);
   previewCommand(currentCommand());
+  updateBuildActionState();
+}
+
+function updateBuildActionState() {
+  const hasProject = Boolean(state.snapshot);
+  const hasSuites = currentSelectedSuiteIds("build").length > 0;
+  const isBuildRunning = state.currentTaskId && state.currentTaskMode === "build";
+  const isAnyTaskRunning = Boolean(state.currentTaskId);
+  el.buildRunBtn.disabled = !hasProject || !hasSuites || isAnyTaskRunning;
+  el.buildStopBtn.hidden = !isBuildRunning;
+  el.buildStopBtn.disabled = !isBuildRunning;
+  el.buildOpenReportBtn.disabled = !state.currentBuildReportUrl;
+}
+
+function updateBuildSummary(options = {}) {
+  if (!el.buildScope) {
+    return;
+  }
+  const selectedSuiteIds = currentSelectedSuiteIds("build");
+  const yamlVars = selectedConfigSources().map((source) => source.relativePath);
+  const scopeLabel = state.snapshot
+    ? selectedSuiteIds.length > 0
+      ? suiteBuildScopeLabel(selectedSuiteIds)
+      : "未选择构建案例"
+    : "未打开项目";
+  const command = options.command || buildCommandLabel(activeBuildCommandId());
+  const resultsDir = options.resultsDir || state.currentBuildResultsDir || (
+    state.currentBuildId
+      ? buildResultsDirForBuild(state.currentBuildId)
+      : "运行后生成"
+  );
+  const reportText = options.reportText ||
+    state.currentBuildReportUrl ||
+    state.currentBuildReportText ||
+    "等待 Allure 报告";
+  const pytestArgs = buildPytestArgsLabel(yamlVars, activeBuildCommandId());
+  const configText = yamlVars.length > 0 ? yamlVars.join(", ") : "未选择 YAML 配置";
+
+  el.buildScope.textContent = yamlVars.length > 0
+    ? `${scopeLabel} · ${yamlVars.length} config`
+    : scopeLabel;
+  el.buildScope.title = el.buildScope.textContent;
+  el.buildConfigSummary.textContent = configText;
+  el.buildConfigSummary.title = configText;
+  el.buildPytestArgs.textContent = pytestArgs;
+  el.buildPytestArgs.title = pytestArgs;
+  el.buildAllureStatus.textContent = reportText;
+  el.buildAllureStatus.title = reportText;
+  el.buildCommand.textContent = command;
+  el.buildCommand.title = command;
+  el.buildResultsDir.textContent = resultsDir;
+  el.buildResultsDir.title = resultsDir;
+  el.buildReportUrl.textContent = reportText;
+  el.buildReportUrl.title = reportText;
+  if (options.status) {
+    el.buildStatus.textContent = options.status;
+  } else if (!state.snapshot) {
+    el.buildStatus.textContent = "打开项目后选择构建案例";
+  } else if (selectedSuiteIds.length === 0) {
+    el.buildStatus.textContent = "请在左侧选择要构建的案例";
+  } else if (state.currentTaskMode === "build") {
+    el.buildStatus.textContent = "构建运行中";
+  } else {
+    el.buildStatus.textContent = "准备运行 pytest 并生成 Allure 报告";
+  }
+  updateBuildActionState();
+}
+
+function resetBuildReport() {
+  clearBuildReportReloadTimer();
+  state.currentBuildReportUrl = "";
+  state.currentBuildReportText = "";
+  state.buildReportReloadSeq = 0;
+  el.buildReportFrame.src = "about:blank";
+  el.buildReportFrame.hidden = true;
+  el.buildReportEmpty.hidden = false;
+  el.buildReportUrl.textContent = "等待 Allure 报告";
+  el.buildAllureStatus.textContent = "等待 Allure 报告";
+  el.buildOpenReportBtn.disabled = true;
+}
+
+function setBuildReportUrl(url) {
+  state.currentBuildReportUrl = normalizeAllureReportUrl(url);
+  if (!state.currentBuildReportUrl) {
+    resetBuildReport();
+    return;
+  }
+  state.currentBuildReportText = "";
+  el.buildReportFrame.src = buildReportFrameUrl(state.currentBuildReportUrl);
+  el.buildReportFrame.hidden = false;
+  el.buildReportEmpty.hidden = true;
+  el.buildReportUrl.textContent = state.currentBuildReportUrl;
+  el.buildReportUrl.title = state.currentBuildReportUrl;
+  el.buildOpenReportBtn.disabled = false;
+  scheduleBuildReportFrameReload();
+}
+
+function buildReportFrameUrl(url) {
+  const value = String(url || "").trim();
+  if (!value) {
+    return "";
+  }
+  const reloadSeq = Number(arguments[1] || 0);
+  const token = encodeURIComponent(state.currentBuildId || String(Date.now()));
+  const hashIndex = value.indexOf("#");
+  const base = hashIndex >= 0 ? value.slice(0, hashIndex) : value;
+  const hash = hashIndex >= 0 ? value.slice(hashIndex) : "";
+  const separator = base.includes("?") ? "&" : "?";
+  const reloadToken = reloadSeq > 0 ? `-${encodeURIComponent(String(reloadSeq))}` : "";
+  return `${base}${separator}pytestDslBuild=${token}${reloadToken}${hash}`;
+}
+
+function scheduleBuildReportFrameReload() {
+  clearBuildReportReloadTimer();
+  scheduleBuildReportReloadAttempt(1);
+}
+
+function scheduleBuildReportReloadAttempt(attempt) {
+  if (!state.currentBuildReportUrl || attempt > 2) {
+    return;
+  }
+  const buildId = state.currentBuildId;
+  const reportUrl = state.currentBuildReportUrl;
+  const delayMs = attempt === 1 ? 500 : 1500;
+  state.buildReportReloadTimer = window.setTimeout(() => {
+    if (state.currentBuildId !== buildId || state.currentBuildReportUrl !== reportUrl) {
+      return;
+    }
+    state.buildReportReloadSeq += 1;
+    el.buildReportFrame.src = buildReportFrameUrl(state.currentBuildReportUrl, state.buildReportReloadSeq);
+    scheduleBuildReportReloadAttempt(attempt + 1);
+  }, delayMs);
+}
+
+function clearBuildReportReloadTimer() {
+  if (state.buildReportReloadTimer) {
+    window.clearTimeout(state.buildReportReloadTimer);
+    state.buildReportReloadTimer = null;
+  }
+}
+
+function normalizeAllureReportUrl(url) {
+  const value = String(url || "").trim();
+  if (!value) {
+    return "";
+  }
+  try {
+    const parsed = new URL(value);
+    const normalizedPath = parsed.pathname.replace(/\/+$/, "");
+    if (!normalizedPath) {
+      parsed.pathname = "/awesome/";
+    } else if (normalizedPath.endsWith("/awesome")) {
+      parsed.pathname = `${normalizedPath}/`;
+    }
+    return parsed.toString();
+  } catch (_error) {
+    return value;
+  }
+}
+
+function openCurrentBuildReport() {
+  if (!state.currentBuildReportUrl) {
+    appendLog("warn", "当前没有可打开的 Allure 报告");
+    return;
+  }
+  window.open(state.currentBuildReportUrl, "_blank", "noopener");
 }
 
 function updateExecutionActionLabels(selection = null) {
@@ -2120,8 +2499,10 @@ async function saveCurrentFile() {
     setDirty(false);
     renderMetadata(state.snapshot.metadata);
     appendLog("pass", `Saved ${result.relativePath} (${result.bytes} bytes)`);
+    showActionFeedback(`已保存 ${result.relativePath}`, "pass");
   } catch (error) {
     appendLog("error", errorMessage(error));
+    showActionFeedback(`保存失败: ${errorMessage(error)}`, "error");
   }
 }
 
@@ -2168,10 +2549,14 @@ async function runExecutionTask(mode, options = {}) {
   state.debugSelection = selection;
   state.currentDebugLine = null;
   CM6.setDebugState({ debugStartLine: state.debugStartLine, currentDebugLine: null, debugSelection: selection });
-  resetConsoleForExecution();
+  resetConsoleForExecution("debug");
+  setConsoleScope("debug");
   setRunningState(true, taskId, mode);
   setExecutionCommand(command, { mode, taskId });
-  appendLog("info", `${executionModeLabel(mode)} started: ${sourceLabel}`);
+  appendLog("info", `${executionModeLabel(mode)} started: ${sourceLabel}`, { scope: "debug" });
+  if (mode === "syntax") {
+    showActionFeedback("语法检查已提交", "info");
+  }
 
   try {
     await api.startExecution({
@@ -2185,7 +2570,10 @@ async function runExecutionTask(mode, options = {}) {
       yamlVars,
     });
   } catch (error) {
-    appendLog("error", errorMessage(error));
+    appendLog("error", errorMessage(error), { scope: "debug" });
+    if (mode === "syntax") {
+      showActionFeedback("语法检查失败", "error");
+    }
     if (state.currentTaskId === taskId) {
       releaseExecutionCommand(taskId);
       setRunningState(false);
@@ -2255,7 +2643,7 @@ async function runSuiteExecution() {
     return;
   }
 
-  const selectedSuiteIds = currentSelectedSuiteIds();
+  const selectedSuiteIds = currentSelectedSuiteIds("debug");
   if (selectedSuiteIds.length === 0) {
     appendLog("warn", "没有可运行的测试套");
     return;
@@ -2263,13 +2651,14 @@ async function runSuiteExecution() {
   const yamlVars = selectedConfigSources().map((source) => source.relativePath);
   const taskId = createTaskId("suite");
   const command = suiteCommandLabel(selectedSuiteIds, yamlVars);
-  resetConsoleForExecution();
+  resetConsoleForExecution("debug");
+  setConsoleScope("debug");
   setRunningState(true, taskId, "suite");
   setExecutionCommand(command, { mode: "suite", taskId });
-  appendLog("info", `测试套运行 started: ${selectedSuiteIds.join(", ")}`);
+  appendLog("info", `测试套运行 started: ${selectedSuiteIds.join(", ")}`, { scope: "debug" });
 
   try {
-    const selectedFiles = computeSelectedFiles();
+    const selectedFiles = computeSelectedFiles("debug");
     await api.startExecution({
       taskId,
       mode: "suite",
@@ -2279,10 +2668,64 @@ async function runSuiteExecution() {
       yamlVars,
     });
   } catch (error) {
-    appendLog("error", errorMessage(error));
+    appendLog("error", errorMessage(error), { scope: "debug" });
     if (state.currentTaskId === taskId) {
       releaseExecutionCommand(taskId);
       setRunningState(false);
+    }
+  }
+}
+
+async function runBuildExecution() {
+  if (!state.snapshot) {
+    appendLog("warn", "No project loaded");
+    return;
+  }
+  if (state.currentTaskId) {
+    appendLog("warn", "已有任务正在运行，请先停止或等待完成");
+    return;
+  }
+
+  const selectedSuiteIds = currentSelectedSuiteIds("build");
+  if (selectedSuiteIds.length === 0) {
+    appendLog("warn", "没有可运行的测试套");
+    return;
+  }
+
+  const selectedFiles = computeSelectedFiles("build");
+  const yamlVars = selectedConfigSources().map((source) => source.relativePath);
+  const buildId = createTaskId("build");
+  const command = buildCommandLabel(buildId);
+
+  state.currentBuildId = buildId;
+  state.currentBuildReportUrl = "";
+  state.currentBuildReportText = "";
+  state.currentBuildResultsDir = "";
+  resetBuildReport();
+  resetConsoleForExecution("build");
+  setConsoleScope("build");
+  setRunningState(true, buildId, "build");
+  setExecutionCommand(command, { mode: "build", taskId: buildId });
+  updateBuildSummary({
+    status: "构建启动中",
+    command,
+  });
+  appendLog("info", `构建运行 started: ${selectedSuiteIds.join(", ")}`, { scope: "build" });
+
+  try {
+    await api.startBuild({
+      buildId,
+      projectRoot: state.snapshot.project.rootPath,
+      selectedSuiteIds,
+      selectedFiles,
+      yamlVars,
+    });
+  } catch (error) {
+    appendLog("error", errorMessage(error), { scope: "build" });
+    if (state.currentTaskId === buildId) {
+      releaseExecutionCommand(buildId);
+      setRunningState(false);
+      updateBuildSummary({ status: "构建启动失败" });
     }
   }
 }
@@ -2294,14 +2737,17 @@ async function stopCurrentTask() {
   }
 
   const taskId = state.currentTaskId;
-  appendLog("warn", `Stop requested: ${taskId}`);
+  const scope = consoleScopeForMode(state.currentTaskMode);
+  appendLog("warn", `Stop requested: ${taskId}`, { scope });
   try {
-    const result = await api.stopExecution(taskId);
+    const result = state.currentTaskMode === "build"
+      ? await api.stopBuild(taskId)
+      : await api.stopExecution(taskId);
     if (!result || !result.stopped) {
-      appendLog("warn", "任务已经结束或不存在");
+      appendLog("warn", "任务已经结束或不存在", { scope });
     }
   } catch (error) {
-    appendLog("error", errorMessage(error));
+    appendLog("error", errorMessage(error), { scope });
   }
 }
 
@@ -2316,14 +2762,14 @@ async function sendDebugCommand(command) {
     updateFileActionState();
     const result = await api.sendExecutionCommand(state.currentTaskId, command);
     if (!result || !result.sent) {
-      appendLog("warn", `调试指令未发送: ${command}`);
+      appendLog("warn", `调试指令未发送: ${command}`, { scope: "debug" });
       state.debugPaused = Boolean(state.currentTaskId);
       updateFileActionState();
       return;
     }
-    appendLog("info", `Debug command: ${command}`);
+    appendLog("info", `Debug command: ${command}`, { scope: "debug" });
   } catch (error) {
-    appendLog("error", errorMessage(error));
+    appendLog("error", errorMessage(error), { scope: "debug" });
     state.debugPaused = Boolean(state.currentTaskId);
     updateFileActionState();
   }
@@ -2339,12 +2785,13 @@ function handleExecutionEvent(event) {
       context: commandContextForMode(event.mode),
       persistent: true,
       taskId: event.taskId,
+      scope: "debug",
     });
     return;
   }
 
   if (event.type === "stdout" || event.type === "stderr") {
-    appendProcessOutput(event.type === "stderr" ? "error" : "info", event.text);
+    appendProcessOutput(event.type === "stderr" ? "error" : "info", event.text, { scope: "debug" });
     return;
   }
 
@@ -2362,10 +2809,140 @@ function handleExecutionEvent(event) {
     appendLog(
       level,
       `${executionModeLabel(event.mode)} ${event.status} (${event.durationMs}ms)`,
+      { scope: "debug" },
     );
+    if (event.mode === "syntax") {
+      if (event.status === "passed") {
+        showActionFeedback("语法检查通过", "pass");
+      } else {
+        showActionFeedback("语法检查失败", "error");
+      }
+    }
     releaseExecutionCommand(event.taskId);
     setRunningState(false);
   }
+}
+
+function handleBuildEvent(event) {
+  if (!event || event.buildId !== state.currentBuildId) {
+    return;
+  }
+
+  if (event.type === "build-started") {
+    state.currentBuildResultsDir = event.allureResultsDir || "";
+    updateCommandPreview(event.command || buildCommandLabel(event.buildId), {
+      context: "build",
+      persistent: true,
+      taskId: event.buildId,
+      scope: "build",
+    });
+    updateBuildSummary({
+      status: "构建运行中",
+      command: event.command,
+      resultsDir: event.allureResultsDir,
+    });
+    return;
+  }
+
+  if (event.type === "report-started") {
+    updateBuildSummary({ status: "Allure watch 启动中" });
+    return;
+  }
+
+  if (event.type === "report-ready") {
+    state.currentBuildReportUrl = event.url || "";
+    setBuildReportUrl(state.currentBuildReportUrl);
+    appendLog("pass", `Allure report ready: ${state.currentBuildReportUrl}`, { scope: "build" });
+    return;
+  }
+
+  if (event.type === "report-unavailable") {
+    state.currentBuildReportText = `Allure 实时报告不可用: ${event.reason || "unknown"}`;
+    updateBuildSummary({ reportText: state.currentBuildReportText });
+    appendLog("warn", state.currentBuildReportText, { scope: "build" });
+    return;
+  }
+
+  if (event.type === "stdout" || event.type === "stderr") {
+    appendProcessOutput(event.type === "stderr" ? "error" : "info", event.text, { scope: "build" });
+    return;
+  }
+
+  if (event.type === "build-completed") {
+    const level = event.status === "passed"
+      ? "pass"
+      : event.status === "stopped"
+        ? "warn"
+        : "error";
+    appendLog(level, `${buildStatusLabel(event.status)} (${event.durationMs}ms)`, { scope: "build" });
+    if (event.reportUrl && !state.currentBuildReportUrl) {
+      setBuildReportUrl(event.reportUrl);
+    }
+    releaseExecutionCommand(event.buildId);
+    setRunningState(false);
+    updateBuildSummary({
+      status: buildStatusLabel(event.status),
+      command: buildCommandLabel(event.buildId),
+      resultsDir: event.allureResultsDir,
+    });
+    recordBuildHistory(event);
+  }
+}
+
+function buildStatusLabel(status) {
+  return BUILD_STATUS_LABELS[status] || `构建 ${status || "完成"}`;
+}
+
+function recordBuildHistory(event) {
+  const entry = {
+    buildId: event.buildId,
+    status: event.status,
+    durationMs: event.durationMs,
+    exitCode: event.exitCode,
+    resultsDir: event.allureResultsDir || "",
+    reportUrl: event.reportUrl || state.currentBuildReportUrl || "",
+    command: buildCommandLabel(event.buildId),
+    completedAt: new Date().toLocaleTimeString(),
+  };
+  state.buildHistory = [entry, ...state.buildHistory]
+    .filter((item, index, list) =>
+      index === list.findIndex((candidate) => candidate.buildId === item.buildId),
+    )
+    .slice(0, 8);
+  renderBuildHistory();
+}
+
+function renderBuildHistory() {
+  if (!el.buildHistoryList) {
+    return;
+  }
+  if (!state.buildHistory.length) {
+    el.buildHistoryList.innerHTML = `<p class="empty">还没有构建记录</p>`;
+    return;
+  }
+  el.buildHistoryList.innerHTML = state.buildHistory
+    .map((entry) => `
+      <article class="build-history-item">
+        <div class="build-history-line">
+          <strong>${escapeHtml(buildStatusLabel(entry.status))}</strong>
+          <span>${escapeHtml(entry.completedAt)}</span>
+        </div>
+        <code title="${escapeAttr(entry.command)}">${escapeHtml(entry.command)}</code>
+        <dl>
+          <div>
+            <dt>耗时</dt>
+            <dd>${Number(entry.durationMs || 0)}ms</dd>
+          </div>
+          <div>
+            <dt>退出码</dt>
+            <dd>${entry.exitCode === null || entry.exitCode === undefined ? "-" : escapeHtml(String(entry.exitCode))}</dd>
+          </div>
+        </dl>
+        <p title="${escapeAttr(entry.resultsDir)}">${escapeHtml(entry.resultsDir || "无结果目录")}</p>
+        ${entry.reportUrl ? `<a href="${escapeAttr(entry.reportUrl)}" target="_blank" rel="noreferrer">打开报告</a>` : ""}
+      </article>
+    `)
+    .join("");
 }
 
 function handleDebugStepEvent(event) {
@@ -2378,6 +2955,7 @@ function handleDebugStepEvent(event) {
     appendLog(
       "info",
       `Step line ${event.line || "?"}: ${event.description || event.nodeType || "DSL step"}`,
+      { scope: "debug" },
     );
     return;
   }
@@ -2387,6 +2965,7 @@ function handleDebugStepEvent(event) {
     appendLog(
       level,
       `Step ${event.status || "done"} line ${event.line || "?"}${event.error ? `: ${event.error}` : ""}`,
+      { scope: "debug" },
     );
 
     // Clear the current-line highlight immediately so the yellow
@@ -2413,19 +2992,7 @@ function setRunningState(isRunning, taskId = null, mode = null) {
     CM6.setDebugState({ debugStartLine: state.debugStartLine, currentDebugLine: null, debugSelection: null });
   }
   updateFileActionState();
-}
-
-function appendProcessOutput(level, text) {
-  state.commandOutputChunks.push(String(text || ""));
-  String(text || "")
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .filter((line) => line.length > 0)
-    .forEach((line) => appendLog(level, line));
-}
-
-function resetConsoleForExecution() {
-  clearConsole();
+  updateBuildActionState();
 }
 
 function createTaskId(mode) {
@@ -2448,6 +3015,7 @@ function executionModeLabel(mode) {
     run: "运行",
     debug: "调试",
     suite: "测试套运行",
+    build: "构建运行",
   };
   return labels[mode] || "执行";
 }
@@ -2456,8 +3024,11 @@ function currentCommand() {
   if (!state.snapshot) {
     return "pytest-dsl";
   }
+  if (state.activeView === "build") {
+    return buildCommandLabel(activeBuildCommandId());
+  }
   if (!state.currentFile || !isExecutableFile(state.currentFile)) {
-    return suiteCommandLabel(currentSelectedSuiteIds(), selectedConfigSources().map((source) => source.relativePath));
+    return suiteCommandLabel(currentSelectedSuiteIds("debug"), selectedConfigSources().map((source) => source.relativePath), "debug");
   }
   const selection = CM6.getSelection();
   const sourceLabel = executionSourceLabel(state.currentFile, selection, null);
@@ -2501,61 +3072,95 @@ function setDirty(isDirty) {
 }
 
 function previewCommand(command = currentCommand(), options = {}) {
-  if (state.currentTaskId || state.commandPreview.taskId) {
-    return state.commandPreview.command;
+  const scope = normalizeConsoleScope(options.scope || state.console.activeScope);
+  const preview = commandPreviewForScope(scope);
+  if (preview.taskId) {
+    return preview.command;
   }
-  if (state.commandPreview.persistent && !options.force) {
-    return state.commandPreview.command;
+  if (preview.persistent && !options.force) {
+    return preview.command;
   }
   return updateCommandPreview(command, {
     context: "preview",
     persistent: false,
     taskId: null,
+    scope,
   });
 }
 
 function setExecutionCommand(command, options = {}) {
+  const scope = normalizeConsoleScope(options.scope || consoleScopeForMode(options.mode));
   return updateCommandPreview(command, {
     context: commandContextForMode(options.mode),
     persistent: true,
     taskId: options.taskId || null,
+    scope,
   });
 }
 
 function releaseExecutionCommand(taskId) {
+  const preview = commandPreviewForTask(taskId) || currentCommandPreview();
   if (
     taskId &&
-    state.commandPreview.taskId &&
-    state.commandPreview.taskId !== taskId
+    preview.taskId &&
+    preview.taskId !== taskId
   ) {
-    return state.commandPreview.command;
+    return preview.command;
   }
-  state.commandPreview.taskId = null;
-  state.commandPreview.persistent = true;
-  return state.commandPreview.command;
+  preview.taskId = null;
+  preview.persistent = true;
+  renderCommandPreview();
+  return preview.command;
 }
 
 function resetCommandPreview(command = "pytest-dsl") {
-  return updateCommandPreview(command, {
-    context: "preview",
-    persistent: false,
-    taskId: null,
-  });
+  const preview = currentCommandPreview();
+  preview.command = command;
+  preview.context = "preview";
+  preview.persistent = false;
+  preview.taskId = null;
+  renderCommandPreview();
+  return command;
 }
 
 function updateCommandPreview(command, options = {}) {
+  const scope = normalizeConsoleScope(options.scope || consoleScopeForMode(options.context));
+  const preview = state.commandPreviews[scope];
   const normalized = String(command || "pytest-dsl").replace(/\s+/g, " ").trim() || "pytest-dsl";
-  state.commandPreview.command = normalized;
-  state.commandPreview.context = options.context || state.commandPreview.context || "preview";
-  state.commandPreview.persistent = Boolean(options.persistent);
-  state.commandPreview.taskId = options.taskId || null;
+  preview.command = normalized;
+  preview.context = options.context || preview.context || "preview";
+  preview.persistent = Boolean(options.persistent);
+  preview.taskId = options.taskId || null;
 
-  const label = commandContextLabel(state.commandPreview.context);
+  if (scope === state.console.activeScope) {
+    renderCommandPreview();
+  }
+  return normalized;
+}
+
+function currentCommandPreview() {
+  return commandPreviewForScope(state.console.activeScope);
+}
+
+function commandPreviewForScope(scope) {
+  return state.commandPreviews[normalizeConsoleScope(scope)];
+}
+
+function commandPreviewForTask(taskId) {
+  if (!taskId) {
+    return null;
+  }
+  return Object.values(state.commandPreviews)
+    .find((preview) => preview.taskId === taskId) || null;
+}
+
+function renderCommandPreview() {
+  const preview = currentCommandPreview();
+  const label = commandContextLabel(preview.context);
   el.commandContext.textContent = label;
   el.commandContext.title = label;
-  el.commandPreview.textContent = normalized;
-  el.commandPreview.title = normalized;
-  return normalized;
+  el.commandPreview.textContent = preview.command;
+  el.commandPreview.title = preview.command;
 }
 
 function commandContextForMode(mode) {
@@ -2566,30 +3171,95 @@ function commandContextLabel(context) {
   return COMMAND_CONTEXT_LABELS[context] || COMMAND_CONTEXT_LABELS.preview;
 }
 
-function appendLog(level, message) {
-  const row = document.createElement("div");
+function consoleScopeForMode(mode) {
+  return mode === "build" ? "build" : "debug";
+}
+
+function normalizeConsoleScope(scope) {
+  return scope === "build" ? "build" : "debug";
+}
+
+function setConsoleScope(scope) {
+  state.console.activeScope = normalizeConsoleScope(scope);
+  renderConsoleBuffer();
+  renderCommandPreview();
+  applyConsoleViewState();
+}
+
+function currentConsoleView() {
+  return state.console[state.console.activeScope];
+}
+
+function currentConsoleBuffer() {
+  return consoleBufferForScope(state.console.activeScope);
+}
+
+function consoleBufferForScope(scope) {
+  return state.consoleBuffers[normalizeConsoleScope(scope)];
+}
+
+function appendProcessOutput(level, text, options = {}) {
+  const scope = normalizeConsoleScope(options.scope || consoleScopeForMode(state.currentTaskMode));
+  const buffer = consoleBufferForScope(scope);
+  buffer.commandOutputChunks.push(String(text || ""));
+  String(text || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .forEach((line) => appendLog(level, line, { scope }));
+}
+
+function resetConsoleForExecution(scope) {
+  clearConsole(scope);
+}
+
+function appendLog(level, message, options = {}) {
+  const scope = normalizeConsoleScope(
+    options.scope || (state.currentTaskMode ? consoleScopeForMode(state.currentTaskMode) : state.console.activeScope),
+  );
   const now = new Date();
-  const timestamp = now.toTimeString().slice(0, 8);
-  const normalizedMessage = String(message ?? "");
-  state.consoleLines.push(`[${timestamp}] ${level.toUpperCase()} ${normalizedMessage}`);
+  const entry = {
+    timestamp: now.toTimeString().slice(0, 8),
+    level,
+    message: String(message ?? ""),
+  };
+  consoleBufferForScope(scope).lines.push(entry);
+  if (scope === state.console.activeScope) {
+    appendConsoleRow(entry);
+  }
+}
+
+function appendConsoleRow(entry) {
+  const row = document.createElement("div");
   row.className = "log-line";
   row.innerHTML = `
-    <span class="log-time">${timestamp}</span>
-    <span class="log-level ${level}">${level.toUpperCase()}</span>
-    <span class="log-message">${escapeHtml(normalizedMessage)}</span>
+    <span class="log-time">${entry.timestamp}</span>
+    <span class="log-level ${entry.level}">${entry.level.toUpperCase()}</span>
+    <span class="log-message">${escapeHtml(entry.message)}</span>
   `;
   el.consoleBody.appendChild(row);
   el.consoleBody.scrollTop = el.consoleBody.scrollHeight;
 }
 
-function clearConsole() {
-  state.consoleLines = [];
-  state.commandOutputChunks = [];
+function renderConsoleBuffer() {
+  if (!el.consoleBody) {
+    return;
+  }
   el.consoleBody.textContent = "";
+  currentConsoleBuffer().lines.forEach(appendConsoleRow);
+}
+
+function clearConsole(scope = state.console.activeScope) {
+  const buffer = consoleBufferForScope(scope);
+  buffer.lines = [];
+  buffer.commandOutputChunks = [];
+  if (normalizeConsoleScope(scope) === state.console.activeScope) {
+    renderConsoleBuffer();
+  }
 }
 
 async function copyConsoleOutput() {
-  const text = state.commandOutputChunks.join("");
+  const text = currentConsoleBuffer().commandOutputChunks.join("");
   if (!text) {
     appendLog("warn", "没有命令行输出可复制");
     return "";
@@ -2608,36 +3278,98 @@ async function copyConsoleOutput() {
 }
 
 function toggleConsoleWrap() {
-  state.console.wrap = !state.console.wrap;
+  const consoleView = currentConsoleView();
+  consoleView.wrap = !consoleView.wrap;
+  applyConsoleViewState();
+}
+
+function toggleConsoleOpen() {
+  const consoleView = currentConsoleView();
+  consoleView.open = !consoleView.open;
+  if (!consoleView.open) {
+    consoleView.expanded = false;
+  }
+  applyConsoleViewState();
+}
+
+function openConsolePanel(scope = state.console.activeScope) {
+  const consoleView = state.console[normalizeConsoleScope(scope)];
+  consoleView.open = true;
   applyConsoleViewState();
 }
 
 function toggleConsoleExpanded() {
-  state.console.expanded = !state.console.expanded;
+  const consoleView = currentConsoleView();
+  if (!consoleView.open) {
+    consoleView.open = true;
+    consoleView.expanded = false;
+  } else {
+    consoleView.expanded = !consoleView.expanded;
+  }
   applyConsoleViewState();
 }
 
 function applyConsoleViewState() {
+  const consoleView = currentConsoleView();
+  if (consoleView.expanded) {
+    consoleView.open = true;
+  }
   if (el.bottomConsole) {
-    el.bottomConsole.classList.toggle("is-unwrapped", !state.console.wrap);
+    el.bottomConsole.classList.toggle("is-unwrapped", !consoleView.wrap);
+    el.bottomConsole.classList.toggle("is-collapsed", !consoleView.open);
   }
   if (el.mainStage) {
-    el.mainStage.classList.toggle("is-console-expanded", state.console.expanded);
+    el.mainStage.classList.toggle("is-console-open", consoleView.open);
+    el.mainStage.classList.toggle("is-console-expanded", consoleView.expanded);
+  }
+  if (el.consoleToggleBtn) {
+    el.consoleToggleBtn.textContent = consoleView.open ? "收起控制台" : "打开控制台";
+    el.consoleToggleBtn.title = consoleView.open ? "收起当前控制台" : "打开当前控制台";
+    el.consoleToggleBtn.setAttribute("aria-expanded", String(consoleView.open));
+  }
+  if (el.consoleStatusToggleBtn) {
+    el.consoleStatusToggleBtn.textContent = consoleView.open ? "收起控制台" : "打开控制台";
+    el.consoleStatusToggleBtn.title = consoleView.open ? "收起当前控制台" : "打开当前控制台";
+    el.consoleStatusToggleBtn.setAttribute("aria-expanded", String(consoleView.open));
+  }
+  if (el.buildToggleConsoleBtn) {
+    el.buildToggleConsoleBtn.textContent = consoleView.open ? "收起控制台" : "打开控制台";
+    el.buildToggleConsoleBtn.title = consoleView.open ? "收起构建控制台" : "打开构建控制台";
+    el.buildToggleConsoleBtn.setAttribute("aria-pressed", String(consoleView.open));
   }
   if (el.wrapConsoleBtn) {
-    el.wrapConsoleBtn.textContent = state.console.wrap ? "不换行" : "自动换行";
-    el.wrapConsoleBtn.title = state.console.wrap
+    el.wrapConsoleBtn.textContent = consoleView.wrap ? "横滚" : "换行";
+    el.wrapConsoleBtn.title = consoleView.wrap
       ? "长输出改为横向滚动"
       : "长输出改为自动换行";
-    el.wrapConsoleBtn.setAttribute("aria-pressed", String(!state.console.wrap));
+    el.wrapConsoleBtn.setAttribute("aria-pressed", String(!consoleView.wrap));
   }
   if (el.expandConsoleBtn) {
-    el.expandConsoleBtn.textContent = state.console.expanded ? "还原" : "展开";
-    el.expandConsoleBtn.title = state.console.expanded
-      ? "还原运行输出高度"
-      : "展开运行输出";
-    el.expandConsoleBtn.setAttribute("aria-pressed", String(state.console.expanded));
+    el.expandConsoleBtn.textContent = consoleView.expanded ? "还原" : "最大化";
+    el.expandConsoleBtn.title = consoleView.expanded
+      ? "还原控制台高度"
+      : "最大化控制台";
+    el.expandConsoleBtn.setAttribute("aria-pressed", String(consoleView.expanded));
   }
+}
+
+function resetAllConsoleState() {
+  state.consoleBuffers = {
+    debug: createConsoleBuffer(),
+    build: createConsoleBuffer(),
+  };
+  state.console = {
+    activeScope: "debug",
+    debug: createConsoleView(),
+    build: createConsoleView(),
+  };
+  state.commandPreviews = {
+    debug: createCommandPreview(),
+    build: createCommandPreview(),
+  };
+  renderConsoleBuffer();
+  renderCommandPreview();
+  applyConsoleViewState();
 }
 
 function setAllTreeGroupsCollapsed(collapsed) {
@@ -2664,45 +3396,138 @@ function collectProjectDirectoryPaths(node) {
   ];
 }
 
+function ensureBuildCaseTreeExpanded() {
+  if (!state.snapshot || !state.snapshot.suiteTree) {
+    return;
+  }
+  collectSuiteDirectoryPaths(state.snapshot.suiteTree).forEach((nodePath) => {
+    state.expandedSuiteNodes.add(nodePath);
+  });
+}
+
+function setAllBuildCaseGroupsExpanded(expanded) {
+  if (!state.snapshot || !state.snapshot.suiteTree) {
+    return;
+  }
+  if (expanded) {
+    ensureBuildCaseTreeExpanded();
+  } else {
+    collectSuiteDirectoryPaths(state.snapshot.suiteTree).forEach((nodePath) => {
+      state.expandedSuiteNodes.delete(nodePath);
+    });
+  }
+  renderBuildCaseTree();
+}
+
+function collectSuiteDirectoryPaths(node) {
+  if (!node || node.type === "file") {
+    return [];
+  }
+  return [
+    node.path,
+    ...(node.children || []).flatMap(collectSuiteDirectoryPaths),
+  ].filter(Boolean);
+}
+
 function renderSuiteOptions(suites, suiteTree = null) {
   const availableSuites = Array.isArray(suites) ? suites : [];
   const ids = availableSuites.map((suite) => suite.id);
   const previous = state.selectedSuiteIds.filter((id) => ids.includes(id));
+  const previousBuild = state.selectedBuildSuiteIds.filter((id) => ids.includes(id));
   state.selectedSuiteIds = state.suiteSelectionTouched ? previous : ids;
+  state.selectedBuildSuiteIds = state.buildSelectionTouched ? previousBuild : ids;
   updateSuiteSummary(availableSuites);
   el.suiteList.innerHTML =
     availableSuites.length === 0
       ? `<p class="empty">未找到 convention 测试套</p>`
-      : renderSuiteTreeNode(suiteTree || buildFlatSuiteTree(availableSuites), 0);
-  
-  el.suiteList.querySelectorAll("[data-suite-checkbox]").forEach((input) => {
-    input.addEventListener("change", handleSuiteSelectionChange);
-  });
-  el.suiteList.querySelectorAll("[data-file-checkbox]").forEach((input) => {
-    input.addEventListener("change", handleFileSelectionChange);
-  });
-  el.suiteList.querySelectorAll("[data-suite-toggle]").forEach((toggle) => {
-    toggle.addEventListener("click", handleSuiteToggleClick);
-  });
+      : renderSuiteTreeNode(suiteTree || buildFlatSuiteTree(availableSuites), 0, "debug");
+  bindSuiteTreeEvents(el.suiteList);
   
   syncSuiteTreeCheckboxStates();
+  if (state.activeView === "build") {
+    renderBuildCaseTree();
+  }
   previewCommand(currentCommand());
 }
 
-function renderSuiteTreeNode(node, depth = 0) {
+function renderBuildCaseTree() {
+  if (!state.snapshot) {
+    el.buildCaseTree.innerHTML = `<p class="empty">打开项目后显示可构建案例</p>`;
+    return;
+  }
+
+  const suites = state.snapshot.suites || [];
+  if (suites.length === 0) {
+    el.buildCaseTree.innerHTML = `<p class="empty">未找到 convention 测试套</p>`;
+    return;
+  }
+
+  const tree = filteredSuiteTree(state.snapshot.suiteTree || buildFlatSuiteTree(suites), state.buildCaseFilter);
+  el.buildCaseTree.innerHTML = tree
+    ? renderSuiteTreeNode(tree, 0, "build")
+    : `<p class="empty">没有匹配的构建案例</p>`;
+  bindSuiteTreeEvents(el.buildCaseTree);
+  syncSuiteTreeCheckboxStates();
+}
+
+function bindSuiteTreeEvents(container) {
+  if (!container) {
+    return;
+  }
+  container.querySelectorAll("[data-suite-checkbox]").forEach((input) => {
+    input.addEventListener("change", handleSuiteSelectionChange);
+  });
+  container.querySelectorAll("[data-file-checkbox]").forEach((input) => {
+    input.addEventListener("change", handleFileSelectionChange);
+  });
+  container.querySelectorAll("[data-suite-toggle]").forEach((toggle) => {
+    toggle.addEventListener("click", handleSuiteToggleClick);
+  });
+}
+
+function filteredSuiteTree(node, filter) {
+  if (!node) {
+    return null;
+  }
+  const query = String(filter || "").trim().toLowerCase();
+  if (!query) {
+    return node;
+  }
+
+  const label = [
+    node.name,
+    node.path,
+    node.rootPath,
+    node.filePath,
+    node.suiteId,
+  ].filter(Boolean).join(" ").toLowerCase();
+  const children = (node.children || [])
+    .map((child) => filteredSuiteTree(child, query))
+    .filter(Boolean);
+  if (label.includes(query) || children.length > 0) {
+    return {
+      ...node,
+      children,
+    };
+  }
+  return null;
+}
+
+function renderSuiteTreeNode(node, depth = 0, scope = "debug") {
   if (!node) {
     return "";
   }
   
   if (node.type === "file") {
-    const isChecked = isFileSelected(node.suiteId, node.path);
+    const isChecked = isFileSelected(node.suiteId, node.path, scope);
     const fileCheckedStr = isChecked ? " checked" : "";
-    const fileIcon = node.fileType === "dsl" ? "📄" : "🐍";
+    const fileIcon = node.fileType === "dsl" ? "DSL" : "PY";
     return `
       <div class="suite-node suite-file-node" style="--depth: ${depth}">
         <label class="suite-option is-file">
           <span class="suite-spacer"></span>
           <input type="checkbox" data-file-checkbox 
+                 data-suite-scope="${escapeAttr(scope)}"
                  data-suite-id="${escapeAttr(node.suiteId || "")}" 
                  data-file-path="${escapeAttr(node.path || "")}"${fileCheckedStr}>
           <span class="file-icon">${fileIcon}</span>
@@ -2714,11 +3539,11 @@ function renderSuiteTreeNode(node, depth = 0) {
 
   const suiteId = node.suiteId;
   const suiteIds = collectSuiteNodeSuiteIds(node);
-  const checked = suiteIds.length > 0 && suiteIds.every((id) => state.selectedSuiteIds.includes(id))
+  const checked = suiteIds.length > 0 && suiteIds.every((id) => selectedSuiteIdsForScope(scope).includes(id))
     ? " checked"
     : "";
   const counts = `${node.dslCaseCount || 0} DSL / ${node.pythonTestCount || 0} py`;
-  const label = suiteId === "__root__" ? "根目录 (__root__)" : node.name;
+  const label = suiteId === "__root__" ? "根目录" : node.name;
   
   const hasChildren = node.children && node.children.length > 0;
   const isExpanded = state.expandedSuiteNodes.has(node.path);
@@ -2732,14 +3557,14 @@ function renderSuiteTreeNode(node, depth = 0) {
       <label class="suite-option${suiteId ? "" : " is-group"}">
         ${toggleArrow}
         ${suiteIds.length > 0
-          ? `<input type="checkbox" data-suite-checkbox data-suite-id="${escapeAttr(suiteId || "")}" data-suite-ids="${escapeAttr(JSON.stringify(suiteIds))}"${checked}>`
+          ? `<input type="checkbox" data-suite-checkbox data-suite-scope="${escapeAttr(scope)}" data-suite-id="${escapeAttr(suiteId || "")}" data-suite-ids="${escapeAttr(JSON.stringify(suiteIds))}"${checked}>`
           : `<span class="suite-spacer"></span>`}
         <span title="${escapeAttr(node.rootPath || node.path || label)}">${escapeHtml(label)}</span>
         <small>${suiteId ? escapeHtml(counts) : ""}</small>
       </label>
       ${hasChildren ? `
         <div class="suite-children ${isExpanded ? '' : 'is-collapsed'}">
-          ${isExpanded ? (node.children || []).map((child) => renderSuiteTreeNode(child, depth + 1)).join("") : ""}
+          ${isExpanded ? (node.children || []).map((child) => renderSuiteTreeNode(child, depth + 1, scope)).join("") : ""}
         </div>
       ` : ""}
     </div>
@@ -2763,10 +3588,12 @@ function buildFlatSuiteTree(suites) {
 }
 
 function handleSuiteSelectionChange(event) {
-  state.suiteSelectionTouched = true;
   const input = event.currentTarget;
+  const scope = input.dataset.suiteScope || "debug";
+  markSuiteSelectionTouched(scope);
   const suiteIds = suiteIdsFromSuiteInput(input);
-  const selected = new Set(state.selectedSuiteIds);
+  const selected = new Set(selectedSuiteIdsForScope(scope));
+  const overrides = selectedFileOverridesForScope(scope);
 
   suiteIds.forEach((suiteId) => {
     if (input.checked) {
@@ -2774,40 +3601,45 @@ function handleSuiteSelectionChange(event) {
     } else {
       selected.delete(suiteId);
     }
-    delete state.selectedFileOverrides[suiteId];
+    delete overrides[suiteId];
   });
 
-  state.selectedSuiteIds = normalizeSelectedSuiteIds([...selected]);
+  setSelectedSuiteIdsForScope(scope, [...selected]);
   syncSuiteTreeCheckboxStates();
   updateSuiteSummary(state.snapshot ? state.snapshot.suites || [] : []);
+  updateBuildSummary();
   previewCommand(currentCommand(), { force: true });
 }
 
 function handleFileSelectionChange(event) {
-  state.suiteSelectionTouched = true;
   const input = event.currentTarget;
+  const scope = input.dataset.suiteScope || "debug";
+  markSuiteSelectionTouched(scope);
   const suiteId = input.dataset.suiteId;
   const filePath = input.dataset.filePath;
+  const selectedSuiteIds = selectedSuiteIdsForScope(scope);
+  const overrides = selectedFileOverridesForScope(scope);
   
-  if (!state.selectedFileOverrides[suiteId]) {
-    const isSuiteSelected = state.selectedSuiteIds.includes(suiteId);
+  if (!overrides[suiteId]) {
+    const isSuiteSelected = selectedSuiteIds.includes(suiteId);
     const files = getSuiteFiles(suiteId);
     if (isSuiteSelected) {
-      state.selectedFileOverrides[suiteId] = new Set(files);
+      overrides[suiteId] = new Set(files);
     } else {
-      state.selectedFileOverrides[suiteId] = new Set();
+      overrides[suiteId] = new Set();
     }
   }
   
   if (input.checked) {
-    state.selectedFileOverrides[suiteId].add(filePath);
+    overrides[suiteId].add(filePath);
   } else {
-    state.selectedFileOverrides[suiteId].delete(filePath);
+    overrides[suiteId].delete(filePath);
   }
   
-  syncSuiteCheckboxFromFiles(suiteId);
+  syncSuiteCheckboxFromFiles(suiteId, scope);
   syncSuiteTreeCheckboxStates();
   updateSuiteSummary(state.snapshot ? state.snapshot.suites || [] : []);
+  updateBuildSummary();
   
   previewCommand(currentCommand(), { force: true });
 }
@@ -2835,20 +3667,12 @@ function handleSuiteToggleClick(event) {
       const node = findSuiteTreeNodeByPath(state.snapshot.suiteTree, path);
       if (node && node.children) {
         const depth = Number(parentNode.style.getPropertyValue("--depth") || "0");
+        const scope = parentNode.querySelector("[data-suite-scope]")?.dataset.suiteScope || activeSuiteSelectionScope();
         childrenContainer.innerHTML = node.children
-          .map((child) => renderSuiteTreeNode(child, depth + 1))
+          .map((child) => renderSuiteTreeNode(child, depth + 1, scope))
           .join("");
         
-        // Bind event listeners to new child nodes
-        childrenContainer.querySelectorAll("[data-suite-checkbox]").forEach((input) => {
-          input.addEventListener("change", handleSuiteSelectionChange);
-        });
-        childrenContainer.querySelectorAll("[data-file-checkbox]").forEach((input) => {
-          input.addEventListener("change", handleFileSelectionChange);
-        });
-        childrenContainer.querySelectorAll("[data-suite-toggle]").forEach((toggleBtn) => {
-          toggleBtn.addEventListener("click", handleSuiteToggleClick);
-        });
+        bindSuiteTreeEvents(childrenContainer);
         
         // Synchronize the checkbox states of the newly rendered children
         syncSuiteTreeCheckboxStates();
@@ -2870,20 +3694,21 @@ function findSuiteTreeNodeByPath(root, targetPath) {
 }
 
 
-function syncSuiteCheckboxFromFiles(suiteId) {
+function syncSuiteCheckboxFromFiles(suiteId, scope = "debug") {
   const files = getSuiteFiles(suiteId);
-  const override = state.selectedFileOverrides[suiteId];
+  const selectedSuiteIds = selectedSuiteIdsForScope(scope);
+  const overrides = selectedFileOverridesForScope(scope);
+  const override = overrides[suiteId];
   
   if (override) {
     if (override.size === 0) {
-      state.selectedSuiteIds = state.selectedSuiteIds.filter((id) => id !== suiteId);
+      setSelectedSuiteIdsForScope(scope, selectedSuiteIds.filter((id) => id !== suiteId));
     } else {
-      if (!state.selectedSuiteIds.includes(suiteId)) {
-        state.selectedSuiteIds.push(suiteId);
-        state.selectedSuiteIds = normalizeSelectedSuiteIds(state.selectedSuiteIds);
+      if (!selectedSuiteIds.includes(suiteId)) {
+        setSelectedSuiteIdsForScope(scope, [...selectedSuiteIds, suiteId]);
       }
       if (override.size === files.length) {
-        delete state.selectedFileOverrides[suiteId];
+        delete overrides[suiteId];
       }
     }
   }
@@ -2900,84 +3725,122 @@ function collectSuiteNodeSuiteIds(node) {
 }
 
 function syncSuiteTreeCheckboxStates() {
-  el.suiteList.querySelectorAll("[data-file-checkbox]").forEach((input) => {
-    const suiteId = input.dataset.suiteId;
-    const filePath = input.dataset.filePath;
-    input.checked = isFileSelected(suiteId, filePath);
-  });
-
-  el.suiteList.querySelectorAll("[data-suite-checkbox]").forEach((input) => {
-    const suiteId = input.dataset.suiteId;
-    const suiteIds = suiteIdsFromSuiteInput(input);
-    
-    if (suiteIds.length === 0) {
-      input.checked = false;
-      input.indeterminate = false;
-      return;
-    }
-    
-    let totalFilesCount = 0;
-    let selectedFilesCount = 0;
-    let anySuiteChecked = false;
-    let anySuiteUnchecked = false;
-    let anySuitePartial = false;
-    
-    suiteIds.forEach((id) => {
-      const isSuiteSelected = state.selectedSuiteIds.includes(id);
-      const files = getSuiteFiles(id);
-      
-      if (files.length === 0) {
-        if (isSuiteSelected) {
-          anySuiteChecked = true;
-        } else {
-          anySuiteUnchecked = true;
-        }
-        return;
-      }
-      
-      totalFilesCount += files.length;
-      
-      if (!isSuiteSelected) {
-        anySuiteUnchecked = true;
-        return;
-      }
-      
-      const override = state.selectedFileOverrides[id];
-      if (!override) {
-        selectedFilesCount += files.length;
-        anySuiteChecked = true;
-      } else {
-        selectedFilesCount += override.size;
-        if (override.size === files.length) {
-          anySuiteChecked = true;
-        } else if (override.size === 0) {
-          anySuiteUnchecked = true;
-        } else {
-          anySuitePartial = true;
-        }
-      }
+  suiteTreeContainers().forEach((container) => {
+    container.querySelectorAll("[data-file-checkbox]").forEach((input) => {
+      const scope = input.dataset.suiteScope || "debug";
+      const suiteId = input.dataset.suiteId;
+      const filePath = input.dataset.filePath;
+      input.checked = isFileSelected(suiteId, filePath, scope);
     });
-    
-    let checked = false;
-    let indeterminate = false;
-    
-    if (totalFilesCount > 0) {
-      checked = (selectedFilesCount === totalFilesCount);
-      indeterminate = (selectedFilesCount > 0 && selectedFilesCount < totalFilesCount);
-    } else {
-      checked = anySuiteChecked && !anySuiteUnchecked;
-      indeterminate = anySuiteChecked && anySuiteUnchecked;
-    }
-    
-    if (anySuitePartial) {
-      indeterminate = true;
-      checked = false;
-    }
-    
-    input.checked = checked;
-    input.indeterminate = indeterminate;
-    input.closest(".suite-option")?.classList.toggle("is-partial", indeterminate);
+
+    container.querySelectorAll("[data-suite-checkbox]").forEach((input) => {
+      const scope = input.dataset.suiteScope || "debug";
+      const suiteId = input.dataset.suiteId;
+      const suiteIds = suiteIdsFromSuiteInput(input);
+      const selectedSuiteIds = selectedSuiteIdsForScope(scope);
+      const overrides = selectedFileOverridesForScope(scope);
+
+      if (suiteIds.length === 0) {
+        input.checked = false;
+        input.indeterminate = false;
+        return;
+      }
+
+      let totalFilesCount = 0;
+      let selectedFilesCount = 0;
+      let anySuiteChecked = false;
+      let anySuiteUnchecked = false;
+      let anySuitePartial = false;
+
+      suiteIds.forEach((id) => {
+        const isSuiteSelected = selectedSuiteIds.includes(id);
+        const files = getSuiteFiles(id);
+
+        if (files.length === 0) {
+          if (isSuiteSelected) {
+            anySuiteChecked = true;
+          } else {
+            anySuiteUnchecked = true;
+          }
+          return;
+        }
+
+        totalFilesCount += files.length;
+
+        if (!isSuiteSelected) {
+          anySuiteUnchecked = true;
+          return;
+        }
+
+        const override = overrides[id];
+        if (!override) {
+          selectedFilesCount += files.length;
+          anySuiteChecked = true;
+        } else {
+          selectedFilesCount += override.size;
+          if (override.size === files.length) {
+            anySuiteChecked = true;
+          } else if (override.size === 0) {
+            anySuiteUnchecked = true;
+          } else {
+            anySuitePartial = true;
+          }
+        }
+      });
+
+      let checked = false;
+      let indeterminate = false;
+
+      if (totalFilesCount > 0) {
+        checked = (selectedFilesCount === totalFilesCount);
+        indeterminate = (selectedFilesCount > 0 && selectedFilesCount < totalFilesCount);
+      } else {
+        checked = anySuiteChecked && !anySuiteUnchecked;
+        indeterminate = anySuiteChecked && anySuiteUnchecked;
+      }
+
+      if (anySuitePartial) {
+        indeterminate = true;
+        checked = false;
+      }
+
+      input.checked = checked;
+      input.indeterminate = indeterminate;
+      input.closest(".suite-option")?.classList.toggle("is-partial", indeterminate);
+    });
   });
+}
+
+function suiteTreeContainers() {
+  return [el.suiteList, el.buildCaseTree].filter(Boolean);
+}
+
+function activeSuiteSelectionScope() {
+  return state.activeView === "build" ? "build" : "debug";
+}
+
+function selectedSuiteIdsForScope(scope = "debug") {
+  return scope === "build" ? state.selectedBuildSuiteIds : state.selectedSuiteIds;
+}
+
+function setSelectedSuiteIdsForScope(scope, suiteIds) {
+  if (scope === "build") {
+    state.selectedBuildSuiteIds = normalizeSelectedSuiteIds(suiteIds);
+    return;
+  }
+  state.selectedSuiteIds = normalizeSelectedSuiteIds(suiteIds);
+}
+
+function selectedFileOverridesForScope(scope = "debug") {
+  return scope === "build" ? state.selectedBuildFileOverrides : state.selectedFileOverrides;
+}
+
+function markSuiteSelectionTouched(scope = "debug") {
+  if (scope === "build") {
+    state.buildSelectionTouched = true;
+    return;
+  }
+  state.suiteSelectionTouched = true;
 }
 
 function suiteIdsFromSuiteInput(input) {
@@ -3003,7 +3866,7 @@ function availableSuiteIds() {
 
 function updateSuiteSummary(suites) {
   const total = Array.isArray(suites) ? suites.length : 0;
-  const selected = currentSelectedSuiteIds();
+  const selected = currentSelectedSuiteIds("debug");
   if (total === 0) {
     el.suiteSummary.textContent = "无测试套";
     return;
@@ -3059,16 +3922,16 @@ function updateSuiteSummary(suites) {
   }
 }
 
-function currentSelectedSuiteIds() {
+function currentSelectedSuiteIds(scope = activeSuiteSelectionScope()) {
   if (!state.snapshot || !Array.isArray(state.snapshot.suites)) {
     return [];
   }
   const availableIds = state.snapshot.suites.map((suite) => suite.id);
-  return state.selectedSuiteIds.filter((id) => availableIds.includes(id));
+  return selectedSuiteIdsForScope(scope).filter((id) => availableIds.includes(id));
 }
 
-function suiteCommandLabel(selectedSuiteIds, yamlVars) {
-  const selectedFiles = computeSelectedFiles();
+function suiteCommandLabel(selectedSuiteIds, yamlVars, scope = "debug") {
+  const selectedFiles = computeSelectedFiles(scope);
   const targets = selectedFiles ? selectedFiles : suiteTargetPathsForSelection(selectedSuiteIds);
   const suiteLabel = targets.length > 0
     ? targets.join(" ")
@@ -3079,13 +3942,54 @@ function suiteCommandLabel(selectedSuiteIds, yamlVars) {
   return `pytest ${suiteLabel}${args}`;
 }
 
-function computeSelectedFiles() {
+function buildCommandLabel(buildId = null) {
+  const yamlVars = selectedConfigSources().map((source) => source.relativePath);
+  const selectedFiles = computeSelectedFiles("build");
+  const targets = selectedFiles ? selectedFiles : suiteTargetPathsForSelection(currentSelectedSuiteIds("build"));
+  const targetLabel = targets.length > 0
+    ? targets.join(" ")
+    : "<未选择测试套>";
+  const resultsDir = buildResultsDirForBuild(buildId || "<build-id>");
+  const args = yamlVars.length > 0
+    ? ` ${yamlVars.map((item) => `--yaml-vars ${item}`).join(" ")}`
+    : "";
+  return `pytest ${targetLabel} --alluredir ${resultsDir}${args}`;
+}
+
+function buildPytestArgsLabel(yamlVars, buildId = null) {
+  const args = [
+    "--alluredir",
+    buildResultsDirForBuild(buildId || "<build-id>"),
+    ...yamlVars.flatMap((item) => ["--yaml-vars", item]),
+  ];
+  return args.join(" ");
+}
+
+function activeBuildCommandId() {
+  return state.currentTaskMode === "build" ? state.currentBuildId : null;
+}
+
+function buildResultsDirForBuild(buildId) {
+  return `.pytest-dsl-gui/builds/${buildId}/allure-results`;
+}
+
+function suiteBuildScopeLabel(selectedSuiteIds, scope = "build") {
+  const selectedFiles = computeSelectedFiles(scope);
+  if (selectedFiles && selectedFiles.length > 0) {
+    return `${selectedFiles.length} 文件`;
+  }
+  const targets = suiteTargetPathsForSelection(selectedSuiteIds);
+  return targets.length > 0 ? targets.join(" ") : "未选择测试套";
+}
+
+function computeSelectedFiles(scope = activeSuiteSelectionScope()) {
   const selectedFiles = [];
-  const selectedSuiteIds = currentSelectedSuiteIds();
+  const selectedSuiteIds = currentSelectedSuiteIds(scope);
+  const overrides = selectedFileOverridesForScope(scope);
   let hasOverride = false;
   
   selectedSuiteIds.forEach((suiteId) => {
-    const override = state.selectedFileOverrides[suiteId];
+    const override = overrides[suiteId];
     if (override) {
       hasOverride = true;
       override.forEach((file) => {
@@ -3102,12 +4006,12 @@ function computeSelectedFiles() {
   return hasOverride ? selectedFiles : null;
 }
 
-function isFileSelected(suiteId, filePath) {
-  const isSuiteSelected = state.selectedSuiteIds.includes(suiteId);
+function isFileSelected(suiteId, filePath, scope = "debug") {
+  const isSuiteSelected = selectedSuiteIdsForScope(scope).includes(suiteId);
   if (!isSuiteSelected) {
     return false;
   }
-  const override = state.selectedFileOverrides[suiteId];
+  const override = selectedFileOverridesForScope(scope)[suiteId];
   if (!override) {
     return true;
   }

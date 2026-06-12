@@ -1,0 +1,641 @@
+const fs = require("node:fs");
+const http = require("node:http");
+const https = require("node:https");
+const path = require("node:path");
+const { spawn, execFile } = require("node:child_process");
+const { randomUUID } = require("node:crypto");
+
+const { buildPytestTargets } = require("./suiteService");
+
+const runningBuilds = new Map();
+const URL_PATTERN = /(https?:\/\/[^\s'"]+)/;
+const ALLURE_VERSION_TIMEOUT_MS = 3000;
+const ALLURE_REPORT_READY_TIMEOUT_MS = 1500;
+const ALLURE_REPORT_READY_INTERVAL_MS = 100;
+const ALLURE_REPORT_COMPLETION_WAIT_MS = 2500;
+
+function createBuildPlan(options = {}) {
+  const projectRoot = assertProjectRoot(options.projectRoot);
+  const buildId = sanitizeId(options.buildId || options.taskId || randomUUID());
+  const yamlVars = normalizeYamlVars(options.yamlVars);
+  const selectedSuiteIds = normalizeSelectedSuiteIds(options.selectedSuiteIds);
+  const selectedFiles = options.selectedFiles || null;
+  const targets = buildPytestTargets(projectRoot, selectedSuiteIds, selectedFiles);
+  const buildRelativeDir = normalizePath(path.join(".pytest-dsl-gui", "builds", buildId));
+  const resultsRelativeDir = normalizePath(path.join(buildRelativeDir, "allure-results"));
+  const reportRelativeDir = normalizePath(path.join(buildRelativeDir, "allure-report"));
+  const buildDir = path.join(projectRoot, buildRelativeDir);
+  const allureResultsDir = path.join(projectRoot, resultsRelativeDir);
+  const allureReportDir = path.join(projectRoot, reportRelativeDir);
+  const args = [
+    ...targets,
+    "--alluredir",
+    resultsRelativeDir,
+    ...yamlArgs(yamlVars),
+  ];
+
+  return {
+    buildId,
+    taskId: buildId,
+    mode: "build",
+    cwd: projectRoot,
+    command: commandForPytest(options),
+    args,
+    displayCommand: displayBuildCommand(targets, resultsRelativeDir, yamlVars),
+    buildDir,
+    buildRelativeDir,
+    allureResultsDir,
+    allureResultsRelativeDir: resultsRelativeDir,
+    allureReportDir,
+    allureReportRelativeDir: reportRelativeDir,
+    stdoutPath: path.join(buildDir, "stdout.log"),
+    stderrPath: path.join(buildDir, "stderr.log"),
+    manifestPath: path.join(buildDir, "build.json"),
+    source: {
+      kind: "build",
+      selectedSuiteIds,
+      selectedFiles,
+      targets,
+      label: targets.length > 0 ? targets.join(" ") : "no targets",
+    },
+  };
+}
+
+async function startBuildTask(options = {}, callbacks = {}) {
+  const plan = createBuildPlan(options);
+  const env = executionEnv(options.env);
+  const startedAt = Date.now();
+
+  if (runningBuilds.has(plan.buildId)) {
+    throw new Error(`Build task is already running: ${plan.buildId}`);
+  }
+
+  prepareBuildDirectories(plan);
+  writeManifest(plan, {
+    buildId: plan.buildId,
+    status: "running",
+    startedAt: new Date(startedAt).toISOString(),
+    command: plan.displayCommand,
+    source: plan.source,
+    allureResultsDir: plan.allureResultsDir,
+    allureReportDir: plan.allureReportDir,
+    reportUrl: null,
+  });
+
+  const task = {
+    plan,
+    buildChild: null,
+    reportChild: null,
+    reportUrl: null,
+    stopped: false,
+    killTimer: null,
+    stdoutBuffer: "",
+    reportBuffer: "",
+    reportReadyPending: false,
+    reportReadyResolved: false,
+    reportReadyWaiters: [],
+  };
+  runningBuilds.set(plan.buildId, task);
+
+  emit(callbacks, {
+    type: "build-started",
+    taskId: plan.buildId,
+    buildId: plan.buildId,
+    mode: "build",
+    command: plan.displayCommand,
+    source: plan.source,
+    allureResultsDir: plan.allureResultsDir,
+    allureReportDir: plan.allureReportDir,
+  });
+
+  await maybeStartAllureWatch(task, options, env, callbacks);
+  const spawnTarget = options.pytestCommandOverride
+    ? options.pytestCommandOverride
+    : resolvePytestSpawnTarget(plan, options, env);
+
+  const child = spawn(spawnTarget.command, spawnTarget.args, {
+    cwd: plan.cwd,
+    env,
+    windowsHide: true,
+  });
+  task.buildChild = child;
+
+  child.stdout.on("data", (chunk) => {
+    const text = chunk.toString();
+    fs.appendFileSync(plan.stdoutPath, text);
+    emit(callbacks, {
+      type: "stdout",
+      taskId: plan.buildId,
+      buildId: plan.buildId,
+      text,
+    });
+  });
+
+  child.stderr.on("data", (chunk) => {
+    const text = chunk.toString();
+    fs.appendFileSync(plan.stderrPath, text);
+    emit(callbacks, {
+      type: "stderr",
+      taskId: plan.buildId,
+      buildId: plan.buildId,
+      text,
+    });
+  });
+
+  child.on("error", (error) => {
+    const text = `${error.message}\n`;
+    fs.appendFileSync(plan.stderrPath, text);
+    emit(callbacks, {
+      type: "stderr",
+      taskId: plan.buildId,
+      buildId: plan.buildId,
+      text,
+    });
+  });
+
+  return new Promise((resolve) => {
+    child.on("close", async (exitCode, signal) => {
+      const running = runningBuilds.get(plan.buildId);
+      const stopped = Boolean(running && running.stopped);
+      task.buildChild = null;
+      if (running && running.killTimer) {
+        clearTimeout(running.killTimer);
+      }
+
+      if (!stopped) {
+        await waitForReportReadyBeforeCompletion(task);
+      }
+
+      const status = stopped ? "stopped" : exitCode === 0 ? "passed" : "failed";
+      const completedAt = Date.now();
+      const result = {
+        taskId: plan.buildId,
+        buildId: plan.buildId,
+        mode: "build",
+        status,
+        exitCode,
+        signal,
+        durationMs: completedAt - startedAt,
+        reportUrl: task.reportUrl,
+        allureResultsDir: plan.allureResultsDir,
+        allureReportDir: plan.allureReportDir,
+      };
+
+      writeManifest(plan, {
+        buildId: plan.buildId,
+        status,
+        startedAt: new Date(startedAt).toISOString(),
+        completedAt: new Date(completedAt).toISOString(),
+        durationMs: result.durationMs,
+        command: plan.displayCommand,
+        source: plan.source,
+        exitCode,
+        signal,
+        allureResultsDir: plan.allureResultsDir,
+        allureReportDir: plan.allureReportDir,
+        reportUrl: task.reportUrl,
+      });
+
+      emit(callbacks, {
+        type: "build-completed",
+        ...result,
+      });
+
+      deleteBuildIfIdle(task);
+      resolve(result);
+    });
+  });
+}
+
+function stopBuildTask(buildId) {
+  const normalized = sanitizeId(buildId);
+  const task = runningBuilds.get(normalized);
+  if (!task) {
+    return { stopped: false, reason: "not-running" };
+  }
+
+  task.stopped = true;
+  if (task.buildChild && !task.buildChild.killed) {
+    task.buildChild.kill("SIGTERM");
+  }
+  if (task.reportChild && !task.reportChild.killed) {
+    task.reportChild.kill("SIGTERM");
+  }
+  task.killTimer = setTimeout(() => {
+    if (task.buildChild && !task.buildChild.killed) {
+      task.buildChild.kill("SIGKILL");
+    }
+    if (task.reportChild && !task.reportChild.killed) {
+      task.reportChild.kill("SIGKILL");
+    }
+  }, 1500);
+  if (typeof task.killTimer.unref === "function") {
+    task.killTimer.unref();
+  }
+  runningBuilds.delete(normalized);
+  return { stopped: true, buildId: normalized };
+}
+
+function hasRunningBuild(buildId) {
+  return runningBuilds.has(sanitizeId(buildId));
+}
+
+async function maybeStartAllureWatch(task, options, env, callbacks) {
+  if (options.enableAllureWatch === false) {
+    emit(callbacks, {
+      type: "report-unavailable",
+      taskId: task.plan.buildId,
+      buildId: task.plan.buildId,
+      reason: "disabled",
+    });
+    markReportReadyResolved(task);
+    return;
+  }
+
+  const spawnTarget = options.allureCommandOverride
+    ? options.allureCommandOverride
+    : await resolveAllureWatchSpawnTarget(task.plan, options, env);
+  if (!spawnTarget) {
+    emit(callbacks, {
+      type: "report-unavailable",
+      taskId: task.plan.buildId,
+      buildId: task.plan.buildId,
+      reason: "allure3-unavailable",
+    });
+    markReportReadyResolved(task);
+    return;
+  }
+
+  const child = spawn(spawnTarget.command, spawnTarget.args, {
+    cwd: task.plan.cwd,
+    env,
+    windowsHide: true,
+  });
+  task.reportChild = child;
+
+  emit(callbacks, {
+    type: "report-started",
+    taskId: task.plan.buildId,
+    buildId: task.plan.buildId,
+    command: [spawnTarget.command, ...spawnTarget.args].join(" "),
+  });
+
+  const handleText = (text) => {
+    task.reportBuffer += text;
+    const match = task.reportBuffer.match(URL_PATTERN);
+    if (match && !task.reportUrl && !task.reportReadyPending) {
+      task.reportReadyPending = true;
+      publishAllureReportReady(task, match[1], options, callbacks);
+    }
+  };
+
+  child.stdout.on("data", (chunk) => handleText(chunk.toString()));
+  child.stderr.on("data", (chunk) => handleText(chunk.toString()));
+  child.on("error", (error) => {
+    emit(callbacks, {
+      type: "report-unavailable",
+      taskId: task.plan.buildId,
+      buildId: task.plan.buildId,
+      reason: error.message,
+    });
+    markReportReadyResolved(task);
+  });
+  child.on("close", () => {
+    task.reportChild = null;
+    markReportReadyResolved(task);
+    deleteBuildIfIdle(task);
+  });
+}
+
+async function publishAllureReportReady(task, rawUrl, options, callbacks) {
+  const reportUrl = await resolveAllureReportUrl(rawUrl, options);
+  if (task.stopped || task.reportUrl) {
+    return;
+  }
+  task.reportUrl = reportUrl;
+  patchManifest(task.plan, { reportUrl: task.reportUrl });
+  emit(callbacks, {
+    type: "report-ready",
+    taskId: task.plan.buildId,
+    buildId: task.plan.buildId,
+    url: task.reportUrl,
+  });
+  markReportReadyResolved(task);
+}
+
+async function waitForReportReadyBeforeCompletion(task) {
+  if (task.reportReadyResolved || !task.reportChild) {
+    return;
+  }
+  await Promise.race([
+    new Promise((resolve) => {
+      task.reportReadyWaiters.push(resolve);
+    }),
+    delay(ALLURE_REPORT_COMPLETION_WAIT_MS),
+  ]);
+}
+
+function markReportReadyResolved(task) {
+  if (task.reportReadyResolved) {
+    return;
+  }
+  task.reportReadyResolved = true;
+  const waiters = task.reportReadyWaiters.splice(0);
+  waiters.forEach((resolve) => resolve());
+}
+
+async function resolveAllureReportUrl(rawUrl, options = {}) {
+  const directUrl = directAllureReportUrl(rawUrl);
+  if (typeof options.allureReportReadyProbe === "function") {
+    const probedUrl = await options.allureReportReadyProbe(rawUrl, directUrl);
+    return directAllureReportUrl(probedUrl || directUrl);
+  }
+  if (options.allureCommandOverride) {
+    return directUrl;
+  }
+  return waitForAllureReportReady(directUrl);
+}
+
+function directAllureReportUrl(rawUrl) {
+  const value = String(rawUrl || "").trim();
+  if (!value) {
+    return "";
+  }
+  try {
+    const parsed = new URL(value);
+    const normalizedPath = parsed.pathname.replace(/\/+$/, "");
+    if (!normalizedPath) {
+      parsed.pathname = "/awesome/";
+    } else if (normalizedPath.endsWith("/awesome")) {
+      parsed.pathname = `${normalizedPath}/`;
+    }
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch (_error) {
+    return value;
+  }
+}
+
+async function waitForAllureReportReady(reportUrl) {
+  const deadline = Date.now() + ALLURE_REPORT_READY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (await canLoadReportUrl(reportUrl)) {
+      return reportUrl;
+    }
+    await delay(ALLURE_REPORT_READY_INTERVAL_MS);
+  }
+  return reportUrl;
+}
+
+function canLoadReportUrl(reportUrl) {
+  return new Promise((resolve) => {
+    let parsed;
+    try {
+      parsed = new URL(reportUrl);
+    } catch (_error) {
+      resolve(false);
+      return;
+    }
+    const client = parsed.protocol === "https:" ? https : http;
+    const request = client.get(parsed, (response) => {
+      response.resume();
+      resolve(response.statusCode >= 200 && response.statusCode < 400);
+    });
+    request.setTimeout(ALLURE_REPORT_READY_INTERVAL_MS, () => {
+      request.destroy();
+      resolve(false);
+    });
+    request.on("error", () => resolve(false));
+  });
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function deleteBuildIfIdle(task) {
+  if (
+    runningBuilds.get(task.plan.buildId) === task &&
+    !task.buildChild &&
+    !task.reportChild
+  ) {
+    runningBuilds.delete(task.plan.buildId);
+  }
+}
+
+async function resolveAllureWatchSpawnTarget(plan, options = {}, env = process.env) {
+  const candidates = allureCandidates(plan.cwd, options, env);
+  for (const candidate of candidates) {
+    const major = await detectAllureMajor(candidate, plan.cwd, env);
+    if (major >= 3) {
+      return {
+        command: candidate.command,
+        args: [
+          ...candidate.args,
+          "watch",
+          plan.allureResultsDir,
+        ],
+      };
+    }
+  }
+  return null;
+}
+
+function allureCandidates(projectRoot, options = {}, env = process.env) {
+  const configured = options.allureExecutable || env.PYTEST_DSL_ALLURE;
+  const guiAllure = path.resolve(__dirname, "..", "..", "node_modules", ".bin", executableName("allure"));
+  const projectAllure = path.join(projectRoot, "node_modules", ".bin", executableName("allure"));
+  const candidates = [];
+  if (configured) {
+    candidates.push({ command: configured, args: [] });
+  }
+  if (fs.existsSync(guiAllure)) {
+    candidates.push({ command: guiAllure, args: [] });
+  }
+  if (fs.existsSync(projectAllure)) {
+    candidates.push({ command: projectAllure, args: [] });
+  }
+  if (isExecutableAvailable("allure", env)) {
+    candidates.push({ command: "allure", args: [] });
+  }
+  return candidates;
+}
+
+function detectAllureMajor(candidate, cwd, env) {
+  return new Promise((resolve) => {
+    const child = execFile(
+      candidate.command,
+      [...candidate.args, "--version"],
+      {
+        cwd,
+        env,
+        timeout: ALLURE_VERSION_TIMEOUT_MS,
+        windowsHide: true,
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          resolve(null);
+          return;
+        }
+        const text = `${stdout || ""}\n${stderr || ""}`;
+        const match = text.match(/(\d+)\.(\d+)\.(\d+)/);
+        resolve(match ? Number(match[1]) : null);
+      },
+    );
+    child.on("error", () => resolve(null));
+  });
+}
+
+function resolvePytestSpawnTarget(plan, options = {}, env = process.env) {
+  if (isExecutableAvailable(plan.command, env)) {
+    return {
+      command: plan.command,
+      args: plan.args,
+    };
+  }
+  return {
+    command: fallbackPythonExecutable(options),
+    args: ["-m", "pytest", ...plan.args],
+  };
+}
+
+function commandForPytest(options = {}) {
+  return options.pytestExecutable ||
+    process.env.PYTEST_DSL_PYTEST ||
+    "pytest";
+}
+
+function displayBuildCommand(targets, resultsDir, yamlVars) {
+  const targetArgs = targets.join(" ");
+  const configArgs = yamlVars.length > 0
+    ? ` ${yamlArgs(yamlVars).join(" ")}`
+    : "";
+  const prefix = targetArgs ? `pytest ${targetArgs}` : "pytest";
+  return `${prefix} --alluredir ${resultsDir}${configArgs}`;
+}
+
+function prepareBuildDirectories(plan) {
+  fs.mkdirSync(plan.allureResultsDir, { recursive: true });
+  fs.mkdirSync(plan.allureReportDir, { recursive: true });
+  fs.writeFileSync(plan.stdoutPath, "", "utf8");
+  fs.writeFileSync(plan.stderrPath, "", "utf8");
+}
+
+function writeManifest(plan, data) {
+  fs.mkdirSync(plan.buildDir, { recursive: true });
+  fs.writeFileSync(plan.manifestPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+function patchManifest(plan, data) {
+  let current = {};
+  try {
+    current = JSON.parse(fs.readFileSync(plan.manifestPath, "utf8"));
+  } catch (_error) {
+    current = {};
+  }
+  writeManifest(plan, {
+    ...current,
+    ...data,
+  });
+}
+
+function yamlArgs(yamlVars) {
+  return yamlVars.flatMap((item) => ["--yaml-vars", item]);
+}
+
+function normalizeYamlVars(yamlVars) {
+  return (Array.isArray(yamlVars) ? yamlVars : [])
+    .map(normalizeRelative)
+    .filter(Boolean);
+}
+
+function normalizeSelectedSuiteIds(selectedSuiteIds) {
+  return (Array.isArray(selectedSuiteIds) ? selectedSuiteIds : [])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+}
+
+function normalizeRelative(relativePath) {
+  const normalized = normalizePath(relativePath);
+  if (!normalized || normalized.startsWith("/") || normalized.includes("../")) {
+    throw new Error(`Invalid project-relative path: ${relativePath}`);
+  }
+  return normalized;
+}
+
+function assertProjectRoot(projectRoot) {
+  if (!projectRoot) {
+    throw new Error("projectRoot is required");
+  }
+  const root = path.resolve(projectRoot);
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    throw new Error(`Project root does not exist: ${projectRoot}`);
+  }
+  return root;
+}
+
+function executionEnv(extraEnv) {
+  const packageRoot = path.resolve(__dirname, "..", "..", "..");
+  const existingPythonPath = process.env.PYTHONPATH || "";
+  return {
+    ...process.env,
+    ...extraEnv,
+    PYTHONUNBUFFERED: "1",
+    PYTHONPATH: existingPythonPath
+      ? `${packageRoot}${path.delimiter}${existingPythonPath}`
+      : packageRoot,
+  };
+}
+
+function isExecutableAvailable(command, env = process.env) {
+  if (!command || command.includes("/") || command.includes("\\")) {
+    return Boolean(command && fs.existsSync(command));
+  }
+
+  const pathValue = env.PATH || env.Path || env.path || "";
+  const pathExts = process.platform === "win32"
+    ? (env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";")
+    : [""];
+  return pathValue.split(path.delimiter).some((directory) =>
+    pathExts.some((extension) =>
+      fs.existsSync(path.join(directory, `${command}${extension}`)),
+    ),
+  );
+}
+
+function fallbackPythonExecutable(options = {}) {
+  return options.pythonExecutable ||
+    process.env.PYTEST_DSL_PYTHON ||
+    process.env.PYTHON ||
+    "python";
+}
+
+function executableName(name) {
+  return process.platform === "win32" ? `${name}.cmd` : name;
+}
+
+function sanitizeId(value) {
+  const normalized = String(value || "").replace(/[^a-zA-Z0-9_.-]/g, "_");
+  if (!normalized) {
+    throw new Error("buildId is required");
+  }
+  return normalized;
+}
+
+function normalizePath(filePath) {
+  return String(filePath || "").replace(/\\/g, "/");
+}
+
+function emit(callbacks, event) {
+  if (callbacks && typeof callbacks.onEvent === "function") {
+    callbacks.onEvent(event);
+  }
+}
+
+module.exports = {
+  createBuildPlan,
+  hasRunningBuild,
+  startBuildTask,
+  stopBuildTask,
+};

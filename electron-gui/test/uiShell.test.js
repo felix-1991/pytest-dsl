@@ -46,8 +46,11 @@ test("renderer keeps the demo-aligned workbench shell", () => {
     "continueDebugBtn",
     "bottomConsole",
     "consoleBody",
+    "consoleToggleBtn",
+    "consoleStatusToggleBtn",
     "clearConsoleBtn",
     "commandPreview",
+    "actionStatus",
     "configDiagnostics",
     "configMerged",
     "metadataList",
@@ -89,6 +92,147 @@ test("suite runner uses multi-select suite controls", () => {
   assert.match(renderer, /mode:\s*"suite"/);
   assert.match(css, /\.suite-node/);
   assert.match(css, /\.suite-option\.is-partial/);
+});
+
+test("build center exposes pytest plus Allure report orchestration", () => {
+  [
+    "debugNavBtn",
+    "buildNavBtn",
+    "debugWorkspace",
+    "buildPanel",
+    "buildCaseTree",
+    "buildRunBtn",
+    "buildStopBtn",
+    "buildOpenReportBtn",
+    "buildStatus",
+    "buildConfigSummary",
+    "buildPytestArgs",
+    "buildAllureStatus",
+    "buildCommand",
+    "buildReportUrl",
+    "buildReportFrame",
+    "buildResultsDir",
+    "buildHistoryList",
+  ].forEach((id) => {
+    assert.match(html, new RegExp(`id="${id}"`), `missing #${id}`);
+  });
+
+  assert.match(main, /build:start/);
+  assert.match(main, /build:stop/);
+  assert.match(main, /build:event/);
+  assert.match(preload, /startBuild/);
+  assert.match(preload, /stopBuild/);
+  assert.match(preload, /onBuildEvent/);
+  assert.match(renderer, /switchWorkspaceView/);
+  assert.match(renderer, /renderBuildCaseTree/);
+  assert.match(renderer, /bindSuiteTreeEvents/);
+  assert.match(renderer, /runBuildExecution/);
+  assert.match(renderer, /handleBuildEvent/);
+  assert.match(renderer, /currentBuildReportText/);
+  assert.match(renderer, /buildHistory/);
+  assert.match(renderer, /recordBuildHistory/);
+  assert.match(renderer, /BUILD_STATUS_LABELS/);
+  assert.match(renderer, /buildStatusLabel/);
+  assert.match(renderer, /activeBuildCommandId/);
+  assert.match(renderer, /state\.currentTaskMode === "build"/);
+  assert.match(renderer, /api\.startBuild/);
+  assert.match(renderer, /api\.stopBuild/);
+  assert.match(renderer, /buildReportFrame/);
+  assert.match(renderer, /event\.type === "report-unavailable"/);
+  assert.match(html, /<iframe[\s\S]*id="buildReportFrame"[\s\S]*hidden/);
+  assert.match(css, /\.build-panel/);
+  assert.match(css, /\.build-case-tree/);
+  assert.match(css, /\.build-history/);
+  assert.match(css, /\.report-frame/);
+});
+
+test("build view hides debug suite controls and uses the left build tree as scope", () => {
+  assert.match(html, /id="topbar"/);
+  assert.match(html, /id="buildCaseTree"/);
+  assert.match(html, /运行并生成报告/);
+  assert.doesNotMatch(html, />\s*运行构建\s*</);
+  assert.match(renderer, /el\.topbar\.classList\.toggle\("is-build-view", isBuildView\)/);
+  assert.match(renderer, /el\.suitePicker\.hidden = isBuildView/);
+  assert.match(renderer, /el\.runAllBtn\.hidden = isBuildView/);
+  assert.match(renderer, /el\.fileTree\.hidden = isBuildView/);
+  assert.match(renderer, /el\.buildCaseTree\.hidden = !isBuildView/);
+  assert.match(renderer, /selectedBuildSuiteIds/);
+  assert.match(renderer, /selectedBuildFileOverrides/);
+  assert.match(renderer, /data-suite-scope/);
+  assert.match(renderer, /currentSelectedSuiteIds\("build"\)/);
+});
+
+test("switching to build warns before leaving unsaved editor changes", () => {
+  assert.match(renderer, /function confirmDiscardDirtyBeforeBuild\(\)/);
+  assert.match(renderer, /state\.dirty/);
+  assert.match(renderer, /window\.confirm\("当前文件有未保存修改，切换到构建页面前请确认。继续切换？"\)/);
+  assert.match(renderer, /if \(isBuildView && !confirmDiscardDirtyBeforeBuild\(\)\) \{\s*return;\s*\}/);
+  assert.match(renderer, /showActionFeedback\("当前文件有未保存修改，已停留在调试页面", "warn"\)/);
+});
+
+test("build center prioritizes the report and keeps details history and logs on demand", () => {
+  assert.doesNotMatch(html, /class="build-summary-item"/);
+  assert.doesNotMatch(html, /<aside class="build-history"/);
+  assert.doesNotMatch(css, /build-summary-item/);
+  assert.match(html, /id="buildDetailsPanel"/);
+  assert.match(html, /id="buildHistoryPanel"/);
+  assert.match(html, /id="buildToggleConsoleBtn"/);
+  assert.match(css, /\.build-status-bar/);
+  assert.match(css, /\.build-report-layout/);
+  assert.match(css, /\.build-history-panel/);
+  assert.match(renderer, /function normalizeAllureReportUrl/);
+});
+
+test("build report iframe reloads even when consecutive builds reuse the same Allure URL", () => {
+  assert.match(renderer, /function buildReportFrameUrl\(url\)/);
+  assert.match(renderer, /pytestDslBuild=/);
+  assert.match(renderer, /encodeURIComponent\(state\.currentBuildId \|\| String\(Date\.now\(\)\)\)/);
+  assert.match(renderer, /el\.buildReportFrame\.src = buildReportFrameUrl\(state\.currentBuildReportUrl\)/);
+  assert.match(renderer, /el\.buildReportFrame\.src = "about:blank"/);
+});
+
+test("build report iframe retries the current report url after report-ready", () => {
+  assert.match(renderer, /buildReportReloadTimer:\s*null/);
+  assert.match(renderer, /buildReportReloadSeq:\s*0/);
+  assert.match(renderer, /function scheduleBuildReportFrameReload\(\)/);
+  assert.match(renderer, /clearBuildReportReloadTimer\(\)/);
+  assert.match(renderer, /state\.buildReportReloadSeq \+= 1/);
+  assert.match(renderer, /el\.buildReportFrame\.src = buildReportFrameUrl\(state\.currentBuildReportUrl, state\.buildReportReloadSeq\)/);
+});
+
+test("console stays collapsed by default and can be opened when needed", () => {
+  assert.match(renderer, /activeScope:\s*"debug"/);
+  assert.match(renderer, /function createConsoleView\(\)\s*\{[\s\S]*wrap: true,[\s\S]*open: false,[\s\S]*expanded: false/);
+  assert.match(renderer, /debug:\s*createConsoleView\(\)/);
+  assert.match(renderer, /build:\s*createConsoleView\(\)/);
+  assert.match(renderer, /function toggleConsoleOpen\(\)/);
+  assert.match(renderer, /function openConsolePanel\(scope = state\.console\.activeScope\)/);
+  assert.match(renderer, /el\.buildToggleConsoleBtn\.addEventListener\("click", toggleConsoleOpen\)/);
+  assert.match(renderer, /el\.consoleToggleBtn\.addEventListener\("click", toggleConsoleOpen\)/);
+  assert.match(renderer, /el\.consoleStatusToggleBtn\.addEventListener\("click", toggleConsoleOpen\)/);
+  assert.match(renderer, /el\.mainStage\.classList\.toggle\("is-console-open", consoleView\.open\)/);
+  assert.match(css, /\.main-stage\.is-console-open/);
+  assert.match(css, /\.bottom-console\.is-collapsed/);
+});
+
+test("console header has an obvious toggle and keeps utility actions secondary", () => {
+  assert.match(html, /id="consoleToggleBtn"/);
+  assert.match(html, /id="consoleStatusToggleBtn"/);
+  assert.match(html, /id="consoleActions"/);
+  assert.match(html, /打开控制台/);
+  assert.match(css, /\.console-toggle-btn/);
+  assert.match(css, /\.console-status-btn/);
+  assert.match(css, /\.console-actions/);
+  assert.match(css, /\.bottom-console\.is-collapsed\s+\.console-actions\s*\{[\s\S]*display:\s*none/);
+  assert.match(renderer, /consoleToggleBtn\.textContent = consoleView\.open \? "收起控制台" : "打开控制台"/);
+  assert.match(renderer, /consoleStatusToggleBtn\.textContent = consoleView\.open \? "收起控制台" : "打开控制台"/);
+  assert.doesNotMatch(renderer, /expandConsoleBtn\.textContent = !consoleView\.open[\s\S]*"打开日志"/);
+});
+
+test("collapsed console gives the editor the full main-stage height", () => {
+  assert.match(css, /\.main-stage\s*\{[\s\S]*grid-template-rows:\s*minmax\(0,\s*1fr\) 0 0/);
+  assert.match(css, /\.bottom-console\.is-collapsed\s*\{[\s\S]*visibility:\s*hidden/);
+  assert.match(css, /\.bottom-console\.is-collapsed\s*\{[\s\S]*overflow:\s*hidden/);
 });
 
 test("renderer removes fake window dots and exposes project tree controls", () => {
@@ -219,6 +363,7 @@ test("editor chrome is compact so code keeps vertical space", () => {
   assert.match(css, /\.workarea\s*\{[\s\S]*height:\s*100%/);
   assert.match(css, /\.editor-stack\s*\{[\s\S]*height:\s*100%/);
   assert.match(css, /\.editor-stack\s*\{[\s\S]*overflow:\s*hidden/);
+  assert.match(css, /\.code-editor\s*\{[\s\S]*grid-row:\s*3/);
   assert.match(css, /\.code-editor\s*\{[\s\S]*min-height:\s*280px/);
   assert.match(css, /\.code-editor \.cm-scroller\s*\{[\s\S]*height:\s*100%/);
   assert.match(css, /\.code-editor \.cm-content\s*\{[\s\S]*min-height:\s*100%/);
@@ -240,6 +385,15 @@ test("layout exposes resizable file tree and bottom console", () => {
   assert.match(renderer, /bindPanelResizers/);
   assert.match(renderer, /setLayoutSize/);
   assert.match(renderer, /--console-height/);
+});
+
+test("layout resizing stays responsive over the Allure report iframe", () => {
+  assert.match(renderer, /setPointerCapture\(event\.pointerId\)/);
+  assert.match(renderer, /releasePointerCapture\(event\.pointerId\)/);
+  assert.match(renderer, /requestAnimationFrame/);
+  assert.match(renderer, /setLayoutSize\(kind, pendingSize, \{ persist: false \}\)/);
+  assert.match(renderer, /document\.addEventListener\("pointercancel", stopResize, \{ once: true \}\)/);
+  assert.match(css, /body\.is-resizing-layout \.report-frame,\s*body\.is-resizing-console \.report-frame\s*\{[\s\S]*pointer-events:\s*none/);
 });
 
 test("request header keeps execution controls visible in constrained workspaces", () => {
@@ -274,19 +428,33 @@ test("editor tools stay in the normal toolbar and execution tools are file-aware
   assert.doesNotMatch(html, /id="editorToolGroup"/);
 });
 
+test("save and syntax check report visible status outside the hidden console", () => {
+  assert.match(html, /id="actionStatus"/);
+  assert.match(renderer, /function showActionFeedback\(message, level = "info"\)/);
+  assert.match(renderer, /showActionFeedback\(`已保存 \$\{result\.relativePath\}`,\s*"pass"\)/);
+  assert.match(renderer, /showActionFeedback\("语法检查已提交", "info"\)/);
+  assert.match(renderer, /showActionFeedback\("语法检查通过", "pass"\)/);
+  assert.match(renderer, /showActionFeedback\("语法检查失败", "error"\)/);
+  assert.match(css, /\.action-status/);
+  assert.match(css, /\.action-status\.is-pass/);
+  assert.match(css, /\.action-status\.is-error/);
+});
+
 test("console output can be cleared manually and resets before each execution", () => {
   assert.match(html, /id="clearConsoleBtn"/);
   assert.match(html, /title="清空运行输出"/);
-  assert.match(renderer, /consoleLines:\s*\[\]/);
-  assert.match(renderer, /commandOutputChunks:\s*\[\]/);
+  assert.match(renderer, /consoleBuffers:\s*\{/);
+  assert.match(renderer, /debug:\s*createConsoleBuffer\(\)/);
+  assert.match(renderer, /build:\s*createConsoleBuffer\(\)/);
   assert.match(renderer, /clearConsoleBtn/);
   assert.match(renderer, /clearConsoleBtn\.addEventListener\("click",\s*\(\) =>\s*clearConsole\(\)/);
-  assert.match(renderer, /function clearConsole\(\)\s*\{[\s\S]*consoleBody\.textContent = ""/);
-  assert.match(renderer, /state\.consoleLines = \[\]/);
-  assert.match(renderer, /state\.commandOutputChunks = \[\]/);
-  assert.match(renderer, /function resetConsoleForExecution\(\)\s*\{[\s\S]*clearConsole\(\)/);
-  assert.match(renderer, /resetConsoleForExecution\(\);[\s\S]*appendLog\("info", `\$\{executionModeLabel\(mode\)\} started:/);
-  assert.match(renderer, /resetConsoleForExecution\(\);[\s\S]*appendLog\("info", `测试套运行 started:/);
+  assert.match(renderer, /function clearConsole\(scope = state\.console\.activeScope\)\s*\{[\s\S]*renderConsoleBuffer\(\)/);
+  assert.match(renderer, /buffer\.lines = \[\]/);
+  assert.match(renderer, /buffer\.commandOutputChunks = \[\]/);
+  assert.match(renderer, /function resetConsoleForExecution\(scope\)\s*\{[\s\S]*clearConsole\(scope\)/);
+  assert.match(renderer, /resetConsoleForExecution\("debug"\);[\s\S]*appendLog\("info", `\$\{executionModeLabel\(mode\)\} started:/);
+  assert.match(renderer, /resetConsoleForExecution\("debug"\);[\s\S]*appendLog\("info", `测试套运行 started:/);
+  assert.match(renderer, /resetConsoleForExecution\("build"\);[\s\S]*appendLog\("info", `构建运行 started:/);
 });
 
 test("console supports long output reading and copying", () => {
@@ -301,13 +469,25 @@ test("console supports long output reading and copying", () => {
   assert.match(renderer, /copyConsoleOutput/);
   assert.match(renderer, /toggleConsoleWrap/);
   assert.match(renderer, /toggleConsoleExpanded/);
-  assert.match(renderer, /state\.commandOutputChunks\.join\(""\)/);
+  assert.match(renderer, /currentConsoleBuffer\(\)\.commandOutputChunks\.join\(""\)/);
   assert.doesNotMatch(renderer, /copyConsoleOutput\(\)[\s\S]*state\.consoleLines\.join\("\\n"\)/);
-  assert.match(renderer, /console\.wrap/);
-  assert.match(renderer, /console\.expanded/);
+  assert.match(renderer, /consoleView\.wrap/);
+  assert.match(renderer, /consoleView\.expanded/);
   assert.match(css, /\.console-body\s*\{[\s\S]*user-select:\s*text/);
   assert.match(css, /\.console\.is-unwrapped\s+\.log-message/);
   assert.match(css, /\.main-stage\.is-console-expanded/);
+});
+
+test("console output and command preview are scoped between debug and build", () => {
+  assert.match(renderer, /function consoleScopeForMode\(mode\)/);
+  assert.match(renderer, /function setConsoleScope\(scope\)/);
+  assert.match(renderer, /setConsoleScope\(nextView\)/);
+  assert.match(renderer, /appendLog\("info", `构建运行 started:[\s\S]*\{ scope: "build" \}/);
+  assert.match(renderer, /appendProcessOutput\(event\.type === "stderr" \? "error" : "info", event\.text, \{ scope: "build" \}\)/);
+  assert.match(renderer, /appendProcessOutput\(event\.type === "stderr" \? "error" : "info", event\.text, \{ scope: "debug" \}\)/);
+  assert.match(renderer, /commandPreviews:\s*\{/);
+  assert.match(renderer, /function currentCommandPreview\(\)/);
+  assert.match(renderer, /state\.commandPreviews\[scope\]/);
 });
 
 test("console header keeps its label stable when command preview is long", () => {
@@ -327,7 +507,7 @@ test("console header keeps its label stable when command preview is long", () =>
 });
 
 test("console command preview preserves the last actual execution context", () => {
-  assert.match(renderer, /commandPreview:\s*\{/);
+  assert.match(renderer, /commandPreviews:\s*\{/);
   assert.match(renderer, /function previewCommand\(/);
   assert.match(renderer, /function setExecutionCommand\(/);
   assert.match(renderer, /function releaseExecutionCommand\(/);

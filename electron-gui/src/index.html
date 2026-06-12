@@ -8,7 +8,7 @@
     </head>
     <body>
         <div class="app">
-            <header class="topbar">
+            <header class="topbar" id="topbar">
                 <div class="brand" title="pytest-dsl 本地工作台">
                     <div class="brand-mark">DSL</div>
                     <div class="brand-title">
@@ -138,13 +138,21 @@
                     <div class="rail">
                         <div class="avatar">DSL</div>
                         <nav class="rail-nav" aria-label="主导航">
-                            <button class="rail-btn is-active" type="button">
+                            <button
+                                class="rail-btn is-active"
+                                id="debugNavBtn"
+                                type="button"
+                            >
                                 <span class="rail-icon" aria-hidden="true"
                                     >☰</span
                                 >
                                 <span>调试</span>
                             </button>
-                            <button class="rail-btn" type="button">
+                            <button
+                                class="rail-btn"
+                                id="buildNavBtn"
+                                type="button"
+                            >
                                 <span class="rail-icon" aria-hidden="true"
                                     >☑</span
                                 >
@@ -156,7 +164,7 @@
                     <section class="tree-pane">
                         <div class="pane-head">
                             <div class="section-title">
-                                <h2>目录树</h2>
+                                <h2 id="treePaneTitle">目录树</h2>
                                 <span class="branch" id="branchName"
                                     >local</span
                                 >
@@ -200,6 +208,14 @@
                         <nav class="tree" id="fileTree" aria-label="项目文件树">
                             <p class="empty">打开项目后显示可编辑文件</p>
                         </nav>
+                        <nav
+                            class="tree build-case-tree"
+                            id="buildCaseTree"
+                            aria-label="构建案例树"
+                            hidden
+                        >
+                            <p class="empty">打开项目后显示可构建案例</p>
+                        </nav>
                         <div
                             class="tree-context-menu"
                             id="treeContextMenu"
@@ -219,7 +235,7 @@
                 ></div>
 
                 <main class="main-stage" id="mainStage">
-                    <section class="workspace-panel">
+                    <section class="workspace-panel" id="debugWorkspace">
                         <div
                             class="editor-tabs"
                             role="tablist"
@@ -403,6 +419,128 @@
                         </section>
                     </section>
 
+                    <section
+                        class="build-panel"
+                        id="buildPanel"
+                        aria-label="构建中心"
+                        hidden
+                    >
+                        <header class="build-head">
+                            <div class="request-title">
+                                <div class="title-line">
+                                    <h1>构建中心</h1>
+                                </div>
+                                <p id="buildStatus">
+                                    从左侧选择构建案例，运行后直接查看 Allure 报告
+                                </p>
+                            </div>
+                            <div class="head-actions build-actions">
+                                <button
+                                    class="primary-btn"
+                                    id="buildRunBtn"
+                                    type="button"
+                                >
+                                    运行并生成报告
+                                </button>
+                                <button
+                                    class="danger-btn"
+                                    id="buildStopBtn"
+                                    type="button"
+                                    hidden
+                                >
+                                    停止
+                                </button>
+                                <button
+                                    class="text-btn"
+                                    id="buildOpenReportBtn"
+                                    type="button"
+                                    disabled
+                                >
+                                    打开报告
+                                </button>
+                                <button
+                                    class="text-btn"
+                                    id="buildToggleConsoleBtn"
+                                    type="button"
+                                >
+                                    打开日志
+                                </button>
+                            </div>
+                        </header>
+
+                        <section class="build-status-bar" aria-label="构建状态">
+                            <div class="build-status-line">
+                                <span class="build-status-chip">
+                                    <strong>范围</strong>
+                                    <span id="buildScope">未打开项目</span>
+                                </span>
+                                <span class="build-status-chip">
+                                    <strong>配置</strong>
+                                    <span id="buildConfigSummary">未加载配置</span>
+                                </span>
+                                <span class="build-status-chip">
+                                    <strong>报告</strong>
+                                    <span id="buildAllureStatus">等待构建</span>
+                                </span>
+                            </div>
+                            <div class="build-toolbar-actions">
+                                <details
+                                    class="build-details-panel"
+                                    id="buildDetailsPanel"
+                                >
+                                    <summary>详情</summary>
+                                    <dl class="build-detail-grid">
+                                        <div>
+                                            <dt>pytest 参数</dt>
+                                            <dd id="buildPytestArgs">--alluredir</dd>
+                                        </div>
+                                        <div>
+                                            <dt>结果目录</dt>
+                                            <dd id="buildResultsDir">未生成</dd>
+                                        </div>
+                                        <div>
+                                            <dt>报告入口</dt>
+                                            <dd id="buildReportUrl">等待构建</dd>
+                                        </div>
+                                        <div>
+                                            <dt>命令</dt>
+                                            <dd id="buildCommand">pytest</dd>
+                                        </div>
+                                    </dl>
+                                </details>
+                                <details
+                                    class="build-history-panel"
+                                    id="buildHistoryPanel"
+                                >
+                                    <summary>历史</summary>
+                                    <div
+                                        class="build-history-list"
+                                        id="buildHistoryList"
+                                    >
+                                        <p class="empty">还没有构建记录</p>
+                                    </div>
+                                </details>
+                            </div>
+                        </section>
+
+                        <section class="build-body build-report-layout">
+                            <section
+                                class="report-shell"
+                                aria-label="Allure 实时报告"
+                            >
+                                <iframe
+                                    class="report-frame"
+                                    id="buildReportFrame"
+                                    title="Allure 实时报告"
+                                    hidden
+                                ></iframe>
+                                <div class="report-empty" id="buildReportEmpty">
+                                    运行后会在这里直接显示 Allure 报告
+                                </div>
+                            </section>
+                        </section>
+                    </section>
+
                     <div
                         class="panel-resizer is-horizontal"
                         data-resizer="console"
@@ -413,54 +551,61 @@
                     ></div>
 
                     <section
-                        class="console bottom-console"
+                        class="console bottom-console is-collapsed"
                         id="bottomConsole"
                         aria-label="运行输出"
                     >
                         <div class="console-head">
-                            <button class="console-tab is-active" type="button">
-                                运行输出
+                            <button
+                                class="console-tab console-toggle-btn is-active"
+                                id="consoleToggleBtn"
+                                type="button"
+                                aria-expanded="false"
+                            >
+                                打开控制台
                             </button>
                             <span class="command-context" id="commandContext"
                                 >当前命令</span
                             >
                             <span id="commandPreview">pytest-dsl</span>
-                            <button
-                                class="text-btn console-tool-btn"
-                                id="copyConsoleBtn"
-                                type="button"
-                                aria-label="复制全部运行输出"
-                                title="复制全部运行输出"
-                            >
-                                复制输出
-                            </button>
-                            <button
-                                class="text-btn console-tool-btn"
-                                id="wrapConsoleBtn"
-                                type="button"
-                                aria-label="切换运行输出换行"
-                                title="切换运行输出换行"
-                            >
-                                不换行
-                            </button>
-                            <button
-                                class="text-btn console-tool-btn"
-                                id="expandConsoleBtn"
-                                type="button"
-                                aria-label="展开运行输出"
-                                title="展开运行输出"
-                            >
-                                展开
-                            </button>
-                            <button
-                                class="text-btn console-tool-btn"
-                                id="clearConsoleBtn"
-                                type="button"
-                                aria-label="清空运行输出"
-                                title="清空运行输出"
-                            >
-                                清空
-                            </button>
+                            <div class="console-actions" id="consoleActions">
+                                <button
+                                    class="text-btn console-tool-btn"
+                                    id="copyConsoleBtn"
+                                    type="button"
+                                    aria-label="复制当前控制台输出"
+                                    title="复制当前控制台输出"
+                                >
+                                    复制
+                                </button>
+                                <button
+                                    class="text-btn console-tool-btn"
+                                    id="wrapConsoleBtn"
+                                    type="button"
+                                    aria-label="切换当前控制台换行"
+                                    title="切换当前控制台换行"
+                                >
+                                    横滚
+                                </button>
+                                <button
+                                    class="text-btn console-tool-btn"
+                                    id="expandConsoleBtn"
+                                    type="button"
+                                    aria-label="最大化控制台"
+                                    title="最大化控制台"
+                                >
+                                    最大化
+                                </button>
+                                <button
+                                    class="text-btn console-tool-btn"
+                                    id="clearConsoleBtn"
+                                    type="button"
+                                    aria-label="清空当前控制台输出"
+                                    title="清空运行输出"
+                                >
+                                    清空
+                                </button>
+                            </div>
                         </div>
                         <div class="console-body" id="consoleBody"></div>
                     </section>
@@ -480,6 +625,17 @@
                     >
                 </div>
                 <div class="status-right">
+                    <span
+                        class="status-item action-status"
+                        id="actionStatus"
+                    >就绪</span>
+                    <button
+                        class="text-btn console-status-btn"
+                        id="consoleStatusToggleBtn"
+                        type="button"
+                    >
+                        打开控制台
+                    </button>
                     <span class="status-item">调试与构建入口</span>
                 </div>
             </footer>

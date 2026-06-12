@@ -16,6 +16,10 @@ const {
   startExecutionTask,
   stopExecutionTask
 } = require("./src/services/executionService");
+const {
+  startBuildTask,
+  stopBuildTask
+} = require("./src/services/buildService");
 const { checkRemoteServers } = require("./src/services/remoteStatusService");
 const { listKeywords } = require("./src/services/keywordService");
 const {
@@ -105,6 +109,14 @@ function registerIpc() {
     sendExecutionCommand(taskId, command)
   ));
   ipcMain.handle("execution:stop", (_event, taskId) => stopExecutionTask(taskId));
+  ipcMain.handle("build:start", (event, options) => (
+    startBuildTask(options, {
+      onEvent(payload) {
+        event.sender.send("build:event", payload);
+      }
+    })
+  ));
+  ipcMain.handle("build:stop", (_event, buildId) => stopBuildTask(buildId));
 }
 
 app.whenReady().then(() => {

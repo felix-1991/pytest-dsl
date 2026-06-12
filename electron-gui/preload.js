@@ -27,5 +27,12 @@ contextBridge.exposeInMainWorld("pytestDslGui", {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("execution:event", listener);
     return () => ipcRenderer.removeListener("execution:event", listener);
+  },
+  startBuild: (options) => ipcRenderer.invoke("build:start", options),
+  stopBuild: (buildId) => ipcRenderer.invoke("build:stop", buildId),
+  onBuildEvent: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("build:event", listener);
+    return () => ipcRenderer.removeListener("build:event", listener);
   }
 });
