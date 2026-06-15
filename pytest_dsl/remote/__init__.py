@@ -8,7 +8,9 @@ __version__ = "0.30.0"
 
 # 导出远程关键字管理器和相关功能
 from .keyword_client import (
+    RemoteKeywordCallOutcome,
     RemoteKeywordClient,
+    RemoteKeywordExecutionError,
     RemoteKeywordManager,
     remote_keyword_manager,
 )
@@ -69,6 +71,8 @@ __all__ = [
     "remote_keyword_manager",
     "RemoteKeywordManager",
     "RemoteKeywordClient",
+    "RemoteKeywordCallOutcome",
+    "RemoteKeywordExecutionError",
     "RemoteKeywordServer",
     "VariableBridge",
     # 便捷函数

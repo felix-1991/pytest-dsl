@@ -3,12 +3,48 @@ from functools import partial
 import logging
 import difflib
 import os
+from dataclasses import dataclass, field
+from typing import Any, Dict
 
 from pytest_dsl.core.keyword_manager import keyword_manager, Parameter
 from pytest_dsl.remote.log_utils import is_verbose, preview_keys, preview_value
 
 # 配置日志
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RemoteKeywordCallOutcome:
+    value: Any
+    diagnostics: Dict[str, Any] = field(default_factory=dict)
+
+
+class RemoteKeywordExecutionError(Exception):
+    """Remote keyword failure with structured server-side diagnostics."""
+
+    def __init__(self, error, alias=None, keyword=None, url=None,
+                 timeout=None, traceback_lines=None, diagnostics=None):
+        self.error = str(error)
+        self.alias = alias
+        self.keyword = keyword
+        self.url = url
+        self.timeout = timeout
+        self.traceback = list(traceback_lines or [])
+        self.diagnostics = diagnostics or {}
+
+        remote_name = f"{alias}|{keyword}" if alias and keyword else keyword
+        location = ""
+        if url:
+            location = f" ({url}"
+            if timeout is not None:
+                location += f", timeout={timeout}s"
+            location += ")"
+
+        message = f"远程关键字执行失败: {remote_name}{location}: {self.error}"
+        traceback_text = "".join(self.traceback)
+        if traceback_text:
+            message = f"{message}\n{traceback_text}"
+        super().__init__(message)
 
 
 class _TimeoutMixin:
@@ -219,6 +255,21 @@ class RemoteKeywordClient:
 
     def _execute_remote_keyword(self, **kwargs):
         """执行远程关键字"""
+        return self._execute_remote_keyword_impl(False, **kwargs)
+
+    def _execute_remote_keyword_with_outcome(self, **kwargs):
+        """执行远程关键字并保留远程诊断信息。"""
+        return self._execute_remote_keyword_impl(True, **kwargs)
+
+    def _wrap_remote_outcome(self, value, diagnostics, return_outcome):
+        if return_outcome:
+            return RemoteKeywordCallOutcome(
+                value=value,
+                diagnostics=diagnostics or {})
+        return value
+
+    def _execute_remote_keyword_impl(self, return_outcome=False, **kwargs):
+        """执行远程关键字"""
         name = kwargs.pop('name')
 
         # 在执行前同步最新的上下文变量
@@ -323,6 +374,8 @@ class RemoteKeywordClient:
 
         _print_verbose(f"远程调用: 结果 {result}")
 
+        diagnostics = result.get('diagnostics', {}) if isinstance(result, dict) else {}
+
         if result['status'] == 'PASS':
             return_data = result['return']
 
@@ -349,16 +402,28 @@ class RemoteKeywordClient:
                     nested_data = return_data['result']
                     if 'side_effects' in nested_data:
                         # 处理嵌套的新格式数据
-                        return self._process_return_data(nested_data)
+                        processed_result = self._process_return_data(nested_data)
+                        return self._wrap_remote_outcome(
+                            processed_result, diagnostics, return_outcome)
 
                 # 处理原始格式数据
-                return self._process_return_data(return_data)
+                processed_result = self._process_return_data(return_data)
+                return self._wrap_remote_outcome(
+                    processed_result, diagnostics, return_outcome)
 
-            return return_data
+            return self._wrap_remote_outcome(
+                return_data, diagnostics, return_outcome)
         else:
             error_msg = result.get('error', '未知错误')
-            traceback = '\n'.join(result.get('traceback', []))
-            raise Exception(f"远程关键字执行失败: {error_msg}\n{traceback}")
+            traceback_lines = result.get('traceback', [])
+            raise RemoteKeywordExecutionError(
+                error_msg,
+                alias=self.alias,
+                keyword=name,
+                url=self.url,
+                timeout=self.timeout,
+                traceback_lines=traceback_lines,
+                diagnostics=diagnostics)
 
     def _process_return_data(self, return_data):
         """通用的返回数据处理方法
@@ -852,6 +917,20 @@ class RemoteKeywordManager:
             )
 
         return client._execute_remote_keyword(name=keyword_name, **kwargs)
+
+    def execute_remote_keyword_with_outcome(self, alias, keyword_name, **kwargs):
+        """执行远程关键字并返回业务结果和远程诊断信息。"""
+        client = self.get_client(alias)
+        if not client:
+            raise Exception(
+                f"未找到别名为 {alias} 的远程服务器。"
+                "请确认运行命令已加载包含 remote_servers 的YAML配置，"
+                "或 @remote 预连接成功；"
+                f"当前调用: {alias}|[{keyword_name}]"
+            )
+
+        return client._execute_remote_keyword_with_outcome(
+            name=keyword_name, **kwargs)
 
 
 # 创建全局远程关键字管理器实例

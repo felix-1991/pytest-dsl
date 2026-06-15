@@ -62,7 +62,7 @@ def test_remote_keyword_call_forwards_custom_step_name(monkeypatch):
 
     monkeypatch.setattr(
         "pytest_dsl.remote.keyword_client.remote_keyword_manager."
-        "execute_remote_keyword",
+        "execute_remote_keyword_with_outcome",
         record_remote_call,
     )
 
@@ -91,7 +91,7 @@ def test_remote_keyword_call_reports_arguments_in_default_allure(monkeypatch):
     monkeypatch.setattr("allure.attach", record_attachment)
     monkeypatch.setattr(
         "pytest_dsl.remote.keyword_client.remote_keyword_manager."
-        "execute_remote_keyword",
+        "execute_remote_keyword_with_outcome",
         lambda *args, **kwargs: "ok",
     )
     monkeypatch.delenv("PYTEST_DSL_VERBOSE", raising=False)
@@ -125,7 +125,7 @@ def test_remote_keyword_call_reports_arguments_on_failure(monkeypatch):
     monkeypatch.setattr("allure.attach", record_attachment)
     monkeypatch.setattr(
         "pytest_dsl.remote.keyword_client.remote_keyword_manager."
-        "execute_remote_keyword",
+        "execute_remote_keyword_with_outcome",
         raise_remote_error,
     )
     monkeypatch.delenv("PYTEST_DSL_VERBOSE", raising=False)
@@ -159,7 +159,7 @@ def test_remote_keyword_call_uses_custom_step_name_in_allure(monkeypatch):
     monkeypatch.setattr("allure.step", record_step)
     monkeypatch.setattr(
         "pytest_dsl.remote.keyword_client.remote_keyword_manager."
-        "execute_remote_keyword",
+        "execute_remote_keyword_with_outcome",
         lambda *args, **kwargs: "ok",
     )
 

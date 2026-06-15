@@ -124,17 +124,13 @@ def test_end_to_end_seamless_variable_passing():
 
         print("✓ 变量传递验证通过：关键变量存在，敏感信息已过滤")
 
-        # 8. 测试远程关键字执行（模拟HTTP请求关键字）
-        # 这里我们测试打印关键字，因为它更简单且能验证变量访问
-        try:
-            result = client._execute_remote_keyword(
-                name="打印", 内容="测试环境: ${g_test_env}, 用户: ${test_data.username}"
-            )
-            print("✓ 远程关键字执行成功")
-            print(f"  执行结果: {result}")
-        except Exception as e:
-            print(f"⚠️ 远程关键字执行失败: {e}")
-            # 这可能是因为变量替换的问题，但不影响核心功能测试
+        # 8. 测试远程关键字执行。这里必须让失败冒泡，否则真实远程
+        # XML-RPC 响应序列化问题会被端到端测试吞掉。
+        result = client._execute_remote_keyword(
+            name="打印", 内容="测试环境: ${g_test_env}, 用户: ${test_data.username}"
+        )
+        assert result is None
+        print("✓ 远程关键字执行成功")
 
         # 9. 验证变量桥接机制
         # 直接测试服务器端的变量访问

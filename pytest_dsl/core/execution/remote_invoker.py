@@ -8,6 +8,63 @@ from pytest_dsl.core.reporting import (
     is_verbose,
     preview_value,
 )
+from pytest_dsl.remote.diagnostics import diagnostics_has_output
+
+
+def _format_remote_diagnostics(diagnostics, fallback_traceback=None,
+                               error_text=None):
+    if not isinstance(diagnostics, dict) or not diagnostics:
+        return "远程诊断: <无>"
+
+    lines = []
+    request_id = diagnostics.get("request_id")
+    if request_id:
+        lines.append(f"request_id: {request_id}")
+    keyword = diagnostics.get("keyword")
+    if keyword:
+        lines.append(f"keyword: {keyword}")
+    status = diagnostics.get("status")
+    if status:
+        lines.append(f"status: {status}")
+    elapsed_ms = diagnostics.get("elapsed_ms")
+    if elapsed_ms is not None:
+        lines.append(f"elapsed_ms: {elapsed_ms}")
+
+    diagnostic_error = diagnostics.get("error") or error_text
+    if diagnostic_error:
+        lines.append(f"error: {diagnostic_error}")
+
+    stdout = diagnostics.get("stdout")
+    if stdout:
+        lines.extend(["", "[stdout]", str(stdout)])
+
+    stderr = diagnostics.get("stderr")
+    if stderr:
+        lines.extend(["", "[stderr]", str(stderr)])
+
+    logs = diagnostics.get("logs") or []
+    if logs:
+        lines.extend(["", "[logging]"])
+        for item in logs:
+            level = item.get("level", "INFO")
+            logger = item.get("logger", "root")
+            message = item.get("message", "")
+            lines.append(f"{level} {logger}: {message}")
+            if item.get("traceback"):
+                lines.append(str(item["traceback"]))
+
+    traceback_lines = diagnostics.get("traceback") or fallback_traceback or []
+    if traceback_lines:
+        lines.extend(["", "[traceback]", "".join(traceback_lines)])
+
+    truncated = diagnostics.get("truncated") or {}
+    truncated_parts = [
+        name for name, is_truncated in truncated.items() if is_truncated
+    ]
+    if truncated_parts:
+        lines.extend(["", f"truncated: {', '.join(truncated_parts)}"])
+
+    return "\n".join(lines)
 
 
 class RemoteKeywordInvoker:
@@ -149,8 +206,13 @@ class RemoteKeywordInvoker:
                 )
 
                 with allure.step(step_name):
-                    result = remote_keyword_manager.execute_remote_keyword(
-                        alias, keyword_name, **kwargs)
+                    outcome = (
+                        remote_keyword_manager
+                        .execute_remote_keyword_with_outcome(
+                            alias, keyword_name, **kwargs)
+                    )
+                result = getattr(outcome, "value", outcome)
+                diagnostics = getattr(outcome, "diagnostics", {}) or {}
                 if is_verbose():
                     details = (f"远程关键字: {alias}|{keyword_name}\n"
                                f"{argument_details}\n"
@@ -166,17 +228,36 @@ class RemoteKeywordInvoker:
                     name=attachment_name,
                     attachment_type=allure.attachment_type.TEXT,
                 )
+                if diagnostics_has_output(diagnostics):
+                    allure.attach(
+                        _format_remote_diagnostics(diagnostics),
+                        name="远程关键字远端日志",
+                        attachment_type=allure.attachment_type.TEXT,
+                    )
                 return result
             except Exception as e:
                 error_details = (f"执行RemoteKeywordCall节点: {str(e)}"
                                  f"{line_info}\n上下文: 执行RemoteKeywordCall节点")
                 if argument_details:
                     error_details = f"{error_details}\n{argument_details}"
+                diagnostics = getattr(e, "diagnostics", {}) or {}
+                request_id = diagnostics.get("request_id")
+                if request_id:
+                    error_details = f"{error_details}\n远程请求ID: {request_id}"
                 allure.attach(
                     error_details,
                     name="DSL执行异常",
                     attachment_type=allure.attachment_type.TEXT,
                 )
+                if diagnostics_has_output(diagnostics):
+                    allure.attach(
+                        _format_remote_diagnostics(
+                            diagnostics,
+                            fallback_traceback=getattr(e, "traceback", []),
+                            error_text=str(e)),
+                        name="远程关键字失败诊断",
+                        attachment_type=allure.attachment_type.TEXT,
+                    )
                 raise
 
     def handle_assignment_keyword_call(self, node):

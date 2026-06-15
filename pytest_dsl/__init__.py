@@ -89,7 +89,9 @@ from pytest_dsl.core.yaml_loader import (
 # 远程关键字功能
 try:
     from pytest_dsl.remote import (
+        RemoteKeywordCallOutcome,
         RemoteKeywordClient,
+        RemoteKeywordExecutionError,
         RemoteKeywordManager,
         register_multiple_servers,
         register_remote_server,
@@ -102,6 +104,8 @@ except ImportError:
     remote_keyword_manager = None
     RemoteKeywordManager = None
     RemoteKeywordClient = None
+    RemoteKeywordCallOutcome = None
+    RemoteKeywordExecutionError = None
     register_remote_server = None
     register_multiple_servers = None
     _REMOTE_AVAILABLE = False
@@ -169,6 +173,8 @@ __all__ = [
     "remote_keyword_manager",
     "RemoteKeywordManager",
     "RemoteKeywordClient",
+    "RemoteKeywordCallOutcome",
+    "RemoteKeywordExecutionError",
     "register_remote_server",
     "register_multiple_servers",
     # 远程服务器注册器

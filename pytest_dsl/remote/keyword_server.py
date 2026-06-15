@@ -11,6 +11,8 @@ import socketserver
 import platform
 
 from pytest_dsl.core.keyword_manager import keyword_manager
+from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+from pytest_dsl.remote.diagnostics import RemoteExecutionCapture
 from pytest_dsl.remote.hook_manager import hook_manager, HookType
 
 from pytest_dsl.remote.log_utils import is_verbose, preview_keys, preview_value
@@ -211,7 +213,8 @@ class RemoteKeywordServer:
                     'status': 'PASS' 或 'FAIL',
                     'return': 返回值 (如果成功),
                     'error': 错误信息 (如果失败),
-                    'traceback': 错误堆栈 (如果失败)
+                    'traceback': 错误堆栈 (如果失败),
+                    'diagnostics': 远程执行诊断信息
                 }
         """
         # 验证API密钥
@@ -236,116 +239,128 @@ class RemoteKeywordServer:
         start_time = time.time()
         com_initialized = False
         pythoncom_module = None
+        capture = None
         try:
-            # WMI 基于 COM，线程化服务端中每个工作线程都要独立初始化 COM。
-            if platform.system().lower() == 'windows':
-                try:
-                    import pythoncom
-                    pythoncom.CoInitialize()
-                    pythoncom_module = pythoncom
-                    com_initialized = True
-                except ImportError:
-                    # 非 pywin32 环境，跳过 COM 初始化。
-                    pass
-
-            # 确保参数是字典格式
-            if not isinstance(args_dict, dict):
-                args_dict = json.loads(args_dict) if isinstance(
-                    args_dict, str) else {}
-
-            from pytest_dsl.core.serialization_utils import XMLRPCSerializer
-            args_dict = XMLRPCSerializer.restore_bigints(args_dict)
-
-            # 获取关键字信息
-            keyword_info = keyword_manager.get_keyword_info(name)
-            if not keyword_info:
-                raise Exception(f"未注册的关键字: {name}")
-
-            # 获取参数映射
-            mapping = keyword_info.get('mapping', {})
-
-            # 准备执行参数
-            exec_kwargs = {}
-
-            # 添加默认的步骤名称
-            exec_kwargs['step_name'] = name
-
-            # 创建测试上下文（所有关键字都需要）
-            from pytest_dsl.core.context import TestContext
-            test_context = TestContext()
-
-            # 设置变量提供者，确保可以访问YAML变量和全局变量
-            try:
-                from pytest_dsl.core.variable_providers import setup_context_with_default_providers
-                setup_context_with_default_providers(test_context)
-            except ImportError:
-                # 如果导入失败，记录警告但继续执行
-                print("警告：无法设置变量提供者")
-
-            exec_kwargs['context'] = test_context
-
-            # 映射参数（通用逻辑）
-            for param_name, param_value in args_dict.items():
-                # 处理大整数：如果参数值是以 __bigint__: 开头的字符串，转换为整数
-                if isinstance(param_value, str) and param_value.startswith("__bigint__:"):
+            with RemoteExecutionCapture(name) as capture:
+                # WMI 基于 COM，线程化服务端中每个工作线程都要独立初始化 COM。
+                if platform.system().lower() == 'windows':
                     try:
-                        bigint_value = int(param_value.split(":", 1)[1])
-                        param_value = bigint_value
-                        print(f"参数 {param_name} 的大整数字符串已转换为整数: {bigint_value}")
-                    except (ValueError, IndexError):
-                        pass  # 转换失败，保持原值
-                
-                if param_name in mapping:
-                    exec_kwargs[mapping[param_name]] = param_value
-                else:
-                    exec_kwargs[param_name] = param_value
+                        import pythoncom
+                        pythoncom.CoInitialize()
+                        pythoncom_module = pythoncom
+                        com_initialized = True
+                    except ImportError:
+                        # 非 pywin32 环境，跳过 COM 初始化。
+                        pass
 
-            # 执行关键字执行前的hook
-            before_context = hook_manager.execute_hooks(
-                HookType.BEFORE_KEYWORD_EXECUTION,
-                server=self,
-                shared_variables=self.shared_variables,
-                keyword_name=name,
-                keyword_args=exec_kwargs,
-                test_context=test_context
-            )
+                # 确保参数是字典格式
+                if not isinstance(args_dict, dict):
+                    args_dict = json.loads(args_dict) if isinstance(
+                        args_dict, str) else {}
 
-            # 从hook上下文中更新执行参数（hook可能修改了参数）
-            if 'keyword_args' in before_context.data:
-                exec_kwargs.update(before_context.data['keyword_args'])
+                from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+                args_dict = XMLRPCSerializer.restore_bigints(args_dict)
 
-            # 执行关键字
-            result = keyword_manager.execute(name, **exec_kwargs)
+                # 获取关键字信息
+                keyword_info = keyword_manager.get_keyword_info(name)
+                if not keyword_info:
+                    raise Exception(f"未注册的关键字: {name}")
 
-            # 执行关键字执行后的hook
-            after_context = hook_manager.execute_hooks(
-                HookType.AFTER_KEYWORD_EXECUTION,
-                server=self,
-                shared_variables=self.shared_variables,
-                keyword_name=name,
-                keyword_args=exec_kwargs,
-                keyword_result=result,
-                test_context=test_context
-            )
+                # 获取参数映射
+                mapping = keyword_info.get('mapping', {})
 
-            # 从hook上下文中获取可能修改的结果
-            if 'keyword_result' in after_context.data:
-                result = after_context.data['keyword_result']
+                # 准备执行参数
+                exec_kwargs = {}
 
-            # 处理返回结果
-            return_data = self._process_keyword_result(result, test_context)
+                # 添加默认的步骤名称
+                exec_kwargs['step_name'] = name
 
-            return {
-                'status': 'PASS',
-                'return': return_data
-            }
+                # 创建测试上下文（所有关键字都需要）
+                from pytest_dsl.core.context import TestContext
+                test_context = TestContext()
+
+                # 设置变量提供者，确保可以访问YAML变量和全局变量
+                try:
+                    from pytest_dsl.core.variable_providers import setup_context_with_default_providers
+                    setup_context_with_default_providers(test_context)
+                except ImportError:
+                    # 如果导入失败，记录警告但继续执行
+                    print("警告：无法设置变量提供者")
+
+                exec_kwargs['context'] = test_context
+
+                # 映射参数（通用逻辑）
+                for param_name, param_value in args_dict.items():
+                    # 处理大整数：如果参数值是以 __bigint__: 开头的字符串，转换为整数
+                    if isinstance(param_value, str) and param_value.startswith("__bigint__:"):
+                        try:
+                            bigint_value = int(param_value.split(":", 1)[1])
+                            param_value = bigint_value
+                            print(f"参数 {param_name} 的大整数字符串已转换为整数: {bigint_value}")
+                        except (ValueError, IndexError):
+                            pass  # 转换失败，保持原值
+
+                    if param_name in mapping:
+                        exec_kwargs[mapping[param_name]] = param_value
+                    else:
+                        exec_kwargs[param_name] = param_value
+
+                # 执行关键字执行前的hook
+                before_context = hook_manager.execute_hooks(
+                    HookType.BEFORE_KEYWORD_EXECUTION,
+                    server=self,
+                    shared_variables=self.shared_variables,
+                    keyword_name=name,
+                    keyword_args=exec_kwargs,
+                    test_context=test_context
+                )
+
+                # 从hook上下文中更新执行参数（hook可能修改了参数）
+                if 'keyword_args' in before_context.data:
+                    exec_kwargs.update(before_context.data['keyword_args'])
+
+                # 执行关键字
+                result = keyword_manager.execute(name, **exec_kwargs)
+
+                # 执行关键字执行后的hook
+                after_context = hook_manager.execute_hooks(
+                    HookType.AFTER_KEYWORD_EXECUTION,
+                    server=self,
+                    shared_variables=self.shared_variables,
+                    keyword_name=name,
+                    keyword_args=exec_kwargs,
+                    keyword_result=result,
+                    test_context=test_context
+                )
+
+                # 从hook上下文中获取可能修改的结果
+                if 'keyword_result' in after_context.data:
+                    result = after_context.data['keyword_result']
+
+                # 处理返回结果
+                return_data = self._process_keyword_result(result, test_context)
+
+                return XMLRPCSerializer.convert_to_serializable({
+                    'status': 'PASS',
+                    'return': return_data,
+                    'diagnostics': capture.to_payload('PASS')
+                })
         except Exception as e:
             exc_type, exc_value, exc_tb = sys.exc_info()
-            return {
+            formatted_traceback = traceback.format_exception(
+                exc_type, exc_value, exc_tb)
+            diagnostics = {}
+            if capture is not None:
+                diagnostics = capture.to_payload(
+                    'FAIL',
+                    error=str(e),
+                    traceback_lines=formatted_traceback)
+            return XMLRPCSerializer.convert_to_serializable({
                 'status': 'FAIL',
                 'error': str(e),
-                'traceback': traceback.format_exception(exc_type, exc_value, exc_tb)
-            }
+                'traceback': formatted_traceback,
+                'diagnostics': diagnostics
+            })
         finally:
             if com_initialized and pythoncom_module is not None:
                 try:
