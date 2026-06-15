@@ -200,6 +200,16 @@ test("build report iframe retries the current report url after report-ready", ()
   assert.match(renderer, /el\.buildReportFrame\.src = buildReportFrameUrl\(state\.currentBuildReportUrl, state\.buildReportReloadSeq\)/);
 });
 
+test("switching to build does not synchronously render expensive hidden surfaces", () => {
+  assert.match(renderer, /function syncBuildReportFrameVisibility\(options = \{\}\)/);
+  assert.match(renderer, /syncBuildReportFrameVisibility\(\{ defer: isBuildView \}\)/);
+  assert.match(renderer, /function deferBuildReportFrameReveal\(\)/);
+  assert.match(renderer, /requestAnimationFrame/);
+  assert.match(renderer, /function shouldRenderConsoleBuffer\(\)/);
+  assert.match(renderer, /if \(!shouldRenderConsoleBuffer\(\)\) \{\s*el\.consoleBody\.textContent = "";\s*return;\s*\}/);
+  assert.match(renderer, /if \(scope === state\.console\.activeScope && shouldRenderConsoleBuffer\(\)\) \{/);
+});
+
 test("console stays collapsed by default and can be opened when needed", () => {
   assert.match(renderer, /activeScope:\s*"debug"/);
   assert.match(renderer, /function createConsoleView\(\)\s*\{[\s\S]*wrap: true,[\s\S]*open: false,[\s\S]*expanded: false/);

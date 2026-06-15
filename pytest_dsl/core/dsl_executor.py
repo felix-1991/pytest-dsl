@@ -729,7 +729,6 @@ class DSLExecutor:
                 print(f"   {i}. [{error['statement_type']}] {line_info}: {error['error']}")
             print("📋 注意：清理操作失败不会影响测试结果，所有清理步骤都已尝试执行")
 
-    @allure.step("执行返回语句")
     def _handle_return(self, node):
         """处理return语句
 
@@ -739,11 +738,11 @@ class DSLExecutor:
         Raises:
             ReturnException: 抛出异常来实现return控制流
         """
-        expr_node = node.children[0]
-        return_value = self.eval_expression(expr_node)
+        with allure.step("执行返回语句"):
+            expr_node = node.children[0]
+            return_value = self.eval_expression(expr_node)
         raise ReturnException(return_value)
 
-    @allure.step("执行break语句")
     def _handle_break(self, node):
         """处理break语句
 
@@ -753,9 +752,10 @@ class DSLExecutor:
         Raises:
             BreakException: 抛出异常来实现break控制流
         """
+        with allure.step("执行break语句"):
+            pass
         raise BreakException()
 
-    @allure.step("执行continue语句")
     def _handle_continue(self, node):
         """处理continue语句
 
@@ -765,6 +765,8 @@ class DSLExecutor:
         Raises:
             ContinueException: 抛出异常来实现continue控制流
         """
+        with allure.step("执行continue语句"):
+            pass
         raise ContinueException()
 
     @allure.step("执行条件语句")

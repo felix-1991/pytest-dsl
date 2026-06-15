@@ -55,6 +55,8 @@ const state = {
   currentBuildResultsDir: "",
   buildReportReloadTimer: null,
   buildReportReloadSeq: 0,
+  buildReportRevealRaf: null,
+  buildReportRevealTimer: null,
   buildHistory: [],
   currentDebugLine: null,
   debugStartLine: null,
@@ -416,6 +418,7 @@ function switchWorkspaceView(view) {
   el.buildNavBtn.classList.toggle("is-active", isBuildView);
   updateTreePaneForActiveView();
   setConsoleScope(nextView);
+  syncBuildReportFrameVisibility({ defer: isBuildView });
   if (isBuildView) {
     ensureBuildCaseTreeExpanded();
     renderBuildCaseTree();
@@ -1706,12 +1709,14 @@ function updateBuildSummary(options = {}) {
 
 function resetBuildReport() {
   clearBuildReportReloadTimer();
+  cancelBuildReportFrameReveal();
   state.currentBuildReportUrl = "";
   state.currentBuildReportText = "";
   state.buildReportReloadSeq = 0;
   el.buildReportFrame.src = "about:blank";
   el.buildReportFrame.hidden = true;
   el.buildReportEmpty.hidden = false;
+  el.buildReportEmpty.textContent = "运行后会在这里直接显示 Allure 报告";
   el.buildReportUrl.textContent = "等待 Allure 报告";
   el.buildAllureStatus.textContent = "等待 Allure 报告";
   el.buildOpenReportBtn.disabled = true;
@@ -1725,12 +1730,73 @@ function setBuildReportUrl(url) {
   }
   state.currentBuildReportText = "";
   el.buildReportFrame.src = buildReportFrameUrl(state.currentBuildReportUrl);
-  el.buildReportFrame.hidden = false;
-  el.buildReportEmpty.hidden = true;
+  syncBuildReportFrameVisibility({ defer: state.activeView === "build" });
   el.buildReportUrl.textContent = state.currentBuildReportUrl;
   el.buildReportUrl.title = state.currentBuildReportUrl;
   el.buildOpenReportBtn.disabled = false;
   scheduleBuildReportFrameReload();
+}
+
+function syncBuildReportFrameVisibility(options = {}) {
+  cancelBuildReportFrameReveal();
+  if (!state.currentBuildReportUrl) {
+    el.buildReportFrame.hidden = true;
+    el.buildReportEmpty.hidden = false;
+    el.buildReportEmpty.textContent = "运行后会在这里直接显示 Allure 报告";
+    return;
+  }
+
+  if (state.activeView !== "build") {
+    el.buildReportFrame.hidden = true;
+    el.buildReportEmpty.hidden = false;
+    el.buildReportEmpty.textContent = "Allure 报告已生成，切到构建页后显示";
+    return;
+  }
+
+  if (options.defer) {
+    el.buildReportFrame.hidden = true;
+    el.buildReportEmpty.hidden = false;
+    el.buildReportEmpty.textContent = "Allure 报告准备就绪，正在加载视图";
+    deferBuildReportFrameReveal();
+    return;
+  }
+
+  revealBuildReportFrame();
+}
+
+function deferBuildReportFrameReveal() {
+  const reveal = () => {
+    state.buildReportRevealRaf = null;
+    state.buildReportRevealTimer = window.setTimeout(() => {
+      state.buildReportRevealTimer = null;
+      revealBuildReportFrame();
+    }, 0);
+  };
+
+  if (typeof window.requestAnimationFrame === "function") {
+    state.buildReportRevealRaf = window.requestAnimationFrame(reveal);
+  } else {
+    state.buildReportRevealTimer = window.setTimeout(revealBuildReportFrame, 0);
+  }
+}
+
+function revealBuildReportFrame() {
+  if (!state.currentBuildReportUrl || state.activeView !== "build") {
+    return;
+  }
+  el.buildReportFrame.hidden = false;
+  el.buildReportEmpty.hidden = true;
+}
+
+function cancelBuildReportFrameReveal() {
+  if (state.buildReportRevealRaf !== null && typeof window.cancelAnimationFrame === "function") {
+    window.cancelAnimationFrame(state.buildReportRevealRaf);
+  }
+  state.buildReportRevealRaf = null;
+  if (state.buildReportRevealTimer) {
+    window.clearTimeout(state.buildReportRevealTimer);
+    state.buildReportRevealTimer = null;
+  }
 }
 
 function buildReportFrameUrl(url) {
@@ -3181,9 +3247,9 @@ function normalizeConsoleScope(scope) {
 
 function setConsoleScope(scope) {
   state.console.activeScope = normalizeConsoleScope(scope);
-  renderConsoleBuffer();
-  renderCommandPreview();
   applyConsoleViewState();
+  renderCommandPreview();
+  renderConsoleBuffer();
 }
 
 function currentConsoleView() {
@@ -3224,7 +3290,7 @@ function appendLog(level, message, options = {}) {
     message: String(message ?? ""),
   };
   consoleBufferForScope(scope).lines.push(entry);
-  if (scope === state.console.activeScope) {
+  if (scope === state.console.activeScope && shouldRenderConsoleBuffer()) {
     appendConsoleRow(entry);
   }
 }
@@ -3245,8 +3311,17 @@ function renderConsoleBuffer() {
   if (!el.consoleBody) {
     return;
   }
+  if (!shouldRenderConsoleBuffer()) {
+    el.consoleBody.textContent = "";
+    return;
+  }
   el.consoleBody.textContent = "";
   currentConsoleBuffer().lines.forEach(appendConsoleRow);
+}
+
+function shouldRenderConsoleBuffer() {
+  const consoleView = currentConsoleView();
+  return Boolean(consoleView.open || consoleView.expanded);
 }
 
 function clearConsole(scope = state.console.activeScope) {
@@ -3290,12 +3365,16 @@ function toggleConsoleOpen() {
     consoleView.expanded = false;
   }
   applyConsoleViewState();
+  renderConsoleBuffer();
 }
 
 function openConsolePanel(scope = state.console.activeScope) {
   const consoleView = state.console[normalizeConsoleScope(scope)];
   consoleView.open = true;
   applyConsoleViewState();
+  if (normalizeConsoleScope(scope) === state.console.activeScope) {
+    renderConsoleBuffer();
+  }
 }
 
 function toggleConsoleExpanded() {
@@ -3307,6 +3386,7 @@ function toggleConsoleExpanded() {
     consoleView.expanded = !consoleView.expanded;
   }
   applyConsoleViewState();
+  renderConsoleBuffer();
 }
 
 function applyConsoleViewState() {
