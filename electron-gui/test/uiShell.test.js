@@ -802,6 +802,9 @@ test("command bar separates live preview from generated command copying", () => 
   assert.match(css, /\.command-bar\s*\{[\s\S]*min-height:\s*34px/);
   assert.match(css, /\.generated-command-text/);
   assert.match(css, /\.generated-command-text\s*\{[\s\S]*height:\s*24px/);
+  assert.match(css, /\.generated-command-text\s*\{[\s\S]*overflow-x:\s*auto/);
+  assert.match(css, /\.generated-command-text\s*\{[\s\S]*overflow-y:\s*hidden/);
+  assert.match(css, /\.generated-command-text\s*\{[\s\S]*overscroll-behavior:\s*contain/);
   assert.match(css, /\.generated-command-actions/);
   assert.match(css, /\.command-tool-btn\s*\{[\s\S]*height:\s*28px/);
 });

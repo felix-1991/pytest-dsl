@@ -1580,6 +1580,8 @@ body.is-resizing-console .panel-resizer {
   height: 24px;
   min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior: contain;
   padding: 2px 7px;
   border: 1px solid #dbe4f0;
   border-radius: 6px;
