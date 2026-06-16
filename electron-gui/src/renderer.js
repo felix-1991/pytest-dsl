@@ -25,6 +25,15 @@ function createCommandPreview(command = "pytest-dsl") {
   };
 }
 
+function createCommandBar(command = "pytest-dsl") {
+  return {
+    command,
+    context: "preview",
+    locked: false,
+    taskId: null,
+  };
+}
+
 const state = {
   snapshot: null,
   currentFile: null,
@@ -84,6 +93,7 @@ const state = {
     debug: createCommandPreview(),
     build: createCommandPreview(),
   },
+  commandBar: createCommandBar(),
   consoleRenderScheduled: false,
   consoleRenderRaf: null,
   consoleRenderTimer: null,
@@ -201,7 +211,6 @@ function cacheElements() {
     "debugNavBtn",
     "buildNavBtn",
     "treeRefreshBtn",
-    "expandAllBtn",
     "collapseAllBtn",
     "branchName",
     "treePaneTitle",
@@ -245,6 +254,11 @@ function cacheElements() {
     "stopBtn",
     "keywordBtn",
     "commandBtn",
+    "commandBar",
+    "generatedCommandStatus",
+    "generatedCommandText",
+    "copyCommandBtn",
+    "regenerateCommandBtn",
     "keywordPanel",
     "keywordSearch",
     "keywordStatus",
@@ -361,13 +375,6 @@ function bindEvents() {
       String(el.suitePicker.classList.contains("is-open")),
     );
   });
-  el.expandAllBtn.addEventListener("click", () => {
-    if (state.activeView === "build") {
-      setAllBuildCaseGroupsExpanded(true);
-    } else {
-      setAllTreeGroupsCollapsed(false);
-    }
-  });
   el.collapseAllBtn.addEventListener("click", () => {
     if (state.activeView === "build") {
       setAllBuildCaseGroupsExpanded(false);
@@ -383,6 +390,12 @@ function bindEvents() {
   );
   el.commandBtn.addEventListener("click", () =>
     generateCurrentCommand(),
+  );
+  el.regenerateCommandBtn.addEventListener("click", () =>
+    generateCurrentCommand(),
+  );
+  el.copyCommandBtn.addEventListener("click", () =>
+    copyGeneratedCommand(),
   );
   el.keywordSearch.addEventListener("input", handleKeywordSearchInput);
   el.configTrigger.addEventListener("click", () => {
@@ -703,7 +716,7 @@ function applySnapshot(snapshot, logMessage, preferredFile = null) {
     state.buildSelectionTouched = false;
     state.selectedTreePath = "";
     state.selectedTreeKind = "directory";
-    state.collapsedTreeDirs.clear();
+    collapseTreeDirsBelowRoot();
     state.selectedFileOverrides = {};
     state.selectedBuildFileOverrides = {};
     state.expandedSuiteNodes.clear();
@@ -1763,9 +1776,12 @@ function updateFileActionState() {
   el.debugSessionGroup.hidden = !isDebugRunning;
   el.keywordBtn.hidden = !showKeywordTools;
   el.commandBtn.hidden = !showKeywordTools;
+  el.commandBar.hidden = !showKeywordTools;
   el.saveBtn.disabled = !hasFile || readonlySource;
   el.keywordBtn.disabled = !hasFile || readonlySource || !isExecutableFile(state.currentFile);
   el.commandBtn.disabled = !showKeywordTools;
+  el.regenerateCommandBtn.disabled = !showKeywordTools;
+  el.copyCommandBtn.disabled = !showKeywordTools || !state.commandBar.command;
   el.syntaxBtn.disabled = !executable || isRunning;
   el.runBtn.disabled = !canRun || isRunning;
   el.debugStepsBtn.disabled = !canDebug || isRunning;
@@ -2743,20 +2759,37 @@ function buildKeywordSnippet(keyword) {
   return `[${keyword.name}], ${parameters.map((name) => `${name}: `).join(", ")}`;
 }
 
+function normalizeCommandText(command) {
+  return String(command || "pytest-dsl").replace(/\s+/g, " ").trim() || "pytest-dsl";
+}
+
 async function generateCurrentCommand() {
-  const command = currentCommand();
+  const command = normalizeCommandText(currentCommand());
   previewCommand(command, { force: true });
-  appendLog("info", `Generated command: ${command}`);
+  lockGeneratedCommand(command);
+  appendLog("info", `命令已锁定: ${command}`);
+  showActionFeedback("命令已锁定", "info");
+  return command;
+}
+
+async function copyGeneratedCommand() {
+  const command = normalizeCommandText(state.commandBar.command || currentCommand());
+  if (!command) {
+    appendLog("warn", "没有可复制的命令");
+    return "";
+  }
 
   if (typeof api.copyText !== "function") {
+    appendLog("warn", "当前环境不支持复制命令");
     return command;
   }
 
   try {
     await api.copyText(command);
-    appendLog("pass", "Command copied to clipboard");
+    appendLog("pass", "命令已复制");
+    showActionFeedback("命令已复制", "pass");
   } catch (error) {
-    appendLog("warn", `Copy command failed: ${errorMessage(error)}`);
+    appendLog("warn", `复制命令失败: ${errorMessage(error)}`);
   }
 
   return command;
@@ -2835,6 +2868,7 @@ async function runExecutionTask(mode, options = {}) {
   CM6.setDebugState({ debugStartLine: state.debugStartLine, currentDebugLine: null, debugSelection: selection });
   resetConsoleForExecution("debug");
   setConsoleScope("debug");
+  openConsolePanel("debug");
   setRunningState(true, taskId, mode);
   setExecutionCommand(command, { mode, taskId });
   appendLog("info", `${executionModeLabel(mode)} started: ${sourceLabel}`, { scope: "debug" });
@@ -2937,6 +2971,7 @@ async function runSuiteExecution() {
   const command = suiteCommandLabel(selectedSuiteIds, yamlVars);
   resetConsoleForExecution("debug");
   setConsoleScope("debug");
+  openConsolePanel("debug");
   setRunningState(true, taskId, "suite");
   setExecutionCommand(command, { mode: "suite", taskId });
   appendLog("info", `测试套运行 started: ${selectedSuiteIds.join(", ")}`, { scope: "debug" });
@@ -2989,6 +3024,7 @@ async function runBuildExecution() {
   resetBuildReport();
   resetConsoleForExecution("build");
   setConsoleScope("build");
+  openConsolePanel("build");
   setRunningState(true, buildId, "build");
   setExecutionCommand(command, { mode: "build", taskId: buildId });
   updateBuildSummary({
@@ -3378,12 +3414,19 @@ function previewCommand(command = currentCommand(), options = {}) {
 
 function setExecutionCommand(command, options = {}) {
   const scope = normalizeConsoleScope(options.scope || consoleScopeForMode(options.mode));
-  return updateCommandPreview(command, {
+  const updated = updateCommandPreview(command, {
     context: commandContextForMode(options.mode),
     persistent: true,
     taskId: options.taskId || null,
     scope,
   });
+  if (scope === "debug") {
+    lockGeneratedCommand(updated, {
+      context: commandContextForMode(options.mode),
+      taskId: options.taskId || null,
+    });
+  }
+  return updated;
 }
 
 function releaseExecutionCommand(taskId) {
@@ -3396,8 +3439,15 @@ function releaseExecutionCommand(taskId) {
     return preview.command;
   }
   preview.taskId = null;
-  preview.persistent = true;
-  renderCommandPreview();
+  preview.persistent = false;
+  preview.context = "preview";
+  releaseCommandBarTask(taskId);
+  updateCommandPreview(currentCommand(), {
+    context: "preview",
+    persistent: false,
+    taskId: null,
+    scope: consoleScopeForMode(state.currentTaskMode),
+  });
   return preview.command;
 }
 
@@ -3407,6 +3457,7 @@ function resetCommandPreview(command = "pytest-dsl") {
   preview.context = "preview";
   preview.persistent = false;
   preview.taskId = null;
+  resetCommandBar(command);
   renderCommandPreview();
   return command;
 }
@@ -3414,7 +3465,7 @@ function resetCommandPreview(command = "pytest-dsl") {
 function updateCommandPreview(command, options = {}) {
   const scope = normalizeConsoleScope(options.scope || consoleScopeForMode(options.context));
   const preview = state.commandPreviews[scope];
-  const normalized = String(command || "pytest-dsl").replace(/\s+/g, " ").trim() || "pytest-dsl";
+  const normalized = normalizeCommandText(command);
   preview.command = normalized;
   preview.context = options.context || preview.context || "preview";
   preview.persistent = Boolean(options.persistent);
@@ -3423,7 +3474,43 @@ function updateCommandPreview(command, options = {}) {
   if (scope === state.console.activeScope) {
     renderCommandPreview();
   }
+  if (scope === "debug") {
+    syncCommandBarPreview(normalized, { context: preview.context });
+  }
   return normalized;
+}
+
+function syncCommandBarPreview(command, options = {}) {
+  if (state.commandBar.locked) {
+    return state.commandBar.command;
+  }
+  state.commandBar.command = normalizeCommandText(command);
+  state.commandBar.context = options.context || "preview";
+  state.commandBar.taskId = null;
+  renderCommandBar();
+  return state.commandBar.command;
+}
+
+function lockGeneratedCommand(command, options = {}) {
+  state.commandBar.command = normalizeCommandText(command);
+  state.commandBar.context = options.context || "preview";
+  state.commandBar.locked = true;
+  state.commandBar.taskId = options.taskId || null;
+  renderCommandBar();
+  return state.commandBar.command;
+}
+
+function releaseCommandBarTask(taskId) {
+  if (taskId && state.commandBar.taskId === taskId) {
+    state.commandBar.taskId = null;
+    renderCommandBar();
+  }
+}
+
+function resetCommandBar(command = "pytest-dsl") {
+  state.commandBar = createCommandBar(normalizeCommandText(command));
+  renderCommandBar();
+  return state.commandBar.command;
 }
 
 function currentCommandPreview() {
@@ -3449,6 +3536,26 @@ function renderCommandPreview() {
   el.commandContext.title = label;
   el.commandPreview.textContent = preview.command;
   el.commandPreview.title = preview.command;
+}
+
+function renderCommandBar() {
+  if (!el.commandBar) {
+    return;
+  }
+  const title = state.commandBar.locked
+    ? `保持到下次生成或执行 · ${commandContextLabel(state.commandBar.context)}`
+    : "随当前文件、选择和配置实时更新";
+  el.commandBar.classList.toggle("is-locked", state.commandBar.locked);
+  el.commandBar.classList.toggle("is-live", !state.commandBar.locked);
+  el.generatedCommandStatus.textContent = state.commandBar.locked ? "已锁定" : "实时预览";
+  el.generatedCommandStatus.title = title;
+  el.generatedCommandText.textContent = state.commandBar.command;
+  el.generatedCommandText.title = state.commandBar.command;
+  el.copyCommandBtn.disabled = !state.commandBar.command || el.commandBar.hidden;
+  el.regenerateCommandBtn.textContent = state.commandBar.locked ? "重新生成" : "生成并锁定";
+  el.regenerateCommandBtn.title = state.commandBar.locked
+    ? "用当前选择重新生成并替换锁定命令"
+    : "生成并锁定当前命令";
 }
 
 function commandContextForMode(mode) {
@@ -3770,8 +3877,10 @@ function resetAllConsoleState() {
     debug: createCommandPreview(),
     build: createCommandPreview(),
   };
+  state.commandBar = createCommandBar();
   cancelConsoleBufferRender();
   requestConsoleBufferRender();
+  renderCommandBar();
   renderCommandPreview();
   applyConsoleViewState();
 }
@@ -3798,6 +3907,28 @@ function collectProjectDirectoryPaths(node) {
     node.path,
     ...(node.children || []).flatMap(collectProjectDirectoryPaths),
   ];
+}
+
+// Default project-tree state: expand only the project root, so the first
+// level of children stays visible while every deeper directory starts
+// collapsed. This keeps the per-interaction flatten cost bounded for large
+// projects while still showing what users open a project to find.
+function collapseTreeDirsBelowRoot() {
+  state.collapsedTreeDirs.clear();
+  if (!state.snapshot || !state.snapshot.tree) {
+    return;
+  }
+  const root = state.snapshot.tree;
+  if (!root || root.type !== "directory") {
+    return;
+  }
+  // Root's own children are rendered because the root is not in the collapsed
+  // set; we only need to fold the children that are themselves directories.
+  (root.children || []).forEach((child) => {
+    collectProjectDirectoryPaths(child)
+      .filter(Boolean)
+      .forEach((directory) => state.collapsedTreeDirs.add(directory));
+  });
 }
 
 function ensureBuildCaseTreeExpanded() {

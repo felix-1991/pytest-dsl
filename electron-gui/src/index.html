@@ -181,14 +181,6 @@
                                 </button>
                                 <button
                                     class="text-btn"
-                                    id="expandAllBtn"
-                                    type="button"
-                                    title="展开全部目录"
-                                >
-                                    展开
-                                </button>
-                                <button
-                                    class="text-btn"
                                     id="collapseAllBtn"
                                     type="button"
                                     title="收缩全部目录"
@@ -341,7 +333,7 @@
                                             id="commandBtn"
                                             type="button"
                                         >
-                                            生成命令
+                                            生成并锁定
                                         </button>
                                         <span id="editorMeta"
                                             >UTF-8 · Spaces: 4</span
@@ -355,6 +347,47 @@
                                     当前工作台聚焦本地调试与构建入口：打开项目、编辑
                                     DSL、运行/调试并查看输出。
                                 </p>
+                                <section
+                                    class="command-bar is-live"
+                                    id="commandBar"
+                                    aria-label="命令生成与复制"
+                                    hidden
+                                >
+                                    <div class="command-bar-main">
+                                        <span class="command-bar-label"
+                                            >命令条</span
+                                        >
+                                        <span
+                                            class="generated-command-status"
+                                            id="generatedCommandStatus"
+                                            >实时预览</span
+                                        >
+                                        <code
+                                            class="generated-command-text"
+                                            id="generatedCommandText"
+                                            title="pytest-dsl"
+                                            >pytest-dsl</code
+                                        >
+                                    </div>
+                                    <div class="generated-command-actions">
+                                        <button
+                                            class="text-btn command-tool-btn"
+                                            id="regenerateCommandBtn"
+                                            type="button"
+                                            title="生成并锁定当前命令"
+                                        >
+                                            生成并锁定
+                                        </button>
+                                        <button
+                                            class="primary-btn command-tool-btn"
+                                            id="copyCommandBtn"
+                                            type="button"
+                                            title="复制命令条中的命令"
+                                        >
+                                            复制命令
+                                        </button>
+                                    </div>
+                                </section>
                                 <div class="param-head">
                                     <strong>DSL 编辑器</strong>
                                     <div

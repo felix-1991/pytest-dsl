@@ -170,6 +170,31 @@ test("build view hides debug suite controls and uses the left build tree as scop
   assert.match(renderer, /currentSelectedSuiteIds\("build"\)/);
 });
 
+test("debug and build topbars keep project path readable and controls aligned", () => {
+  const readableProjectColumn = String.raw`minmax\(320px,\s*0\.95fr\)`;
+  assert.match(
+    css,
+    new RegExp(
+      String.raw`\.topbar\s*\{[\s\S]*grid-template-columns:\s*${readableProjectColumn}\s+minmax\(220px,\s*300px\)\s+minmax\(360px,\s*1\.1fr\)`,
+    ),
+  );
+  assert.match(
+    css,
+    new RegExp(
+      String.raw`\.topbar\.is-build-view\s*\{[\s\S]*grid-template-columns:\s*minmax\(320px,\s*460px\)\s+minmax\(0,\s*1fr\)`,
+    ),
+  );
+  assert.match(css, /\.topbar\s*\{[\s\S]*gap:\s*12px/);
+  assert.match(css, /\.topbar\s*\{[\s\S]*min-height:\s*56px/);
+  assert.match(css, /\.topbar\.is-build-view \.top-actions\s*\{[\s\S]*grid-column:\s*2/);
+  assert.match(css, /\.suite-picker\s*\{[\s\S]*width:\s*100%/);
+  assert.match(css, /\.top-actions\s*\{[\s\S]*display:\s*grid/);
+  assert.match(css, /\.top-actions\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto\s+auto/);
+  assert.match(css, /\.top-actions \.config-picker\s*\{[\s\S]*width:\s*100%/);
+  assert.match(css, /\.remote-summary\s*\{[\s\S]*flex:\s*0 1 auto/);
+  assert.match(css, /\.remote-summary span:last-child\s*\{[\s\S]*text-overflow:\s*ellipsis/);
+});
+
 test("switching to build warns before leaving unsaved editor changes", () => {
   assert.match(renderer, /function confirmDiscardDirtyBeforeBuild\(\)/);
   assert.match(renderer, /state\.dirty/);
@@ -314,7 +339,7 @@ test("renderer removes fake window dots and exposes project tree controls", () =
   assert.match(html, /id="treeRefreshBtn"/);
   assert.doesNotMatch(html, /id="createFileBtn"/);
   assert.doesNotMatch(html, /id="createFolderBtn"/);
-  assert.match(html, /id="expandAllBtn"/);
+  assert.doesNotMatch(html, /id="expandAllBtn"/);
   assert.match(html, /id="collapseAllBtn"/);
   assert.match(html, /id="treeContextMenu"/);
   assert.match(html, /id="entryDialog"/);
@@ -325,6 +350,20 @@ test("renderer removes fake window dots and exposes project tree controls", () =
 test("renderer starts empty so the GUI can open external projects", () => {
   assert.doesNotMatch(renderer, /loadDefaultProject\(\);/);
   assert.match(renderer, /setEmptyProjectState\(\);/);
+});
+
+test("project tree defaults to only the root level expanded to bound flatten cost", () => {
+  // The expand-all affordance is removed: large projects should not pay the
+  // full flatten + checkbox-sync cost on every interaction.
+  assert.doesNotMatch(html, /id="expandAllBtn"/);
+  assert.doesNotMatch(renderer, /expandAllBtn\.addEventListener/);
+  // On project load the tree collapses everything below the root instead of
+  // clearing the collapsed set (which used to expand all directories).
+  assert.match(renderer, /function collapseTreeDirsBelowRoot\(\)/);
+  assert.match(
+    renderer,
+    /state\.selectedTreeKind = "directory";\s*\n\s*collapseTreeDirsBelowRoot\(\);/,
+  );
 });
 
 test("config picker supports multi-select and remote status UI", () => {
@@ -484,11 +523,11 @@ test("editor chrome is compact so code keeps vertical space", () => {
   assert.match(html, /class="head-actions"[\s\S]*class="inline-actions"/);
   assert.match(css, /\.workspace-panel\s*\{[\s\S]*grid-template-rows:\s*34px minmax\(0,\s*1fr\)/);
   assert.match(css, /\.main-stage\s*\{[\s\S]*grid-template-rows:\s*minmax\(260px,\s*1fr\) 6px var\(--console-height\)/);
-  assert.match(css, /\.editor-stack\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)/);
+  assert.match(css, /\.editor-stack\s*\{[\s\S]*grid-template-rows:\s*auto auto auto minmax\(0,\s*1fr\)/);
   assert.match(css, /\.workarea\s*\{[\s\S]*height:\s*100%/);
   assert.match(css, /\.editor-stack\s*\{[\s\S]*height:\s*100%/);
   assert.match(css, /\.editor-stack\s*\{[\s\S]*overflow:\s*hidden/);
-  assert.match(css, /\.code-editor\s*\{[\s\S]*grid-row:\s*3/);
+  assert.match(css, /\.code-editor\s*\{[\s\S]*grid-row:\s*4/);
   assert.match(css, /\.code-editor\s*\{[\s\S]*min-height:\s*280px/);
   assert.match(css, /\.code-editor \.cm-scroller\s*\{[\s\S]*height:\s*100%/);
   assert.match(css, /\.code-editor \.cm-content\s*\{[\s\S]*min-height:\s*100%/);
@@ -631,14 +670,17 @@ test("console header keeps its label stable when command preview is long", () =>
   assert.match(css, /\.console-tool-btn\s*\{[\s\S]*flex:\s*0 0 auto/);
 });
 
-test("console command preview preserves the last actual execution context", () => {
+test("command bar preserves actual execution while console preview stays live", () => {
   assert.match(renderer, /commandPreviews:\s*\{/);
   assert.match(renderer, /function previewCommand\(/);
   assert.match(renderer, /function setExecutionCommand\(/);
   assert.match(renderer, /function releaseExecutionCommand\(/);
+  assert.match(renderer, /function lockGeneratedCommand\(/);
   assert.match(renderer, /updateCommandPreview\(event\.command \|\| currentCommand\(\),\s*\{[\s\S]*taskId:\s*event\.taskId/);
   assert.match(renderer, /releaseExecutionCommand\(event\.taskId\)/);
-  assert.doesNotMatch(renderer, /if \(!isRunning\) \{\s*updateCommandPreview\(currentCommand\(\)\);\s*\}/);
+  assert.match(renderer, /lockGeneratedCommand\(updated,\s*\{[\s\S]*taskId:\s*options\.taskId/);
+  assert.match(renderer, /preview\.persistent = false/);
+  assert.match(renderer, /updateCommandPreview\(currentCommand\(\),\s*\{[\s\S]*context:\s*"preview"/);
 });
 
 test("editor keyword tools stay available outside active debug sessions", () => {
@@ -734,11 +776,34 @@ test("editor keyword browser uses pytest-dsl keyword data and inserts snippets",
   assert.doesNotMatch(renderer, /Format preview/);
 });
 
-test("generate command action updates and copies the current command", () => {
+test("command bar separates live preview from generated command copying", () => {
+  assert.match(html, /id="commandBar"/);
+  assert.match(html, /id="generatedCommandStatus"/);
+  assert.match(html, /id="generatedCommandText"/);
+  assert.match(html, /id="copyCommandBtn"/);
+  assert.match(html, /id="regenerateCommandBtn"/);
+  assert.match(html, /id="commandBtn"[\s\S]*生成并锁定/);
   assert.match(renderer, /generateCurrentCommand/);
+  assert.match(renderer, /copyGeneratedCommand/);
+  assert.match(renderer, /lockGeneratedCommand/);
+  assert.match(renderer, /renderCommandBar/);
+  assert.match(renderer, /commandBar:\s*createCommandBar\(\)/);
+  assert.match(renderer, /generatedCommandText\.textContent = state\.commandBar\.command/);
+  assert.match(renderer, /generatedCommandStatus\.textContent = state\.commandBar\.locked/);
   assert.match(renderer, /api\.copyText/);
-  assert.match(renderer, /Generated command:/);
-  assert.match(renderer, /Command copied to clipboard/);
+  assert.match(renderer, /命令已锁定/);
+  assert.match(renderer, /命令已复制/);
+  const generateStart = renderer.indexOf("async function generateCurrentCommand()");
+  const copyStart = renderer.indexOf("async function copyGeneratedCommand()");
+  assert.ok(generateStart >= 0, "missing generateCurrentCommand function");
+  assert.ok(copyStart > generateStart, "copyGeneratedCommand should follow generateCurrentCommand");
+  assert.doesNotMatch(renderer.slice(generateStart, copyStart), /api\.copyText/);
+  assert.match(css, /\.command-bar/);
+  assert.match(css, /\.command-bar\s*\{[\s\S]*min-height:\s*34px/);
+  assert.match(css, /\.generated-command-text/);
+  assert.match(css, /\.generated-command-text\s*\{[\s\S]*height:\s*24px/);
+  assert.match(css, /\.generated-command-actions/);
+  assert.match(css, /\.command-tool-btn\s*\{[\s\S]*height:\s*28px/);
 });
 
 test("editor exposes go-to-definition for DSL keyword calls", () => {

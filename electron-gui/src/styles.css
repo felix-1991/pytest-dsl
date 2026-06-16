@@ -81,16 +81,17 @@ button {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(380px, 460px) minmax(260px, 1fr) auto;
+  grid-template-columns: minmax(320px, 0.95fr) minmax(220px, 300px) minmax(360px, 1.1fr);
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  min-height: 56px;
   padding: 0 18px;
   border-bottom: 1px solid var(--line);
   background: var(--chrome);
 }
 
 .topbar.is-build-view {
-  grid-template-columns: minmax(380px, 1fr) auto;
+  grid-template-columns: minmax(320px, 460px) minmax(0, 1fr);
 }
 
 .topbar.is-build-view .top-actions {
@@ -157,7 +158,10 @@ button {
 }
 
 .top-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   justify-content: flex-end;
+  width: 100%;
 }
 
 .head-actions,
@@ -279,7 +283,7 @@ button {
 }
 
 .suite-picker {
-  width: clamp(220px, 22vw, 320px);
+  width: 100%;
 }
 
 .suite-trigger {
@@ -430,7 +434,7 @@ button {
 }
 
 .top-actions .config-picker {
-  width: clamp(340px, 32vw, 480px);
+  width: 100%;
 }
 
 .config-trigger {
@@ -445,6 +449,7 @@ button {
   border-radius: 7px;
   color: var(--text);
   background: #fff;
+  min-width: 0;
   text-align: left;
 }
 
@@ -456,6 +461,7 @@ button {
 }
 
 .config-main > span:first-child {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -498,14 +504,22 @@ button {
 }
 
 .remote-summary {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   justify-content: center;
+  max-width: min(230px, 58%);
+  overflow: hidden;
   padding: 2px 7px;
   border-radius: 999px;
   color: var(--muted);
   background: #eef2f7;
   font-size: 11px;
   font-weight: 700;
+}
+
+.remote-summary span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .remote-summary.is-online {
@@ -1494,7 +1508,7 @@ body.is-resizing-console .panel-resizer {
 
 .editor-stack {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -1512,6 +1526,87 @@ body.is-resizing-console .panel-resizer {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.command-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 3px 14px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcff;
+}
+
+.command-bar-main {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.command-bar-label {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.generated-command-status {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.command-bar.is-locked .generated-command-status {
+  border-color: #bbf7d0;
+  color: #15803d;
+  background: #ecfdf5;
+}
+
+.generated-command-text {
+  display: block;
+  height: 24px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px 7px;
+  border: 1px solid #dbe4f0;
+  border-radius: 6px;
+  color: #172033;
+  background: #fff;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 18px;
+  user-select: text;
+  white-space: nowrap;
+}
+
+.generated-command-text::-webkit-scrollbar {
+  height: 4px;
+}
+
+.generated-command-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.command-tool-btn {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .param-head {
@@ -1685,7 +1780,7 @@ body.is-resizing-console .panel-resizer {
 }
 
 .code-editor {
-  grid-row: 3;
+  grid-row: 4;
   height: 100%;
   min-height: 280px;
   overflow: hidden;
