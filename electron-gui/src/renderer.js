@@ -4,6 +4,7 @@ function createConsoleBuffer() {
   return {
     lines: [],
     commandOutputChunks: [],
+    droppedLineCount: 0,
   };
 }
 
@@ -41,6 +42,7 @@ const state = {
   selectedTreePath: "",
   selectedTreeKind: "directory",
   activeView: "debug",
+  buildCaseTreeSignature: null,
   collapsedTreeDirs: new Set(),
   configSignature: null,
   remoteStatus: emptyRemoteStatus(),
@@ -50,6 +52,7 @@ const state = {
   currentTaskId: null,
   currentTaskMode: null,
   currentBuildId: null,
+  currentBuildStatus: "",
   currentBuildReportUrl: "",
   currentBuildReportText: "",
   currentBuildResultsDir: "",
@@ -81,6 +84,15 @@ const state = {
     debug: createCommandPreview(),
     build: createCommandPreview(),
   },
+  consoleRenderScheduled: false,
+  consoleRenderRaf: null,
+  consoleRenderTimer: null,
+  fileTreeRenderScheduled: false,
+  fileTreeRenderRaf: null,
+  fileTreeRenderTimer: null,
+  buildCaseTreeRenderScheduled: false,
+  buildCaseTreeRenderRaf: null,
+  buildCaseTreeRenderTimer: null,
   treeContext: null,
   draggedTreeFile: null,
   treeDropTargetPath: null,
@@ -89,6 +101,11 @@ const state = {
 };
 
 const REMOTE_MONITOR_INTERVAL_MS = 5000;
+const MAX_CONSOLE_BUFFER_LINES = 2000;
+const MAX_CONSOLE_RENDER_LINES = 600;
+const TREE_ROW_HEIGHT = 34;
+const TREE_RENDER_OVERSCAN = 12;
+const TREE_FALLBACK_VIEW_ROWS = 80;
 const LAYOUT_STORAGE_KEY = "pytest-dsl-gui-layout";
 const LAYOUT_SIZES = {
   nav: {
@@ -202,6 +219,8 @@ function cacheElements() {
     "buildRunBtn",
     "buildStopBtn",
     "buildOpenReportBtn",
+    "buildDownloadReportBtn",
+    "buildDownloadLogsBtn",
     "buildToggleConsoleBtn",
     "buildStatus",
     "buildScope",
@@ -281,6 +300,8 @@ function bindEvents() {
   el.buildRunBtn.addEventListener("click", runBuildExecution);
   el.buildStopBtn.addEventListener("click", stopCurrentTask);
   el.buildOpenReportBtn.addEventListener("click", openCurrentBuildReport);
+  el.buildDownloadReportBtn.addEventListener("click", downloadCurrentBuildReport);
+  el.buildDownloadLogsBtn.addEventListener("click", downloadCurrentBuildLogs);
   el.buildToggleConsoleBtn.addEventListener("click", toggleConsoleOpen);
   el.nextStepBtn.addEventListener("click", () => sendDebugCommand("next"));
   el.continueDebugBtn.addEventListener("click", () => sendDebugCommand("continue"));
@@ -296,12 +317,19 @@ function bindEvents() {
     refreshProject({ logMessage: "Refreshed project tree" }),
   );
   el.fileTree.addEventListener("contextmenu", handleFileTreeContextMenu);
-  el.fileTree.addEventListener("scroll", closeTreeContextMenu);
+  el.fileTree.addEventListener("click", handleFileTreeClick);
+  el.fileTree.addEventListener("scroll", handleProjectTreeScroll);
   el.fileTree.addEventListener("dragstart", handleTreeDragStart);
   el.fileTree.addEventListener("dragend", handleTreeDragEnd);
   el.fileTree.addEventListener("dragover", handleTreeDragOver);
   el.fileTree.addEventListener("dragleave", handleTreeDragLeave);
   el.fileTree.addEventListener("drop", handleTreeDrop);
+  el.suiteList.addEventListener("change", handleSuiteTreeChange);
+  el.suiteList.addEventListener("click", handleSuiteTreeClick);
+  el.buildCaseTree.addEventListener("change", handleSuiteTreeChange);
+  el.buildCaseTree.addEventListener("click", handleSuiteTreeClick);
+  el.buildCaseTree.addEventListener("scroll", handleBuildCaseTreeScroll);
+  el.keywordList.addEventListener("click", handleKeywordListClick);
   el.treeContextMenu.addEventListener("click", handleTreeContextMenuClick);
   el.entryDialogForm.addEventListener("submit", handleEntryDialogSubmit);
   el.entryDialogCancel.addEventListener("click", () => closeEntryDialog(null));
@@ -370,11 +398,11 @@ function bindEvents() {
     const value = el.fileFilter.value.trim().toLowerCase();
     if (state.activeView === "build") {
       state.buildCaseFilter = value;
-      renderBuildCaseTree();
+      scheduleBuildCaseTreeRender();
       return;
     }
     state.filter = value;
-    renderFileTree();
+    scheduleFileTreeRender();
   });
   if (typeof api.onExecutionEvent === "function") {
     api.onExecutionEvent(handleExecutionEvent);
@@ -420,8 +448,8 @@ function switchWorkspaceView(view) {
   setConsoleScope(nextView);
   syncBuildReportFrameVisibility({ defer: isBuildView });
   if (isBuildView) {
-    ensureBuildCaseTreeExpanded();
-    renderBuildCaseTree();
+    ensureBuildCaseTreeRootExpanded();
+    ensureBuildCaseTreeRendered();
     updateBuildSummary();
     previewCommand(buildCommandLabel(), { force: true, scope: "build" });
   } else {
@@ -666,8 +694,10 @@ function applySnapshot(snapshot, logMessage, preferredFile = null) {
   if (projectChanged) {
     resetKeywordBrowser();
     state.currentBuildId = null;
+    state.currentBuildStatus = "";
     state.currentBuildResultsDir = "";
     state.buildHistory = [];
+    invalidateBuildCaseTreeRender();
     resetBuildReport();
     state.suiteSelectionTouched = false;
     state.buildSelectionTouched = false;
@@ -719,6 +749,7 @@ function setEmptyProjectState() {
   state.selectedTreePath = "";
   state.selectedTreeKind = "directory";
   state.activeView = "debug";
+  state.buildCaseTreeSignature = null;
   state.filter = "";
   state.buildCaseFilter = "";
   state.collapsedTreeDirs.clear();
@@ -730,6 +761,7 @@ function setEmptyProjectState() {
   state.currentTaskId = null;
   state.currentTaskMode = null;
   state.currentBuildId = null;
+  state.currentBuildStatus = "";
   state.currentBuildReportUrl = "";
   state.currentBuildReportText = "";
   state.currentBuildResultsDir = "";
@@ -803,25 +835,121 @@ function updateTreePaneForActiveView() {
   }
 }
 
+function scheduleFileTreeRender() {
+  if (state.fileTreeRenderScheduled) {
+    return;
+  }
+  state.fileTreeRenderScheduled = true;
+  const flush = () => {
+    state.fileTreeRenderRaf = null;
+    state.fileTreeRenderTimer = null;
+    state.fileTreeRenderScheduled = false;
+    renderFileTree();
+  };
+  if (typeof window.requestAnimationFrame === "function") {
+    state.fileTreeRenderRaf = window.requestAnimationFrame(flush);
+  } else {
+    state.fileTreeRenderTimer = window.setTimeout(flush, 0);
+  }
+}
+
+function virtualTreeWindow(container, totalRows) {
+  const viewportHeight = container && container.clientHeight
+    ? container.clientHeight
+    : TREE_ROW_HEIGHT * TREE_FALLBACK_VIEW_ROWS;
+  const scrollTop = container && container.scrollTop ? container.scrollTop : 0;
+  const start = Math.max(0, Math.floor(scrollTop / TREE_ROW_HEIGHT) - TREE_RENDER_OVERSCAN);
+  const end = Math.min(
+    totalRows,
+    Math.ceil((scrollTop + viewportHeight) / TREE_ROW_HEIGHT) + TREE_RENDER_OVERSCAN,
+  );
+  return {
+    start,
+    end,
+    topSpacer: start * TREE_ROW_HEIGHT,
+    bottomSpacer: Math.max(0, totalRows - end) * TREE_ROW_HEIGHT,
+  };
+}
+
+function renderVirtualTreeRows(container, rows, renderRow) {
+  const window = virtualTreeWindow(container, rows.length);
+  const visibleRows = rows.slice(window.start, window.end);
+  container.innerHTML = `
+    <div class="tree-virtual-spacer" style="--tree-spacer-height: ${window.topSpacer}px"></div>
+    <div class="tree-virtual-window">
+      ${visibleRows.map(renderRow).join("")}
+    </div>
+    <div class="tree-virtual-spacer" style="--tree-spacer-height: ${window.bottomSpacer}px"></div>
+  `;
+}
+
+function handleProjectTreeScroll() {
+  closeTreeContextMenu();
+  scheduleFileTreeRender();
+}
+
+function handleBuildCaseTreeScroll() {
+  scheduleBuildCaseTreeRender();
+}
+
 function renderFileTree() {
   if (!state.snapshot) {
     return;
   }
 
   const tree = filterProjectTree(state.snapshot.tree, state.filter);
-  const children = tree && Array.isArray(tree.children) ? tree.children : [];
-  if (children.length === 0) {
+  const rows = flattenVisibleProjectTreeRows(tree);
+  if (rows.length === 0) {
     el.fileTree.innerHTML = `<p class="empty">${state.filter ? "没有匹配的文件或目录" : "项目中没有可编辑文本文件"}</p>`;
     return;
   }
 
-  el.fileTree.innerHTML = children
-    .map((node) => renderProjectTreeNode(node, 0))
-    .join("");
+  renderVirtualTreeRows(el.fileTree, rows, renderProjectTreeRow);
+}
 
-  el.fileTree.querySelectorAll("[data-tree-action]").forEach((button) => {
-    button.addEventListener("click", handleTreeAction);
-  });
+function flattenVisibleProjectTreeRows(tree) {
+  const rows = [];
+  const visit = (node, depth) => {
+    if (!node) {
+      return;
+    }
+    if (node.type === "directory" && depth === -1) {
+      (node.children || []).forEach((child) => visit(child, 0));
+      return;
+    }
+    rows.push({ node, depth });
+    if (node.type === "directory" && !state.collapsedTreeDirs.has(node.path)) {
+      (node.children || []).forEach((child) => visit(child, depth + 1));
+    }
+  };
+  visit(tree, tree && tree.type === "directory" ? -1 : 0);
+  return rows;
+}
+
+function renderProjectTreeRow(row) {
+  const node = row && row.node;
+  const depth = row ? row.depth : 0;
+  if (!node) {
+    return "";
+  }
+  if (node.type === "directory") {
+    return renderDirectoryRow(node, depth);
+  }
+  return renderFileRow(node, depth);
+}
+
+function renderDirectoryRow(group, depth = 0) {
+  const collapsed = state.collapsedTreeDirs.has(group.path);
+  const selected = state.selectedTreeKind === "directory" && state.selectedTreePath === group.path;
+  return `
+    <div class="tree-row tree-folder-row${selected ? " is-selected" : ""}" style="--depth: ${depth}" data-tree-row data-drop-target data-kind="directory" data-path="${escapeAttr(group.path)}">
+      <button class="tree-row-main" type="button" data-tree-action="toggle-directory" data-kind="directory" data-path="${escapeAttr(group.path)}">
+        <span class="folderIcon" aria-hidden="true">${folderIcon(collapsed ? "closed" : "open")}</span>
+        <span class="name" title="${escapeAttr(group.path || group.name)}">${escapeHtml(group.name)}</span>
+        <span class="count">${group.fileCount || 0}</span>
+      </button>
+    </div>
+  `;
 }
 
 function renderProjectTreeNode(node, depth = 0) {
@@ -917,6 +1045,16 @@ function handleTreeAction(event) {
   if (action === "delete") {
     handleDeleteEntry(kind, relativePath);
   }
+}
+
+function handleFileTreeClick(event) {
+  const target = event.target && typeof event.target.closest === "function"
+    ? event.target.closest("[data-tree-action]")
+    : null;
+  if (!target || !el.fileTree.contains(target)) {
+    return;
+  }
+  handleTreeAction({ currentTarget: target });
 }
 
 function handleFileTreeContextMenu(event) {
@@ -1647,10 +1785,13 @@ function updateBuildActionState() {
   const hasSuites = currentSelectedSuiteIds("build").length > 0;
   const isBuildRunning = state.currentTaskId && state.currentTaskMode === "build";
   const isAnyTaskRunning = Boolean(state.currentTaskId);
+  const hasCompletedBuild = Boolean(state.snapshot && state.currentBuildId && state.currentBuildStatus && state.currentBuildStatus !== "running");
   el.buildRunBtn.disabled = !hasProject || !hasSuites || isAnyTaskRunning;
   el.buildStopBtn.hidden = !isBuildRunning;
   el.buildStopBtn.disabled = !isBuildRunning;
   el.buildOpenReportBtn.disabled = !state.currentBuildReportUrl;
+  el.buildDownloadReportBtn.disabled = !hasCompletedBuild || isAnyTaskRunning || !state.currentBuildResultsDir;
+  el.buildDownloadLogsBtn.disabled = !hasCompletedBuild || isAnyTaskRunning;
 }
 
 function updateBuildSummary(options = {}) {
@@ -1868,6 +2009,78 @@ function openCurrentBuildReport() {
     return;
   }
   window.open(state.currentBuildReportUrl, "_blank", "noopener");
+}
+
+function currentBuildDownloadOptions() {
+  if (!state.snapshot || !state.currentBuildId) {
+    return null;
+  }
+  return {
+    projectRoot: state.snapshot.project.rootPath,
+    buildId: state.currentBuildId,
+  };
+}
+
+async function downloadCurrentBuildReport() {
+  const options = currentBuildDownloadOptions();
+  if (!options || !state.currentBuildStatus || state.currentBuildStatus === "running") {
+    appendLog("warn", "当前没有已完成的构建报告可下载", { scope: "build" });
+    return;
+  }
+  if (!state.currentBuildResultsDir) {
+    appendLog("warn", "当前构建没有 Allure results 目录", { scope: "build" });
+    return;
+  }
+  if (typeof api.downloadBuildReport !== "function") {
+    appendLog("warn", "当前环境不支持保存 Allure 报告", { scope: "build" });
+    return;
+  }
+
+  el.buildDownloadReportBtn.disabled = true;
+  appendLog("info", "正在生成并保存 Allure 报告", { scope: "build" });
+  try {
+    const result = await api.downloadBuildReport(options);
+    if (result && result.canceled) {
+      appendLog("info", "已取消保存 Allure 报告", { scope: "build" });
+      return;
+    }
+    appendLog("pass", `Allure 报告已保存: ${result.path}`, { scope: "build" });
+    showActionFeedback("Allure 报告已保存", "pass");
+  } catch (error) {
+    appendLog("error", `保存 Allure 报告失败: ${errorMessage(error)}`, { scope: "build" });
+    showActionFeedback("保存 Allure 报告失败", "error");
+  } finally {
+    updateBuildActionState();
+  }
+}
+
+async function downloadCurrentBuildLogs() {
+  const options = currentBuildDownloadOptions();
+  if (!options || !state.currentBuildStatus || state.currentBuildStatus === "running") {
+    appendLog("warn", "当前没有已完成的构建日志可下载", { scope: "build" });
+    return;
+  }
+  if (typeof api.downloadBuildLogs !== "function") {
+    appendLog("warn", "当前环境不支持保存构建日志", { scope: "build" });
+    return;
+  }
+
+  el.buildDownloadLogsBtn.disabled = true;
+  appendLog("info", "正在保存构建日志", { scope: "build" });
+  try {
+    const result = await api.downloadBuildLogs(options);
+    if (result && result.canceled) {
+      appendLog("info", "已取消保存构建日志", { scope: "build" });
+      return;
+    }
+    appendLog("pass", `构建日志已保存: ${result.path}`, { scope: "build" });
+    showActionFeedback("构建日志已保存", "pass");
+  } catch (error) {
+    appendLog("error", `保存构建日志失败: ${errorMessage(error)}`, { scope: "build" });
+    showActionFeedback("保存构建日志失败", "error");
+  } finally {
+    updateBuildActionState();
+  }
 }
 
 function updateExecutionActionLabels(selection = null) {
@@ -2461,11 +2674,16 @@ function renderKeywordList(summary = {}) {
   el.keywordList.innerHTML = state.keywords
     .map(renderKeywordRow)
     .join("");
-  el.keywordList.querySelectorAll(".keyword-row[data-index]").forEach((button) => {
-    button.addEventListener("click", () => {
-      insertKeyword(Number(button.dataset.index));
-    });
-  });
+}
+
+function handleKeywordListClick(event) {
+  const button = event.target && typeof event.target.closest === "function"
+    ? event.target.closest(".keyword-row[data-index]")
+    : null;
+  if (!button || !el.keywordList.contains(button)) {
+    return;
+  }
+  insertKeyword(Number(button.dataset.index));
 }
 
 function renderKeywordRow(keyword, index) {
@@ -2764,6 +2982,7 @@ async function runBuildExecution() {
   const command = buildCommandLabel(buildId);
 
   state.currentBuildId = buildId;
+  state.currentBuildStatus = "running";
   state.currentBuildReportUrl = "";
   state.currentBuildReportText = "";
   state.currentBuildResultsDir = "";
@@ -2791,6 +3010,7 @@ async function runBuildExecution() {
     if (state.currentTaskId === buildId) {
       releaseExecutionCommand(buildId);
       setRunningState(false);
+      state.currentBuildStatus = "";
       updateBuildSummary({ status: "构建启动失败" });
     }
   }
@@ -2895,6 +3115,7 @@ function handleBuildEvent(event) {
   }
 
   if (event.type === "build-started") {
+    state.currentBuildStatus = "running";
     state.currentBuildResultsDir = event.allureResultsDir || "";
     updateCommandPreview(event.command || buildCommandLabel(event.buildId), {
       context: "build",
@@ -2940,6 +3161,7 @@ function handleBuildEvent(event) {
       : event.status === "stopped"
         ? "warn"
         : "error";
+    state.currentBuildStatus = event.status || "completed";
     appendLog(level, `${buildStatusLabel(event.status)} (${event.durationMs}ms)`, { scope: "build" });
     if (event.reportUrl && !state.currentBuildReportUrl) {
       setBuildReportUrl(event.reportUrl);
@@ -3249,7 +3471,7 @@ function setConsoleScope(scope) {
   state.console.activeScope = normalizeConsoleScope(scope);
   applyConsoleViewState();
   renderCommandPreview();
-  renderConsoleBuffer();
+  requestConsoleBufferRender();
 }
 
 function currentConsoleView() {
@@ -3268,11 +3490,17 @@ function appendProcessOutput(level, text, options = {}) {
   const scope = normalizeConsoleScope(options.scope || consoleScopeForMode(state.currentTaskMode));
   const buffer = consoleBufferForScope(scope);
   buffer.commandOutputChunks.push(String(text || ""));
-  String(text || "")
+  const timestamp = new Date().toTimeString().slice(0, 8);
+  const entries = String(text || "")
     .replace(/\r\n/g, "\n")
     .split("\n")
     .filter((line) => line.length > 0)
-    .forEach((line) => appendLog(level, line, { scope }));
+    .map((line) => ({
+      timestamp,
+      level,
+      message: line,
+    }));
+  appendConsoleEntries(scope, entries);
 }
 
 function resetConsoleForExecution(scope) {
@@ -3283,28 +3511,108 @@ function appendLog(level, message, options = {}) {
   const scope = normalizeConsoleScope(
     options.scope || (state.currentTaskMode ? consoleScopeForMode(state.currentTaskMode) : state.console.activeScope),
   );
-  const now = new Date();
-  const entry = {
-    timestamp: now.toTimeString().slice(0, 8),
+  appendConsoleEntries(scope, [{
+    timestamp: new Date().toTimeString().slice(0, 8),
     level,
     message: String(message ?? ""),
-  };
-  consoleBufferForScope(scope).lines.push(entry);
+  }]);
+}
+
+function appendConsoleEntries(scope, entries) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return;
+  }
+  const buffer = consoleBufferForScope(scope);
+  buffer.lines.push(...entries);
+  trimConsoleBuffer(buffer);
   if (scope === state.console.activeScope && shouldRenderConsoleBuffer()) {
-    appendConsoleRow(entry);
+    scheduleConsoleBufferRender();
   }
 }
 
-function appendConsoleRow(entry) {
+function trimConsoleBuffer(buffer) {
+  const overflow = buffer.lines.length - MAX_CONSOLE_BUFFER_LINES;
+  if (overflow <= 0) {
+    return;
+  }
+  buffer.lines.splice(0, overflow);
+  buffer.droppedLineCount += overflow;
+}
+
+function visibleConsoleEntries(buffer) {
+  const lines = buffer.lines.slice(-MAX_CONSOLE_RENDER_LINES);
+  return {
+    lines,
+    omittedCount: buffer.droppedLineCount + Math.max(0, buffer.lines.length - lines.length),
+  };
+}
+
+function createConsoleRow(entry) {
   const row = document.createElement("div");
   row.className = "log-line";
-  row.innerHTML = `
-    <span class="log-time">${entry.timestamp}</span>
-    <span class="log-level ${entry.level}">${entry.level.toUpperCase()}</span>
-    <span class="log-message">${escapeHtml(entry.message)}</span>
-  `;
-  el.consoleBody.appendChild(row);
-  el.consoleBody.scrollTop = el.consoleBody.scrollHeight;
+  const time = document.createElement("span");
+  time.className = "log-time";
+  time.textContent = entry.timestamp;
+  const level = document.createElement("span");
+  level.className = `log-level ${entry.level}`;
+  level.textContent = entry.level.toUpperCase();
+  const message = document.createElement("span");
+  message.className = "log-message";
+  message.textContent = entry.message;
+  row.append(time, level, message);
+  return row;
+}
+
+function createConsoleOmittedRow(omittedCount) {
+  const row = document.createElement("div");
+  row.className = "log-line log-line-omitted";
+  const message = document.createElement("span");
+  message.className = "log-message";
+  message.textContent = `已省略 ${omittedCount} 条较早日志`;
+  row.append(document.createElement("span"), document.createElement("span"), message);
+  return row;
+}
+
+function requestConsoleBufferRender() {
+  if (!el.consoleBody) {
+    return;
+  }
+  if (!shouldRenderConsoleBuffer()) {
+    cancelConsoleBufferRender();
+    renderConsoleBuffer();
+    return;
+  }
+  scheduleConsoleBufferRender();
+}
+
+function scheduleConsoleBufferRender() {
+  if (!el.consoleBody || state.consoleRenderScheduled) {
+    return;
+  }
+  state.consoleRenderScheduled = true;
+  const flush = () => {
+    state.consoleRenderRaf = null;
+    state.consoleRenderTimer = null;
+    state.consoleRenderScheduled = false;
+    renderConsoleBuffer();
+  };
+  if (typeof window.requestAnimationFrame === "function") {
+    state.consoleRenderRaf = window.requestAnimationFrame(flush);
+  } else {
+    state.consoleRenderTimer = window.setTimeout(flush, 0);
+  }
+}
+
+function cancelConsoleBufferRender() {
+  if (state.consoleRenderRaf !== null && typeof window.cancelAnimationFrame === "function") {
+    window.cancelAnimationFrame(state.consoleRenderRaf);
+  }
+  if (state.consoleRenderTimer !== null) {
+    window.clearTimeout(state.consoleRenderTimer);
+  }
+  state.consoleRenderRaf = null;
+  state.consoleRenderTimer = null;
+  state.consoleRenderScheduled = false;
 }
 
 function renderConsoleBuffer() {
@@ -3315,8 +3623,16 @@ function renderConsoleBuffer() {
     el.consoleBody.textContent = "";
     return;
   }
-  el.consoleBody.textContent = "";
-  currentConsoleBuffer().lines.forEach(appendConsoleRow);
+  const visible = visibleConsoleEntries(currentConsoleBuffer());
+  const fragment = document.createDocumentFragment();
+  if (visible.omittedCount > 0) {
+    fragment.appendChild(createConsoleOmittedRow(visible.omittedCount));
+  }
+  visible.lines.forEach((entry) => {
+    fragment.appendChild(createConsoleRow(entry));
+  });
+  el.consoleBody.replaceChildren(fragment);
+  el.consoleBody.scrollTop = el.consoleBody.scrollHeight;
 }
 
 function shouldRenderConsoleBuffer() {
@@ -3328,8 +3644,9 @@ function clearConsole(scope = state.console.activeScope) {
   const buffer = consoleBufferForScope(scope);
   buffer.lines = [];
   buffer.commandOutputChunks = [];
+  buffer.droppedLineCount = 0;
   if (normalizeConsoleScope(scope) === state.console.activeScope) {
-    renderConsoleBuffer();
+    requestConsoleBufferRender();
   }
 }
 
@@ -3360,12 +3677,15 @@ function toggleConsoleWrap() {
 
 function toggleConsoleOpen() {
   const consoleView = currentConsoleView();
+  const wasRenderable = shouldRenderConsoleBuffer();
   consoleView.open = !consoleView.open;
   if (!consoleView.open) {
     consoleView.expanded = false;
   }
   applyConsoleViewState();
-  renderConsoleBuffer();
+  if (wasRenderable || shouldRenderConsoleBuffer()) {
+    requestConsoleBufferRender();
+  }
 }
 
 function openConsolePanel(scope = state.console.activeScope) {
@@ -3373,12 +3693,13 @@ function openConsolePanel(scope = state.console.activeScope) {
   consoleView.open = true;
   applyConsoleViewState();
   if (normalizeConsoleScope(scope) === state.console.activeScope) {
-    renderConsoleBuffer();
+    requestConsoleBufferRender();
   }
 }
 
 function toggleConsoleExpanded() {
   const consoleView = currentConsoleView();
+  const wasRenderable = shouldRenderConsoleBuffer();
   if (!consoleView.open) {
     consoleView.open = true;
     consoleView.expanded = false;
@@ -3386,7 +3707,9 @@ function toggleConsoleExpanded() {
     consoleView.expanded = !consoleView.expanded;
   }
   applyConsoleViewState();
-  renderConsoleBuffer();
+  if (!wasRenderable && shouldRenderConsoleBuffer()) {
+    requestConsoleBufferRender();
+  }
 }
 
 function applyConsoleViewState() {
@@ -3447,7 +3770,8 @@ function resetAllConsoleState() {
     debug: createCommandPreview(),
     build: createCommandPreview(),
   };
-  renderConsoleBuffer();
+  cancelConsoleBufferRender();
+  requestConsoleBufferRender();
   renderCommandPreview();
   applyConsoleViewState();
 }
@@ -3485,6 +3809,63 @@ function ensureBuildCaseTreeExpanded() {
   });
 }
 
+function ensureBuildCaseTreeRootExpanded() {
+  if (!state.snapshot) {
+    return;
+  }
+  const tree = state.snapshot.suiteTree || buildFlatSuiteTree(state.snapshot.suites || []);
+  if (tree && tree.path) {
+    state.expandedSuiteNodes.add(tree.path);
+  }
+}
+
+function buildCaseTreeRenderSignature() {
+  if (!state.snapshot) {
+    return "empty";
+  }
+  const suiteKey = (state.snapshot.suites || [])
+    .map((suite) => `${suite.id}:${suite.rootPath || ""}`)
+    .join("|");
+  const expandedKey = [...state.expandedSuiteNodes].sort().join("|");
+  return [
+    state.snapshot.project && state.snapshot.project.rootPath,
+    suiteKey,
+    state.buildCaseFilter,
+    expandedKey,
+  ].join("\n");
+}
+
+function invalidateBuildCaseTreeRender() {
+  state.buildCaseTreeSignature = null;
+}
+
+function ensureBuildCaseTreeRendered() {
+  const signature = buildCaseTreeRenderSignature();
+  if (state.buildCaseTreeSignature === signature) {
+    return;
+  }
+  renderBuildCaseTree();
+}
+
+function scheduleBuildCaseTreeRender() {
+  invalidateBuildCaseTreeRender();
+  if (state.buildCaseTreeRenderScheduled) {
+    return;
+  }
+  state.buildCaseTreeRenderScheduled = true;
+  const flush = () => {
+    state.buildCaseTreeRenderRaf = null;
+    state.buildCaseTreeRenderTimer = null;
+    state.buildCaseTreeRenderScheduled = false;
+    ensureBuildCaseTreeRendered();
+  };
+  if (typeof window.requestAnimationFrame === "function") {
+    state.buildCaseTreeRenderRaf = window.requestAnimationFrame(flush);
+  } else {
+    state.buildCaseTreeRenderTimer = window.setTimeout(flush, 0);
+  }
+}
+
 function setAllBuildCaseGroupsExpanded(expanded) {
   if (!state.snapshot || !state.snapshot.suiteTree) {
     return;
@@ -3496,7 +3877,8 @@ function setAllBuildCaseGroupsExpanded(expanded) {
       state.expandedSuiteNodes.delete(nodePath);
     });
   }
-  renderBuildCaseTree();
+  invalidateBuildCaseTreeRender();
+  ensureBuildCaseTreeRendered();
 }
 
 function collectSuiteDirectoryPaths(node) {
@@ -3517,52 +3899,59 @@ function renderSuiteOptions(suites, suiteTree = null) {
   state.selectedSuiteIds = state.suiteSelectionTouched ? previous : ids;
   state.selectedBuildSuiteIds = state.buildSelectionTouched ? previousBuild : ids;
   updateSuiteSummary(availableSuites);
-  el.suiteList.innerHTML =
-    availableSuites.length === 0
-      ? `<p class="empty">未找到 convention 测试套</p>`
-      : renderSuiteTreeNode(suiteTree || buildFlatSuiteTree(availableSuites), 0, "debug");
-  bindSuiteTreeEvents(el.suiteList);
-  
-  syncSuiteTreeCheckboxStates();
+  renderDebugSuiteTree(availableSuites, suiteTree);
   if (state.activeView === "build") {
-    renderBuildCaseTree();
+    invalidateBuildCaseTreeRender();
+    ensureBuildCaseTreeRendered();
+  } else {
+    invalidateBuildCaseTreeRender();
   }
   previewCommand(currentCommand());
 }
 
+function renderDebugSuiteTree(suites = null, suiteTree = null) {
+  const availableSuites = Array.isArray(suites)
+    ? suites
+    : (state.snapshot ? state.snapshot.suites || [] : []);
+  const tree = suiteTree || (state.snapshot && state.snapshot.suiteTree) || buildFlatSuiteTree(availableSuites);
+  el.suiteList.innerHTML =
+    availableSuites.length === 0
+      ? `<p class="empty">未找到 convention 测试套</p>`
+      : renderSuiteTreeNode(tree, 0, "debug");
+  bindSuiteTreeEvents(el.suiteList);
+  syncSuiteTreeCheckboxStates("debug");
+}
+
 function renderBuildCaseTree() {
+  const signature = buildCaseTreeRenderSignature();
   if (!state.snapshot) {
     el.buildCaseTree.innerHTML = `<p class="empty">打开项目后显示可构建案例</p>`;
+    state.buildCaseTreeSignature = signature;
     return;
   }
 
   const suites = state.snapshot.suites || [];
   if (suites.length === 0) {
     el.buildCaseTree.innerHTML = `<p class="empty">未找到 convention 测试套</p>`;
+    state.buildCaseTreeSignature = signature;
     return;
   }
 
   const tree = filteredSuiteTree(state.snapshot.suiteTree || buildFlatSuiteTree(suites), state.buildCaseFilter);
-  el.buildCaseTree.innerHTML = tree
-    ? renderSuiteTreeNode(tree, 0, "build")
-    : `<p class="empty">没有匹配的构建案例</p>`;
-  bindSuiteTreeEvents(el.buildCaseTree);
-  syncSuiteTreeCheckboxStates();
+  if (!tree) {
+    el.buildCaseTree.innerHTML = `<p class="empty">没有匹配的构建案例</p>`;
+    state.buildCaseTreeSignature = signature;
+    return;
+  }
+
+  const rows = flattenVisibleSuiteTreeRows(tree, "build");
+  renderVirtualTreeRows(el.buildCaseTree, rows, renderSuiteTreeRow);
+  syncSuiteTreeCheckboxStates("build");
+  state.buildCaseTreeSignature = signature;
 }
 
 function bindSuiteTreeEvents(container) {
-  if (!container) {
-    return;
-  }
-  container.querySelectorAll("[data-suite-checkbox]").forEach((input) => {
-    input.addEventListener("change", handleSuiteSelectionChange);
-  });
-  container.querySelectorAll("[data-file-checkbox]").forEach((input) => {
-    input.addEventListener("change", handleFileSelectionChange);
-  });
-  container.querySelectorAll("[data-suite-toggle]").forEach((toggle) => {
-    toggle.addEventListener("click", handleSuiteToggleClick);
-  });
+  return container;
 }
 
 function filteredSuiteTree(node, filter) {
@@ -3651,6 +4040,75 @@ function renderSuiteTreeNode(node, depth = 0, scope = "debug") {
   `;
 }
 
+function flattenVisibleSuiteTreeRows(root, scope = "debug") {
+  const rows = [];
+  const visit = (node, depth) => {
+    if (!node) {
+      return;
+    }
+    rows.push({ node, depth, scope });
+    if (node.type !== "file" && state.expandedSuiteNodes.has(node.path)) {
+      (node.children || []).forEach((child) => visit(child, depth + 1));
+    }
+  };
+  visit(root, 0);
+  return rows;
+}
+
+function renderSuiteTreeRow(row) {
+  const node = row && row.node;
+  const depth = row ? row.depth : 0;
+  const scope = row ? row.scope : "debug";
+  if (!node) {
+    return "";
+  }
+
+  if (node.type === "file") {
+    const isChecked = isFileSelected(node.suiteId, node.path, scope);
+    const fileCheckedStr = isChecked ? " checked" : "";
+    const fileIcon = node.fileType === "dsl" ? "DSL" : "PY";
+    return `
+      <div class="suite-node suite-file-node" style="--depth: ${depth}">
+        <label class="suite-option is-file">
+          <span class="suite-spacer"></span>
+          <input type="checkbox" data-file-checkbox
+                 data-suite-scope="${escapeAttr(scope)}"
+                 data-suite-id="${escapeAttr(node.suiteId || "")}"
+                 data-file-path="${escapeAttr(node.path || "")}"${fileCheckedStr}>
+          <span class="file-icon">${fileIcon}</span>
+          <span title="${escapeAttr(node.path)}">${escapeHtml(node.name)}</span>
+        </label>
+      </div>
+    `;
+  }
+
+  const suiteId = node.suiteId;
+  const suiteIds = collectSuiteNodeSuiteIds(node);
+  const checked = suiteIds.length > 0 && suiteIds.every((id) => selectedSuiteIdsForScope(scope).includes(id))
+    ? " checked"
+    : "";
+  const counts = `${node.dslCaseCount || 0} DSL / ${node.pythonTestCount || 0} py`;
+  const label = suiteId === "__root__" ? "根目录" : node.name;
+  const hasChildren = node.children && node.children.length > 0;
+  const isExpanded = state.expandedSuiteNodes.has(node.path);
+  const toggleArrow = hasChildren
+    ? `<span class="suite-toggle ${isExpanded ? "is-open" : ""}" data-suite-toggle="${escapeAttr(node.path)}">▶</span>`
+    : `<span class="suite-spacer"></span>`;
+
+  return `
+    <div class="suite-node" style="--depth: ${depth}">
+      <label class="suite-option${suiteId ? "" : " is-group"}">
+        ${toggleArrow}
+        ${suiteIds.length > 0
+          ? `<input type="checkbox" data-suite-checkbox data-suite-scope="${escapeAttr(scope)}" data-suite-id="${escapeAttr(suiteId || "")}" data-suite-ids="${escapeAttr(JSON.stringify(suiteIds))}"${checked}>`
+          : `<span class="suite-spacer"></span>`}
+        <span title="${escapeAttr(node.rootPath || node.path || label)}">${escapeHtml(label)}</span>
+        <small>${suiteId ? escapeHtml(counts) : ""}</small>
+      </label>
+    </div>
+  `;
+}
+
 function buildFlatSuiteTree(suites) {
   return {
     type: "directory",
@@ -3685,7 +4143,7 @@ function handleSuiteSelectionChange(event) {
   });
 
   setSelectedSuiteIdsForScope(scope, [...selected]);
-  syncSuiteTreeCheckboxStates();
+  syncSuiteTreeCheckboxStates(scope);
   updateSuiteSummary(state.snapshot ? state.snapshot.suites || [] : []);
   updateBuildSummary();
   previewCommand(currentCommand(), { force: true });
@@ -3717,50 +4175,65 @@ function handleFileSelectionChange(event) {
   }
   
   syncSuiteCheckboxFromFiles(suiteId, scope);
-  syncSuiteTreeCheckboxStates();
+  syncSuiteTreeCheckboxStates(scope);
   updateSuiteSummary(state.snapshot ? state.snapshot.suites || [] : []);
   updateBuildSummary();
   
   previewCommand(currentCommand(), { force: true });
 }
 
+function handleSuiteTreeChange(event) {
+  const input = event.target && typeof event.target.closest === "function"
+    ? event.target.closest("[data-suite-checkbox], [data-file-checkbox]")
+    : null;
+  if (!input || !event.currentTarget.contains(input)) {
+    return;
+  }
+  if (input.hasAttribute("data-suite-checkbox")) {
+    handleSuiteSelectionChange({ currentTarget: input });
+    return;
+  }
+  handleFileSelectionChange({ currentTarget: input });
+}
+
+function handleSuiteTreeClick(event) {
+  const toggle = event.target && typeof event.target.closest === "function"
+    ? event.target.closest("[data-suite-toggle]")
+    : null;
+  if (!toggle || !event.currentTarget.contains(toggle)) {
+    return;
+  }
+  event.stopPropagation();
+  event.preventDefault();
+  toggleSuiteTreeNode(toggle);
+}
+
 function handleSuiteToggleClick(event) {
   event.stopPropagation();
   event.preventDefault();
-  const toggle = event.currentTarget;
+  toggleSuiteTreeNode(event.currentTarget);
+}
+
+function toggleSuiteTreeNode(toggle) {
   const path = toggle.dataset.suiteToggle;
-  const parentNode = toggle.closest(".suite-node");
-  const childrenContainer = parentNode?.querySelector(".suite-children");
-  
-  if (!childrenContainer) return;
+  const scope = suiteScopeFromElement(toggle);
+  if (!path) {
+    return;
+  }
   
   if (state.expandedSuiteNodes.has(path)) {
     state.expandedSuiteNodes.delete(path);
-    toggle.classList.remove("is-open");
-    childrenContainer.classList.add("is-collapsed");
   } else {
     state.expandedSuiteNodes.add(path);
-    toggle.classList.add("is-open");
-    
-    // Check if children need to be rendered dynamically (lazy rendering)
-    if (childrenContainer.children.length === 0 && state.snapshot && state.snapshot.suiteTree) {
-      const node = findSuiteTreeNodeByPath(state.snapshot.suiteTree, path);
-      if (node && node.children) {
-        const depth = Number(parentNode.style.getPropertyValue("--depth") || "0");
-        const scope = parentNode.querySelector("[data-suite-scope]")?.dataset.suiteScope || activeSuiteSelectionScope();
-        childrenContainer.innerHTML = node.children
-          .map((child) => renderSuiteTreeNode(child, depth + 1, scope))
-          .join("");
-        
-        bindSuiteTreeEvents(childrenContainer);
-        
-        // Synchronize the checkbox states of the newly rendered children
-        syncSuiteTreeCheckboxStates();
-      }
-    }
-    
-    childrenContainer.classList.remove("is-collapsed");
   }
+
+  if (scope === "build") {
+    invalidateBuildCaseTreeRender();
+    ensureBuildCaseTreeRendered();
+    return;
+  }
+
+  renderDebugSuiteTree();
 }
 
 function findSuiteTreeNodeByPath(root, targetPath) {
@@ -3804,8 +4277,8 @@ function collectSuiteNodeSuiteIds(node) {
   ].filter(Boolean);
 }
 
-function syncSuiteTreeCheckboxStates() {
-  suiteTreeContainers().forEach((container) => {
+function syncSuiteTreeCheckboxStates(scope = null) {
+  suiteTreeContainers(scope).forEach((container) => {
     container.querySelectorAll("[data-file-checkbox]").forEach((input) => {
       const scope = input.dataset.suiteScope || "debug";
       const suiteId = input.dataset.suiteId;
@@ -3891,8 +4364,30 @@ function syncSuiteTreeCheckboxStates() {
   });
 }
 
-function suiteTreeContainers() {
+function suiteTreeContainers(scope = null) {
+  if (scope === "debug") {
+    return [el.suiteList].filter(Boolean);
+  }
+  if (scope === "build") {
+    return [el.buildCaseTree].filter(Boolean);
+  }
   return [el.suiteList, el.buildCaseTree].filter(Boolean);
+}
+
+function suiteScopeFromElement(element) {
+  const scopedElement = element && typeof element.closest === "function"
+    ? element.closest("[data-suite-scope]")
+    : null;
+  if (scopedElement && scopedElement.dataset.suiteScope) {
+    return scopedElement.dataset.suiteScope;
+  }
+  if (el.buildCaseTree && el.buildCaseTree.contains(element)) {
+    return "build";
+  }
+  if (el.suiteList && el.suiteList.contains(element)) {
+    return "debug";
+  }
+  return activeSuiteSelectionScope();
 }
 
 function activeSuiteSelectionScope() {

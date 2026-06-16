@@ -104,6 +104,8 @@ test("build center exposes pytest plus Allure report orchestration", () => {
     "buildRunBtn",
     "buildStopBtn",
     "buildOpenReportBtn",
+    "buildDownloadReportBtn",
+    "buildDownloadLogsBtn",
     "buildStatus",
     "buildConfigSummary",
     "buildPytestArgs",
@@ -119,9 +121,13 @@ test("build center exposes pytest plus Allure report orchestration", () => {
 
   assert.match(main, /build:start/);
   assert.match(main, /build:stop/);
+  assert.match(main, /build:download-report/);
+  assert.match(main, /build:download-logs/);
   assert.match(main, /build:event/);
   assert.match(preload, /startBuild/);
   assert.match(preload, /stopBuild/);
+  assert.match(preload, /downloadBuildReport/);
+  assert.match(preload, /downloadBuildLogs/);
   assert.match(preload, /onBuildEvent/);
   assert.match(renderer, /switchWorkspaceView/);
   assert.match(renderer, /renderBuildCaseTree/);
@@ -137,6 +143,8 @@ test("build center exposes pytest plus Allure report orchestration", () => {
   assert.match(renderer, /state\.currentTaskMode === "build"/);
   assert.match(renderer, /api\.startBuild/);
   assert.match(renderer, /api\.stopBuild/);
+  assert.match(renderer, /api\.downloadBuildReport/);
+  assert.match(renderer, /api\.downloadBuildLogs/);
   assert.match(renderer, /buildReportFrame/);
   assert.match(renderer, /event\.type === "report-unavailable"/);
   assert.match(html, /<iframe[\s\S]*id="buildReportFrame"[\s\S]*hidden/);
@@ -183,6 +191,23 @@ test("build center prioritizes the report and keeps details history and logs on 
   assert.match(renderer, /function normalizeAllureReportUrl/);
 });
 
+test("build downloads are available after a completed build", () => {
+  assert.match(html, /id="buildDownloadReportBtn"/);
+  assert.match(html, /id="buildDownloadLogsBtn"/);
+  assert.match(html, />\s*下载报告\s*</);
+  assert.match(html, />\s*下载日志\s*</);
+  assert.match(renderer, /currentBuildStatus:\s*""/);
+  assert.match(renderer, /downloadCurrentBuildReport/);
+  assert.match(renderer, /downloadCurrentBuildLogs/);
+  assert.match(renderer, /buildDownloadReportBtn\.addEventListener\("click", downloadCurrentBuildReport\)/);
+  assert.match(renderer, /buildDownloadLogsBtn\.addEventListener\("click", downloadCurrentBuildLogs\)/);
+  assert.match(renderer, /state\.currentBuildStatus = "running"/);
+  assert.match(renderer, /state\.currentBuildStatus = event\.status \|\| "completed"/);
+  assert.match(renderer, /const hasCompletedBuild = Boolean\(state\.snapshot && state\.currentBuildId && state\.currentBuildStatus && state\.currentBuildStatus !== "running"\)/);
+  assert.match(renderer, /buildDownloadReportBtn\.disabled = !hasCompletedBuild \|\| isAnyTaskRunning \|\| !state\.currentBuildResultsDir/);
+  assert.match(renderer, /buildDownloadLogsBtn\.disabled = !hasCompletedBuild \|\| isAnyTaskRunning/);
+});
+
 test("build report iframe reloads even when consecutive builds reuse the same Allure URL", () => {
   assert.match(renderer, /function buildReportFrameUrl\(url\)/);
   assert.match(renderer, /pytestDslBuild=/);
@@ -207,7 +232,45 @@ test("switching to build does not synchronously render expensive hidden surfaces
   assert.match(renderer, /requestAnimationFrame/);
   assert.match(renderer, /function shouldRenderConsoleBuffer\(\)/);
   assert.match(renderer, /if \(!shouldRenderConsoleBuffer\(\)\) \{\s*el\.consoleBody\.textContent = "";\s*return;\s*\}/);
-  assert.match(renderer, /if \(scope === state\.console\.activeScope && shouldRenderConsoleBuffer\(\)\) \{/);
+  assert.match(renderer, /if \(scope === state\.console\.activeScope && shouldRenderConsoleBuffer\(\)\) \{\s*scheduleConsoleBufferRender\(\)/);
+});
+
+test("console rendering stays bounded and batched for large output", () => {
+  assert.match(renderer, /MAX_CONSOLE_BUFFER_LINES\s*=/);
+  assert.match(renderer, /MAX_CONSOLE_RENDER_LINES\s*=/);
+  assert.match(renderer, /function appendConsoleEntries\(/);
+  assert.match(renderer, /function trimConsoleBuffer\(/);
+  assert.match(renderer, /function visibleConsoleEntries\(/);
+  assert.match(renderer, /slice\(-MAX_CONSOLE_RENDER_LINES\)/);
+  assert.match(renderer, /function scheduleConsoleBufferRender\(/);
+  assert.match(renderer, /document\.createDocumentFragment\(\)/);
+  assert.match(renderer, /replaceChildren\(fragment\)/);
+  assert.match(renderer, /el\.consoleBody\.scrollTop = el\.consoleBody\.scrollHeight/);
+  assert.doesNotMatch(renderer, /currentConsoleBuffer\(\)\.lines\.forEach\(appendConsoleRow\)/);
+  assert.doesNotMatch(renderer, /function appendConsoleRow[\s\S]*scrollTop = el\.consoleBody\.scrollHeight/);
+});
+
+test("process output appends console lines in one batch per event", () => {
+  assert.match(renderer, /function appendConsoleEntries\(scope, entries\)/);
+  assert.match(renderer, /appendConsoleEntries\(scope, entries\)/);
+  assert.doesNotMatch(renderer, /\.forEach\(\(line\) => appendLog\(level, line, \{ scope \}\)\)/);
+});
+
+test("console expansion and scope switches defer rendering instead of rebuilding synchronously", () => {
+  assert.match(renderer, /function requestConsoleBufferRender\(/);
+  assert.match(renderer, /const wasRenderable = shouldRenderConsoleBuffer\(\)/);
+  assert.match(renderer, /if \(!wasRenderable && shouldRenderConsoleBuffer\(\)\) \{\s*requestConsoleBufferRender\(\);\s*\}/);
+  assert.match(renderer, /function setConsoleScope\(scope\)\s*\{[\s\S]*requestConsoleBufferRender\(\)/);
+  assert.doesNotMatch(renderer, /function toggleConsoleExpanded\(\)\s*\{[\s\S]*renderConsoleBuffer\(\);/);
+});
+
+test("build case tree rendering is cached across view switches", () => {
+  assert.match(renderer, /buildCaseTreeSignature:\s*null/);
+  assert.match(renderer, /function invalidateBuildCaseTreeRender\(\)/);
+  assert.match(renderer, /function ensureBuildCaseTreeRendered\(\)/);
+  assert.match(renderer, /if \(isBuildView\) \{[\s\S]*ensureBuildCaseTreeRendered\(\)/);
+  assert.match(renderer, /state\.buildCaseTreeSignature = signature/);
+  assert.doesNotMatch(renderer, /if \(isBuildView\) \{\s*ensureBuildCaseTreeExpanded\(\);\s*renderBuildCaseTree\(\);/);
 });
 
 test("console stays collapsed by default and can be opened when needed", () => {
@@ -364,6 +427,58 @@ test("file tree renders root files inline and uses a single stateful folder icon
   assert.doesNotMatch(css, /transform:\s*rotate\(-90deg\)/);
 });
 
+test("large tree and keyword lists use delegated event handlers", () => {
+  assert.match(renderer, /fileTree\.addEventListener\("click", handleFileTreeClick\)/);
+  assert.match(renderer, /suiteList\.addEventListener\("change", handleSuiteTreeChange\)/);
+  assert.match(renderer, /suiteList\.addEventListener\("click", handleSuiteTreeClick\)/);
+  assert.match(renderer, /buildCaseTree\.addEventListener\("change", handleSuiteTreeChange\)/);
+  assert.match(renderer, /buildCaseTree\.addEventListener\("click", handleSuiteTreeClick\)/);
+  assert.match(renderer, /keywordList\.addEventListener\("click", handleKeywordListClick\)/);
+  assert.doesNotMatch(renderer, /fileTree\.querySelectorAll\("\[data-tree-action\]"\)[\s\S]*addEventListener\("click", handleTreeAction\)/);
+  assert.doesNotMatch(renderer, /container\.querySelectorAll\("\[data-suite-checkbox\]"\)[\s\S]*addEventListener\("change", handleSuiteSelectionChange\)/);
+  assert.doesNotMatch(renderer, /keywordList\.querySelectorAll\("\.keyword-row\[data-index\]"\)[\s\S]*addEventListener\("click"/);
+});
+
+test("tree filter input batches expensive tree renders", () => {
+  assert.match(renderer, /function scheduleFileTreeRender\(\)/);
+  assert.match(renderer, /function scheduleBuildCaseTreeRender\(\)/);
+  assert.match(renderer, /state\.buildCaseFilter = value;\s*scheduleBuildCaseTreeRender\(\);/);
+  assert.match(renderer, /state\.filter = value;\s*scheduleFileTreeRender\(\);/);
+  assert.match(renderer, /requestAnimationFrame/);
+  assert.doesNotMatch(renderer, /state\.buildCaseFilter = value;\s*invalidateBuildCaseTreeRender\(\);\s*ensureBuildCaseTreeRendered\(\);/);
+  assert.doesNotMatch(renderer, /state\.filter = value;\s*renderFileTree\(\);/);
+});
+
+test("debug and build left trees render a bounded viewport for large projects", () => {
+  assert.match(renderer, /TREE_ROW_HEIGHT\s*=/);
+  assert.match(renderer, /TREE_RENDER_OVERSCAN\s*=/);
+  assert.match(renderer, /function virtualTreeWindow\(container, totalRows\)/);
+  assert.match(renderer, /function renderVirtualTreeRows\(/);
+  assert.match(renderer, /function flattenVisibleProjectTreeRows\(/);
+  assert.match(renderer, /function flattenVisibleSuiteTreeRows\(/);
+  assert.match(renderer, /const rows = flattenVisibleProjectTreeRows/);
+  assert.match(renderer, /const rows = flattenVisibleSuiteTreeRows/);
+  assert.match(renderer, /rows\.slice\(window\.start, window\.end\)/);
+  assert.match(css, /\.tree-virtual-spacer/);
+  assert.doesNotMatch(renderer, /el\.fileTree\.innerHTML = children\s*\.map\(\(node\) => renderProjectTreeNode\(node, 0\)\)/);
+  assert.doesNotMatch(renderer, /el\.buildCaseTree\.innerHTML = tree\s*\? renderSuiteTreeNode\(tree, 0, "build"\)/);
+});
+
+test("switching to build does not expand every suite node before rendering", () => {
+  assert.match(renderer, /function ensureBuildCaseTreeRootExpanded\(\)/);
+  assert.match(renderer, /ensureBuildCaseTreeRootExpanded\(\)/);
+  assert.doesNotMatch(renderer, /if \(isBuildView\) \{[\s\S]{0,120}ensureBuildCaseTreeExpanded\(\)/);
+});
+
+test("suite checkbox syncing is scoped to the active tree", () => {
+  assert.match(renderer, /function syncSuiteTreeCheckboxStates\(scope = null\)/);
+  assert.match(renderer, /suiteTreeContainers\(scope\)/);
+  assert.match(renderer, /syncSuiteTreeCheckboxStates\("debug"\)/);
+  assert.match(renderer, /syncSuiteTreeCheckboxStates\("build"\)/);
+  assert.match(renderer, /syncSuiteTreeCheckboxStates\(scope\)/);
+  assert.doesNotMatch(renderer, /function syncSuiteTreeCheckboxStates\(\)\s*\{[\s\S]*suiteTreeContainers\(\)\.forEach/);
+});
+
 test("editor chrome is compact so code keeps vertical space", () => {
   assert.match(html, /class="param-head"[\s\S]*class="sub-tabs"/);
   assert.match(html, /class="head-actions"[\s\S]*class="inline-actions"/);
@@ -458,7 +573,7 @@ test("console output can be cleared manually and resets before each execution", 
   assert.match(renderer, /build:\s*createConsoleBuffer\(\)/);
   assert.match(renderer, /clearConsoleBtn/);
   assert.match(renderer, /clearConsoleBtn\.addEventListener\("click",\s*\(\) =>\s*clearConsole\(\)/);
-  assert.match(renderer, /function clearConsole\(scope = state\.console\.activeScope\)\s*\{[\s\S]*renderConsoleBuffer\(\)/);
+  assert.match(renderer, /function clearConsole\(scope = state\.console\.activeScope\)\s*\{[\s\S]*requestConsoleBufferRender\(\)/);
   assert.match(renderer, /buffer\.lines = \[\]/);
   assert.match(renderer, /buffer\.commandOutputChunks = \[\]/);
   assert.match(renderer, /function resetConsoleForExecution\(scope\)\s*\{[\s\S]*clearConsole\(scope\)/);

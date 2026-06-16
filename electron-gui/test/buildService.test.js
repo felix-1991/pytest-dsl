@@ -6,6 +6,8 @@ const test = require("node:test");
 
 const {
   createBuildPlan,
+  exportAllureReportFile,
+  exportBuildLogs,
   hasRunningBuild,
   startBuildTask,
   stopBuildTask,
@@ -222,6 +224,97 @@ test("build tasks are removed when pytest and the report process both exit", asy
   assert.equal(result.status, "passed");
   await waitFor(() => !hasRunningBuild(buildId));
   assert.equal(hasRunningBuild(buildId), false);
+});
+
+test("completed build logs can be exported as a saved log file", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  const buildId = "download-log-build";
+  const destinationPath = path.join(root, "exports", "download-log-build.log");
+
+  await startBuildTask({
+    buildId,
+    projectRoot: root,
+    selectedSuiteIds: ["api"],
+    enableAllureWatch: false,
+    pytestCommandOverride: {
+      command: process.execPath,
+      args: ["-e", "console.log('pytest stdout line'); console.error('pytest stderr line')"],
+    },
+  });
+
+  const result = exportBuildLogs({
+    projectRoot: root,
+    buildId,
+    destinationPath,
+  });
+
+  assert.equal(result.buildId, buildId);
+  assert.equal(result.path, destinationPath);
+  assert.ok(result.bytes > 0);
+  const content = fs.readFileSync(destinationPath, "utf8");
+  assert.match(content, /# pytest-dsl Build Log/);
+  assert.match(content, /Build ID: download-log-build/);
+  assert.match(content, /Status: passed/);
+  assert.match(content, /## stdout/);
+  assert.match(content, /pytest stdout line/);
+  assert.match(content, /## stderr/);
+  assert.match(content, /pytest stderr line/);
+  assert.match(content, /## manifest/);
+});
+
+test("completed Allure results can be exported as a single HTML report file", async () => {
+  const root = makeTempProject();
+  const buildId = "download-report-build";
+  const buildDir = path.join(root, ".pytest-dsl-gui", "builds", buildId);
+  const resultsDir = path.join(buildDir, "allure-results");
+  const destinationPath = path.join(root, "exports", "download-report-build.html");
+  const fakeAllurePath = path.join(root, "fake-allure.js");
+  const calledArgsPath = path.join(root, "fake-allure-args.json");
+
+  fs.mkdirSync(resultsDir, { recursive: true });
+  fs.writeFileSync(path.join(resultsDir, "result.json"), "{\"status\":\"passed\"}\n", "utf8");
+  fs.writeFileSync(path.join(buildDir, "stdout.log"), "done\n", "utf8");
+  fs.writeFileSync(path.join(buildDir, "stderr.log"), "", "utf8");
+  fs.writeFileSync(path.join(buildDir, "build.json"), `${JSON.stringify({
+    buildId,
+    status: "passed",
+    command: "pytest tests/api --alluredir .pytest-dsl-gui/builds/download-report-build/allure-results",
+    allureResultsDir: resultsDir,
+    allureReportDir: path.join(buildDir, "allure-report"),
+  }, null, 2)}\n`, "utf8");
+  fs.writeFileSync(fakeAllurePath, `
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(2);
+fs.writeFileSync(${JSON.stringify(calledArgsPath)}, JSON.stringify(args));
+const output = args[args.indexOf("--output") + 1];
+fs.mkdirSync(output, { recursive: true });
+fs.writeFileSync(path.join(output, "index.html"), "<!doctype html><title>Allure</title>");
+`, "utf8");
+
+  const result = await exportAllureReportFile({
+    projectRoot: root,
+    buildId,
+    destinationPath,
+    allureExportCommandOverride: {
+      command: process.execPath,
+      args: [fakeAllurePath],
+    },
+  });
+
+  assert.equal(result.buildId, buildId);
+  assert.equal(result.path, destinationPath);
+  assert.ok(result.bytes > 0);
+  assert.equal(fs.readFileSync(destinationPath, "utf8"), "<!doctype html><title>Allure</title>");
+  const calledArgs = JSON.parse(fs.readFileSync(calledArgsPath, "utf8"));
+  assert.deepEqual(calledArgs, [
+    "awesome",
+    "--single-file",
+    "--output",
+    path.join(buildDir, "allure-report"),
+    resultsDir,
+  ]);
 });
 
 async function waitFor(predicate) {

@@ -17,6 +17,10 @@ const {
   stopExecutionTask
 } = require("./src/services/executionService");
 const {
+  defaultAllureReportExportName,
+  defaultBuildLogExportName,
+  exportAllureReportFile,
+  exportBuildLogs,
   startBuildTask,
   stopBuildTask
 } = require("./src/services/buildService");
@@ -117,6 +121,40 @@ function registerIpc() {
     })
   ));
   ipcMain.handle("build:stop", (_event, buildId) => stopBuildTask(buildId));
+  ipcMain.handle("build:download-report", async (event, options = {}) => {
+    const result = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+      title: "保存 Allure 报告",
+      defaultPath: defaultAllureReportExportName(options.buildId || options.taskId),
+      filters: [
+        { name: "HTML", extensions: ["html"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+    return exportAllureReportFile({
+      ...options,
+      destinationPath: result.filePath,
+    });
+  });
+  ipcMain.handle("build:download-logs", async (event, options = {}) => {
+    const result = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+      title: "保存构建日志",
+      defaultPath: defaultBuildLogExportName(options.buildId || options.taskId),
+      filters: [
+        { name: "Log Files", extensions: ["log", "txt"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+    return exportBuildLogs({
+      ...options,
+      destinationPath: result.filePath,
+    });
+  });
 }
 
 app.whenReady().then(() => {

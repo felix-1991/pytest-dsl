@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("pytestDslGui", {
   },
   startBuild: (options) => ipcRenderer.invoke("build:start", options),
   stopBuild: (buildId) => ipcRenderer.invoke("build:stop", buildId),
+  downloadBuildReport: (options) => ipcRenderer.invoke("build:download-report", options),
+  downloadBuildLogs: (options) => ipcRenderer.invoke("build:download-logs", options),
   onBuildEvent: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("build:event", listener);

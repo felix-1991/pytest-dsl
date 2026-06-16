@@ -13,6 +13,7 @@ const ALLURE_VERSION_TIMEOUT_MS = 3000;
 const ALLURE_REPORT_READY_TIMEOUT_MS = 1500;
 const ALLURE_REPORT_READY_INTERVAL_MS = 100;
 const ALLURE_REPORT_COMPLETION_WAIT_MS = 2500;
+const ALLURE_EXPORT_TIMEOUT_MS = 60000;
 
 function createBuildPlan(options = {}) {
   const projectRoot = assertProjectRoot(options.projectRoot);
@@ -240,6 +241,75 @@ function hasRunningBuild(buildId) {
   return runningBuilds.has(sanitizeId(buildId));
 }
 
+function defaultBuildLogExportName(buildId) {
+  return `pytest-dsl-build-${sanitizeExportFilePart(buildId)}.log`;
+}
+
+function defaultAllureReportExportName(buildId) {
+  return `allure-report-${sanitizeExportFilePart(buildId)}.html`;
+}
+
+function exportBuildLogs(options = {}) {
+  const plan = createBuildArtifactPlan(options);
+  const destinationPath = assertDestinationPath(options.destinationPath);
+  const manifest = assertCompletedBuildManifest(plan);
+  const stdout = readOptionalTextFile(plan.stdoutPath);
+  const stderr = readOptionalTextFile(plan.stderrPath);
+  const content = buildLogExportContent({
+    buildId: plan.buildId,
+    manifest,
+    stdout,
+    stderr,
+  });
+
+  fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+  fs.writeFileSync(destinationPath, content, "utf8");
+  patchManifest(plan, {
+    logExportedAt: new Date().toISOString(),
+    logExportPath: destinationPath,
+  });
+
+  return {
+    buildId: plan.buildId,
+    path: destinationPath,
+    bytes: fs.statSync(destinationPath).size,
+  };
+}
+
+async function exportAllureReportFile(options = {}) {
+  const plan = createBuildArtifactPlan(options);
+  const destinationPath = assertDestinationPath(options.destinationPath);
+  assertCompletedBuildManifest(plan);
+  assertDirectoryHasEntries(plan.allureResultsDir, "Allure results directory");
+
+  const env = executionEnv(options.env);
+  const spawnTarget = options.allureExportCommandOverride ||
+    await resolveAllureExportSpawnTarget(plan, options, env);
+  if (!spawnTarget) {
+    throw new Error("Allure 3 executable is not available for report export");
+  }
+
+  fs.rmSync(plan.allureReportDir, { recursive: true, force: true });
+  fs.mkdirSync(plan.allureReportDir, { recursive: true });
+  await runAllureReportExport(spawnTarget, plan, env);
+
+  const generatedHtml = findGeneratedReportHtml(plan.allureReportDir);
+  fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+  fs.copyFileSync(generatedHtml, destinationPath);
+  patchManifest(plan, {
+    allureReportDir: plan.allureReportDir,
+    reportExportedAt: new Date().toISOString(),
+    reportExportPath: destinationPath,
+  });
+
+  return {
+    buildId: plan.buildId,
+    path: destinationPath,
+    sourcePath: generatedHtml,
+    bytes: fs.statSync(destinationPath).size,
+  };
+}
+
 async function maybeStartAllureWatch(task, options, env, callbacks) {
   if (options.enableAllureWatch === false) {
     emit(callbacks, {
@@ -304,6 +374,67 @@ async function maybeStartAllureWatch(task, options, env, callbacks) {
     task.reportChild = null;
     markReportReadyResolved(task);
     deleteBuildIfIdle(task);
+  });
+}
+
+async function resolveAllureExportSpawnTarget(plan, options = {}, env = process.env) {
+  const candidates = allureCandidates(plan.cwd, options, env);
+  for (const candidate of candidates) {
+    const major = await detectAllureMajor(candidate, plan.cwd, env);
+    if (major >= 3) {
+      return {
+        command: candidate.command,
+        args: candidate.args,
+      };
+    }
+  }
+  return null;
+}
+
+function runAllureReportExport(spawnTarget, plan, env) {
+  const args = [
+    ...spawnTarget.args,
+    "awesome",
+    "--single-file",
+    "--output",
+    plan.allureReportDir,
+    plan.allureResultsDir,
+  ];
+  return new Promise((resolve, reject) => {
+    let stdout = "";
+    let stderr = "";
+    const child = spawn(spawnTarget.command, args, {
+      cwd: plan.cwd,
+      env,
+      windowsHide: true,
+    });
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error(`Allure report export timed out after ${ALLURE_EXPORT_TIMEOUT_MS}ms`));
+    }, ALLURE_EXPORT_TIMEOUT_MS);
+    if (typeof timer.unref === "function") {
+      timer.unref();
+    }
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (exitCode, signal) => {
+      clearTimeout(timer);
+      if (exitCode === 0) {
+        resolve({ stdout, stderr });
+        return;
+      }
+      const details = [stdout.trim(), stderr.trim()].filter(Boolean).join("\n");
+      reject(new Error(`Allure report export failed with exit code ${exitCode}${signal ? ` (${signal})` : ""}${details ? `: ${details}` : ""}`));
+    });
   });
 }
 
@@ -540,6 +671,120 @@ function patchManifest(plan, data) {
   });
 }
 
+function createBuildArtifactPlan(options = {}) {
+  const projectRoot = assertProjectRoot(options.projectRoot);
+  const buildId = sanitizeId(options.buildId || options.taskId);
+  const buildRelativeDir = normalizePath(path.join(".pytest-dsl-gui", "builds", buildId));
+  const buildDir = path.join(projectRoot, buildRelativeDir);
+  return {
+    buildId,
+    taskId: buildId,
+    cwd: projectRoot,
+    buildDir,
+    buildRelativeDir,
+    allureResultsDir: path.join(buildDir, "allure-results"),
+    allureReportDir: path.join(buildDir, "allure-report"),
+    stdoutPath: path.join(buildDir, "stdout.log"),
+    stderrPath: path.join(buildDir, "stderr.log"),
+    manifestPath: path.join(buildDir, "build.json"),
+  };
+}
+
+function assertCompletedBuildManifest(plan) {
+  const manifest = readBuildManifest(plan);
+  if (manifest.status === "running") {
+    throw new Error(`Build is still running: ${plan.buildId}`);
+  }
+  return manifest;
+}
+
+function readBuildManifest(plan) {
+  if (!fs.existsSync(plan.manifestPath)) {
+    throw new Error(`Build manifest does not exist: ${plan.manifestPath}`);
+  }
+  try {
+    return JSON.parse(fs.readFileSync(plan.manifestPath, "utf8"));
+  } catch (error) {
+    throw new Error(`Build manifest is invalid: ${error.message}`);
+  }
+}
+
+function assertDestinationPath(destinationPath) {
+  const value = String(destinationPath || "").trim();
+  if (!value) {
+    throw new Error("destinationPath is required");
+  }
+  return path.resolve(value);
+}
+
+function readOptionalTextFile(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch (_error) {
+    return "";
+  }
+}
+
+function buildLogExportContent({ buildId, manifest, stdout, stderr }) {
+  return [
+    "# pytest-dsl Build Log",
+    "",
+    `Build ID: ${manifest.buildId || buildId}`,
+    `Status: ${manifest.status || "unknown"}`,
+    `Started At: ${manifest.startedAt || "-"}`,
+    `Completed At: ${manifest.completedAt || "-"}`,
+    `Duration Ms: ${manifest.durationMs ?? "-"}`,
+    `Exit Code: ${manifest.exitCode ?? "-"}`,
+    `Signal: ${manifest.signal ?? "-"}`,
+    `Command: ${manifest.command || "-"}`,
+    `Allure Results: ${manifest.allureResultsDir || "-"}`,
+    `Allure Report: ${manifest.allureReportDir || "-"}`,
+    `Report URL: ${manifest.reportUrl || "-"}`,
+    "",
+    "## stdout",
+    stdout || "(empty)\n",
+    "## stderr",
+    stderr || "(empty)\n",
+    "## manifest",
+    JSON.stringify(manifest, null, 2),
+    "",
+  ].join("\n");
+}
+
+function assertDirectoryHasEntries(directory, label) {
+  if (!fs.existsSync(directory) || !fs.statSync(directory).isDirectory()) {
+    throw new Error(`${label} does not exist: ${directory}`);
+  }
+  if (fs.readdirSync(directory).length === 0) {
+    throw new Error(`${label} is empty: ${directory}`);
+  }
+}
+
+function findGeneratedReportHtml(reportDir) {
+  const preferred = path.join(reportDir, "index.html");
+  if (fs.existsSync(preferred) && fs.statSync(preferred).isFile()) {
+    return preferred;
+  }
+  const matches = [];
+  const visit = (directory) => {
+    fs.readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(entryPath);
+        return;
+      }
+      if (entry.isFile() && /\.html?$/i.test(entry.name)) {
+        matches.push(entryPath);
+      }
+    });
+  };
+  visit(reportDir);
+  if (matches.length === 0) {
+    throw new Error(`Allure report export did not create an HTML file in ${reportDir}`);
+  }
+  return matches.sort((left, right) => left.localeCompare(right))[0];
+}
+
 function yamlArgs(yamlVars) {
   return yamlVars.flatMap((item) => ["--yaml-vars", item]);
 }
@@ -623,6 +868,10 @@ function sanitizeId(value) {
   return normalized;
 }
 
+function sanitizeExportFilePart(value) {
+  return sanitizeId(value || "build").replace(/[.]+/g, "_");
+}
+
 function normalizePath(filePath) {
   return String(filePath || "").replace(/\\/g, "/");
 }
@@ -635,6 +884,10 @@ function emit(callbacks, event) {
 
 module.exports = {
   createBuildPlan,
+  defaultAllureReportExportName,
+  defaultBuildLogExportName,
+  exportAllureReportFile,
+  exportBuildLogs,
   hasRunningBuild,
   startBuildTask,
   stopBuildTask,

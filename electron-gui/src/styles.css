@@ -825,6 +825,22 @@ body.is-resizing-console .panel-resizer {
   padding: 10px 10px 16px;
 }
 
+.tree-virtual-spacer {
+  height: var(--tree-spacer-height, 0px);
+  min-height: var(--tree-spacer-height, 0px);
+  pointer-events: none;
+}
+
+.tree-virtual-window {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+}
+
+.build-case-tree .tree-virtual-window {
+  gap: 6px;
+}
+
 .build-case-tree {
   display: grid;
   align-content: start;
