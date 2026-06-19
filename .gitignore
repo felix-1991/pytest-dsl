@@ -125,3 +125,4 @@ performance_report.json
 playwright/.auth
 web-editor/
 examples/gui_validation/
+.worktrees/
