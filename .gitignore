@@ -124,5 +124,12 @@ performance_report.json
 # Playwright认证状态文件
 playwright/.auth
 web-editor/
-examples/gui_validation/
 .worktrees/
+
+# Pytest DSL Studio validation project runtime files
+examples/gui_validation/.pytest-dsl-gui/
+examples/gui_validation/**/.pytest-dsl-generated/
+examples/gui_validation/allure-results/
+examples/gui_validation/allure-report/
+examples/gui_validation/**/__pycache__/
+examples/gui_validation/**/.DS_Store
