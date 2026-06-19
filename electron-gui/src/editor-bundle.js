@@ -30,6 +30,7 @@ var CM6 = (() => {
     insertText: () => insertText,
     lineCount: () => lineCount,
     scrollToLine: () => scrollToLine,
+    setCompletionContext: () => setCompletionContext,
     setContent: () => setContent,
     setDebugState: () => setDebugState,
     setEnabled: () => setEnabled,
@@ -21670,6 +21671,223 @@ var CM6 = (() => {
       "&:after": { content: "'abc'", fontSize: "50%", verticalAlign: "middle" }
     }
   });
+  var FieldPos = class {
+    constructor(field, line, from, to) {
+      this.field = field;
+      this.line = line;
+      this.from = from;
+      this.to = to;
+    }
+  };
+  var FieldRange = class _FieldRange {
+    constructor(field, from, to) {
+      this.field = field;
+      this.from = from;
+      this.to = to;
+    }
+    map(changes) {
+      let from = changes.mapPos(this.from, -1, MapMode.TrackDel);
+      let to = changes.mapPos(this.to, 1, MapMode.TrackDel);
+      return from == null || to == null ? null : new _FieldRange(this.field, from, to);
+    }
+  };
+  var Snippet = class _Snippet {
+    constructor(lines, fieldPositions) {
+      this.lines = lines;
+      this.fieldPositions = fieldPositions;
+    }
+    instantiate(state, pos) {
+      let text2 = [], lineStart = [pos];
+      let lineObj = state.doc.lineAt(pos), baseIndent = /^\s*/.exec(lineObj.text)[0];
+      for (let line of this.lines) {
+        if (text2.length) {
+          let indent = baseIndent, tabs = /^\t*/.exec(line)[0].length;
+          for (let i = 0; i < tabs; i++)
+            indent += state.facet(indentUnit);
+          lineStart.push(pos + indent.length - tabs);
+          line = indent + line.slice(tabs);
+        }
+        text2.push(line);
+        pos += line.length + 1;
+      }
+      let ranges = this.fieldPositions.map((pos2) => new FieldRange(pos2.field, lineStart[pos2.line] + pos2.from, lineStart[pos2.line] + pos2.to));
+      return { text: text2, ranges };
+    }
+    static parse(template) {
+      let fields = [];
+      let lines = [], positions = [], m;
+      for (let line of template.split(/\r\n?|\n/)) {
+        while (m = /[#$]\{(?:(\d+)(?::([^{}]*))?|((?:\\[{}]|[^{}])*))\}/.exec(line)) {
+          let seq = m[1] ? +m[1] : null, rawName = m[2] || m[3] || "", found = -1;
+          let name2 = rawName.replace(/\\[{}]/g, (m2) => m2[1]);
+          for (let i = 0; i < fields.length; i++) {
+            if (seq != null ? fields[i].seq == seq : name2 ? fields[i].name == name2 : false)
+              found = i;
+          }
+          if (found < 0) {
+            let i = 0;
+            while (i < fields.length && (seq == null || fields[i].seq != null && fields[i].seq < seq))
+              i++;
+            fields.splice(i, 0, { seq, name: name2 });
+            found = i;
+            for (let pos of positions)
+              if (pos.field >= found)
+                pos.field++;
+          }
+          for (let pos of positions)
+            if (pos.line == lines.length && pos.from > m.index) {
+              let snip = m[2] ? 3 + (m[1] || "").length : 2;
+              pos.from -= snip;
+              pos.to -= snip;
+            }
+          positions.push(new FieldPos(found, lines.length, m.index, m.index + name2.length));
+          line = line.slice(0, m.index) + rawName + line.slice(m.index + m[0].length);
+        }
+        line = line.replace(/\\([{}])/g, (_, brace, index) => {
+          for (let pos of positions)
+            if (pos.line == lines.length && pos.from > index) {
+              pos.from--;
+              pos.to--;
+            }
+          return brace;
+        });
+        lines.push(line);
+      }
+      return new _Snippet(lines, positions);
+    }
+  };
+  var fieldMarker = /* @__PURE__ */ Decoration.widget({ widget: /* @__PURE__ */ new class extends WidgetType {
+    toDOM() {
+      let span = document.createElement("span");
+      span.className = "cm-snippetFieldPosition";
+      return span;
+    }
+    ignoreEvent() {
+      return false;
+    }
+  }() });
+  var fieldRange = /* @__PURE__ */ Decoration.mark({ class: "cm-snippetField" });
+  var ActiveSnippet = class _ActiveSnippet {
+    constructor(ranges, active) {
+      this.ranges = ranges;
+      this.active = active;
+      this.deco = Decoration.set(ranges.map((r) => (r.from == r.to ? fieldMarker : fieldRange).range(r.from, r.to)), true);
+    }
+    map(changes) {
+      let ranges = [];
+      for (let r of this.ranges) {
+        let mapped = r.map(changes);
+        if (!mapped)
+          return null;
+        ranges.push(mapped);
+      }
+      return new _ActiveSnippet(ranges, this.active);
+    }
+    selectionInsideField(sel) {
+      return sel.ranges.every((range) => this.ranges.some((r) => r.field == this.active && r.from <= range.from && r.to >= range.to));
+    }
+  };
+  var setActive = /* @__PURE__ */ StateEffect.define({
+    map(value, changes) {
+      return value && value.map(changes);
+    }
+  });
+  var moveToField = /* @__PURE__ */ StateEffect.define();
+  var snippetState = /* @__PURE__ */ StateField.define({
+    create() {
+      return null;
+    },
+    update(value, tr) {
+      for (let effect of tr.effects) {
+        if (effect.is(setActive))
+          return effect.value;
+        if (effect.is(moveToField) && value)
+          return new ActiveSnippet(value.ranges, effect.value);
+      }
+      if (value && tr.docChanged)
+        value = value.map(tr.changes);
+      if (value && tr.selection && !value.selectionInsideField(tr.selection))
+        value = null;
+      return value;
+    },
+    provide: (f) => EditorView.decorations.from(f, (val) => val ? val.deco : Decoration.none)
+  });
+  function fieldSelection(ranges, field) {
+    return EditorSelection.create(ranges.filter((r) => r.field == field).map((r) => EditorSelection.range(r.from, r.to)));
+  }
+  function snippet(template) {
+    let snippet2 = Snippet.parse(template);
+    return (editor, completion, from, to) => {
+      let { text: text2, ranges } = snippet2.instantiate(editor.state, from);
+      let { main } = editor.state.selection;
+      let spec = {
+        changes: { from, to: to == main.from ? main.to : to, insert: Text.of(text2) },
+        scrollIntoView: true,
+        annotations: completion ? [pickedCompletion.of(completion), Transaction.userEvent.of("input.complete")] : void 0
+      };
+      if (ranges.length)
+        spec.selection = fieldSelection(ranges, 0);
+      if (ranges.some((r) => r.field > 0)) {
+        let active = new ActiveSnippet(ranges, 0);
+        let effects = spec.effects = [setActive.of(active)];
+        if (editor.state.field(snippetState, false) === void 0)
+          effects.push(StateEffect.appendConfig.of([snippetState, addSnippetKeymap, snippetPointerHandler, baseTheme4]));
+      }
+      editor.dispatch(editor.state.update(spec));
+    };
+  }
+  function moveField(dir) {
+    return ({ state, dispatch }) => {
+      let active = state.field(snippetState, false);
+      if (!active || dir < 0 && active.active == 0)
+        return false;
+      let next = active.active + dir, last = dir > 0 && !active.ranges.some((r) => r.field == next + dir);
+      dispatch(state.update({
+        selection: fieldSelection(active.ranges, next),
+        effects: setActive.of(last ? null : new ActiveSnippet(active.ranges, next)),
+        scrollIntoView: true
+      }));
+      return true;
+    };
+  }
+  var clearSnippet = ({ state, dispatch }) => {
+    let active = state.field(snippetState, false);
+    if (!active)
+      return false;
+    dispatch(state.update({ effects: setActive.of(null) }));
+    return true;
+  };
+  var nextSnippetField = /* @__PURE__ */ moveField(1);
+  var prevSnippetField = /* @__PURE__ */ moveField(-1);
+  var defaultSnippetKeymap = [
+    { key: "Tab", run: nextSnippetField, shift: prevSnippetField },
+    { key: "Escape", run: clearSnippet }
+  ];
+  var snippetKeymap = /* @__PURE__ */ Facet.define({
+    combine(maps) {
+      return maps.length ? maps[0] : defaultSnippetKeymap;
+    }
+  });
+  var addSnippetKeymap = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.compute([snippetKeymap], (state) => state.facet(snippetKeymap)));
+  function snippetCompletion(template, completion) {
+    return { ...completion, apply: snippet(template) };
+  }
+  var snippetPointerHandler = /* @__PURE__ */ EditorView.domEventHandlers({
+    mousedown(event, view) {
+      let active = view.state.field(snippetState, false), pos;
+      if (!active || (pos = view.posAtCoords({ x: event.clientX, y: event.clientY })) == null)
+        return false;
+      let match = active.ranges.find((r) => r.from <= pos && r.to >= pos);
+      if (!match || match.field == active.active)
+        return false;
+      view.dispatch({
+        selection: fieldSelection(active.ranges, match.field),
+        effects: setActive.of(active.ranges.some((r) => r.field > match.field) ? new ActiveSnippet(active.ranges, match.field) : null),
+        scrollIntoView: true
+      });
+      return true;
+    }
+  });
   var defaults2 = {
     brackets: ["(", "[", "{", "'", '"'],
     before: ")]}:;>",
@@ -23476,6 +23694,16 @@ var CM6 = (() => {
     python: pythonLanguage,
     markdown: markdownLanguage
   };
+  var METADATA_COMPLETION_TEMPLATES = [
+    ["@name", '@name: "#{\u540D\u79F0}"', "\u6D4B\u8BD5\u6216\u8D44\u6E90\u540D\u79F0"],
+    ["@description", '@description: "#{\u63CF\u8FF0}"', "\u8BF4\u660E\u5F53\u524D\u6587\u4EF6\u7528\u9014"],
+    ["@tags", "@tags: [#{\u6807\u7B7E}]", "\u6D4B\u8BD5\u6807\u7B7E"],
+    ["@author", '@author: "#{\u4F5C\u8005}"', "\u4F5C\u8005"],
+    ["@date", '@date: "#{\u65E5\u671F}"', "\u65E5\u671F"],
+    ["@import", '@import: "#{path}.resource"', "\u5BFC\u5165 Resource \u6587\u4EF6"],
+    ["@remote", '@remote: "http://#{host}:#{port}/" as #{alias}', "\u8FDC\u7A0B\u5173\u952E\u5B57\u670D\u52A1"],
+    ["@data", '@data: "#{file}.csv" using csv', "\u6570\u636E\u9A71\u52A8\u6587\u4EF6"]
+  ];
   var highlight = tagHighlighter([
     { tag: tags.meta, class: "tok-meta" },
     { tag: tags.variableName, class: "tok-var" },
@@ -23583,6 +23811,273 @@ var CM6 = (() => {
   });
   var languageCompartment = new Compartment();
   var readonlyCompartment = new Compartment();
+  function createCompletionContext() {
+    return {
+      language: "plain",
+      keywords: [],
+      variables: []
+    };
+  }
+  function isDslLikeLanguage(language2) {
+    return language2 === "dsl" || language2 === "resource";
+  }
+  function dslCompletionSource(context) {
+    const completionContext = bridge._completionContext || createCompletionContext();
+    if (!isDslLikeLanguage(completionContext.language)) {
+      return null;
+    }
+    const line = context.state.doc.lineAt(context.pos);
+    const prefix = line.text.slice(0, context.pos - line.from);
+    const nextChar2 = line.text.slice(context.pos - line.from, context.pos - line.from + 1);
+    const variableMatch = prefix.match(/\$\{([A-Za-z0-9_.-]*)$/);
+    if (variableMatch) {
+      const from = context.pos - variableMatch[1].length;
+      return variableCompletions(from, completionContext.variables);
+    }
+    const metadataMatch = prefix.match(/^(\s*)(@[\w-]*)$/);
+    if (metadataMatch) {
+      return metadataCompletions(line.from + metadataMatch[1].length);
+    }
+    const parameterMatch = parameterCompletionMatch(prefix, context.explicit);
+    if (parameterMatch) {
+      return parameterCompletions(
+        line.from + parameterMatch.from,
+        line.from + parameterMatch.to,
+        completionContext.keywords,
+        parameterMatch
+      );
+    }
+    const keywordMatch = keywordCompletionMatch(prefix);
+    if (keywordMatch) {
+      return keywordCompletions(
+        line.from + keywordMatch.from,
+        line.from + keywordMatch.to,
+        completionContext.keywords,
+        {
+          inBracket: keywordMatch.inBracket,
+          replaceNextBracket: keywordMatch.inBracket && nextChar2 === "]"
+        }
+      );
+    }
+    if (!context.explicit) {
+      return null;
+    }
+    return keywordCompletions(context.pos, context.pos, completionContext.keywords, {
+      inBracket: false
+    });
+  }
+  function keywordCompletionMatch(prefix) {
+    const bracketMatch = prefix.match(/\[([^\]\n]*)$/);
+    if (bracketMatch) {
+      const typed2 = bracketMatch[1];
+      return {
+        from: prefix.length - typed2.length,
+        to: prefix.length,
+        inBracket: true
+      };
+    }
+    const bareMatch = prefix.match(/(?:^|[\s=,|])([\p{L}\p{N}_-]{1,48})$/u);
+    if (!bareMatch) {
+      return null;
+    }
+    const typed = bareMatch[1];
+    return {
+      from: prefix.length - typed.length,
+      to: prefix.length,
+      inBracket: false
+    };
+  }
+  function keywordCompletions(from, to, keywords, options = {}) {
+    const uniqueKeywords = uniqueByLabel(keywords).filter((keyword2) => keyword2.name).slice(0, 500);
+    if (uniqueKeywords.length === 0) {
+      return null;
+    }
+    return {
+      from,
+      to,
+      options: uniqueKeywords.map((keyword2) => ({
+        label: keyword2.name,
+        type: "function",
+        detail: keywordDetail(keyword2),
+        info: keyword2.documentation || keyword2.source || "pytest-dsl \u5173\u952E\u5B57",
+        section: "\u5173\u952E\u5B57",
+        apply: keywordCompletionApply(keywordSnippetTemplate(keyword2, options), options)
+      })),
+      validFor: options.inBracket ? /^[^\]\n]*$/ : /^[\p{L}\p{N}_-]*$/u
+    };
+  }
+  function keywordCompletionApply(template, options = {}) {
+    const applySnippet = snippet(template);
+    return (view, completion, from, to) => {
+      const replaceTo = options.replaceNextBracket && view.state.doc.sliceString(to, to + 1) === "]" ? to + 1 : to;
+      applySnippet(view, completion, from, replaceTo);
+    };
+  }
+  function keywordSnippetTemplate(keyword2, options = {}) {
+    const name2 = escapeSnippetText(keyword2.name);
+    const prefix = options.inBracket ? "" : "[";
+    const params = (keyword2.parameters || []).map((param) => param.name || param.mapping).filter(Boolean).slice(0, 8);
+    const paramText = params.length > 0 ? `, ${params.map((param) => `${escapeSnippetText(param)}: #{}`).join(", ")}` : "";
+    return `${prefix}${name2}]${paramText}`;
+  }
+  function parameterCompletionMatch(prefix, explicit) {
+    const call = lastClosedKeywordCall(prefix);
+    if (!call) {
+      return null;
+    }
+    const tail = prefix.slice(call.closeIndex + 1);
+    const hasParameterSeparator = /^\s*,/.test(tail);
+    if (!hasParameterSeparator && !explicit) {
+      return null;
+    }
+    const lastComma = tail.lastIndexOf(",");
+    const segmentStart = lastComma >= 0 ? lastComma + 1 : 0;
+    const segment = tail.slice(segmentStart);
+    const tokenMatch = segment.match(/^(\s*)([\p{L}\p{N}_-]*)$/u);
+    if (!tokenMatch) {
+      return null;
+    }
+    const from = call.closeIndex + 1 + segmentStart + tokenMatch[1].length;
+    return {
+      keywordName: call.keywordName,
+      from,
+      to: prefix.length,
+      usedParameterNames: usedParameterNames(tail)
+    };
+  }
+  function lastClosedKeywordCall(prefix) {
+    const closeIndex = prefix.lastIndexOf("]");
+    if (closeIndex < 0) {
+      return null;
+    }
+    const openIndex = prefix.lastIndexOf("[", closeIndex);
+    if (openIndex < 0) {
+      return null;
+    }
+    const keywordName = prefix.slice(openIndex + 1, closeIndex).trim();
+    if (!keywordName) {
+      return null;
+    }
+    return {
+      keywordName,
+      closeIndex
+    };
+  }
+  function parameterCompletions(from, to, keywords, match) {
+    const parameters = keywordParametersForName(match.keywordName, keywords).filter((param) => !match.usedParameterNames.has(param.name)).slice(0, 80);
+    if (parameters.length === 0) {
+      return null;
+    }
+    return {
+      from,
+      to,
+      options: parameters.map(
+        (param) => snippetCompletion(`${escapeSnippetText(param.name)}: #{}`, {
+          label: param.name,
+          type: "property",
+          detail: param.description || "\u5173\u952E\u5B57\u53C2\u6570",
+          info: param.default === void 0 ? "" : `\u9ED8\u8BA4\u503C: ${param.default}`,
+          section: "\u53C2\u6570"
+        })
+      ),
+      validFor: /^[\p{L}\p{N}_-]*$/u
+    };
+  }
+  function keywordParametersForName(keywordName, keywords) {
+    const keyword2 = uniqueByLabel(keywords).find((item) => item.name === keywordName);
+    return normalizeKeywordParameters(keyword2 && keyword2.parameters);
+  }
+  function normalizeKeywordParameters(parameters) {
+    const seen = /* @__PURE__ */ new Set();
+    return (Array.isArray(parameters) ? parameters : []).map((param) => ({
+      name: String(param && (param.name || param.mapping) ? param.name || param.mapping : "").trim(),
+      description: String(param && param.description ? param.description : ""),
+      default: param ? param.default : void 0
+    })).filter((param) => {
+      if (!param.name || seen.has(param.name)) {
+        return false;
+      }
+      seen.add(param.name);
+      return true;
+    });
+  }
+  function usedParameterNames(text2) {
+    const names = /* @__PURE__ */ new Set();
+    const pattern = /([\p{L}\p{N}_-]+)\s*:/gu;
+    let match;
+    while ((match = pattern.exec(text2)) !== null) {
+      names.add(match[1]);
+    }
+    return names;
+  }
+  function keywordDetail(keyword2) {
+    const params = (keyword2.parameters || []).map((param) => param.name || param.mapping).filter(Boolean);
+    if (params.length > 0) {
+      return params.join(", ");
+    }
+    return keyword2.source || keyword2.categoryName || "\u65E0\u53C2\u6570";
+  }
+  function metadataCompletions(from) {
+    return {
+      from,
+      options: METADATA_COMPLETION_TEMPLATES.map(
+        ([label, template, detail]) => snippetCompletion(template, {
+          label,
+          type: "property",
+          detail,
+          section: "\u5143\u4FE1\u606F"
+        })
+      ),
+      validFor: /^@[\w-]*$/
+    };
+  }
+  function variableCompletions(from, variables) {
+    const options = uniqueStrings(variables).slice(0, 300).map((name2) => ({
+      label: name2,
+      type: "variable",
+      detail: "\u914D\u7F6E\u53D8\u91CF",
+      apply: `${name2}}`,
+      section: "\u53D8\u91CF"
+    }));
+    if (options.length === 0) {
+      return null;
+    }
+    return {
+      from,
+      options,
+      validFor: /^[A-Za-z0-9_.-]*$/
+    };
+  }
+  function uniqueByLabel(keywords) {
+    const seen = /* @__PURE__ */ new Set();
+    const result = [];
+    (Array.isArray(keywords) ? keywords : []).forEach((keyword2) => {
+      const name2 = String(keyword2 && keyword2.name ? keyword2.name : "").trim();
+      if (!name2 || seen.has(name2)) {
+        return;
+      }
+      seen.add(name2);
+      result.push({
+        ...keyword2,
+        name: name2,
+        parameters: Array.isArray(keyword2.parameters) ? keyword2.parameters : []
+      });
+    });
+    return result;
+  }
+  function uniqueStrings(values) {
+    const seen = /* @__PURE__ */ new Set();
+    return (Array.isArray(values) ? values : []).map((value) => String(value || "").trim()).filter((value) => {
+      if (!value || seen.has(value)) {
+        return false;
+      }
+      seen.add(value);
+      return true;
+    }).sort((left, right) => left.localeCompare(right, "zh-CN"));
+  }
+  function escapeSnippetText(value) {
+    return String(value || "").replace(/[\\{}]/g, "\\$&");
+  }
   var darkTheme2 = EditorView.theme({
     "&": {
       backgroundColor: "#0f172a",
@@ -23724,7 +24219,7 @@ var CM6 = (() => {
       foldGutter(),
       search(),
       highlightSelectionMatches(),
-      autocompletion(),
+      autocompletion({ override: [dslCompletionSource], activateOnTyping: true }),
       // Minimap (Facet-based API for @replit/codemirror-minimap >= 0.5)
       showMinimap.of({
         create() {
@@ -23818,6 +24313,7 @@ var CM6 = (() => {
     _view: null,
     _opts: {},
     _extensions: null,
+    _completionContext: createCompletionContext(),
     createEditor(parent, opts = {}) {
       if (this._view) {
         this._view.destroy();
@@ -23836,12 +24332,23 @@ var CM6 = (() => {
     },
     setLanguage(lang) {
       if (!this._view) return;
+      this._completionContext = {
+        ...this._completionContext,
+        language: lang || "plain"
+      };
       const language2 = LANGUAGES[lang];
       if (language2) {
         this._view.dispatch({
           effects: languageCompartment.reconfigure(language2)
         });
       }
+    },
+    setCompletionContext(context = {}) {
+      this._completionContext = {
+        language: context.language || this._completionContext.language || "plain",
+        keywords: Array.isArray(context.keywords) ? context.keywords : [],
+        variables: Array.isArray(context.variables) ? context.variables : []
+      };
     },
     setContent(text2) {
       if (!this._view) return;
@@ -23935,6 +24442,7 @@ var CM6 = (() => {
   };
   var createEditor = bridge.createEditor.bind(bridge);
   var setLanguage = bridge.setLanguage.bind(bridge);
+  var setCompletionContext = bridge.setCompletionContext.bind(bridge);
   var setContent = bridge.setContent.bind(bridge);
   var getContent = bridge.getContent.bind(bridge);
   var lineCount = bridge.lineCount.bind(bridge);

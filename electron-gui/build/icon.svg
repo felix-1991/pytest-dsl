@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Pytest DSL Studio">
+  <defs>
+    <linearGradient id="bg" x1="160" y1="96" x2="864" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#172033"/>
+      <stop offset="1" stop-color="#080f1f"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="208" y1="220" x2="816" y2="804" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22d3c5"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <rect x="80" y="80" width="864" height="864" rx="192" fill="url(#bg)"/>
+  <path d="M254 316c0-44 36-80 80-80h176c152 0 260 106 260 276S662 788 510 788H334c-44 0-80-36-80-80V316Z" fill="#0f172a" stroke="url(#accent)" stroke-width="56"/>
+  <path d="M368 360h128c92 0 158 58 158 152s-66 152-158 152H368V360Z" fill="#12243a"/>
+  <path d="M356 432h146c34 0 62 28 62 62v36c0 34-28 62-62 62H356" fill="none" stroke="#22d3c5" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M664 694l60 58 126-154" fill="none" stroke="#f5b84b" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="722" cy="300" r="34" fill="#f5b84b"/>
+  <circle cx="286" cy="724" r="28" fill="#22d3c5"/>
+</svg>

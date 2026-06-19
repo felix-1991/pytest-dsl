@@ -1,14 +1,118 @@
 {
-  "name": "pytest-dsl-electron-gui",
+  "name": "pytest-dsl-studio",
   "version": "0.1.0",
   "private": true,
-  "description": "Local Electron GUI workbench for pytest-dsl projects",
+  "description": "Desktop studio for pytest-dsl projects",
   "main": "main.js",
   "scripts": {
     "build:editor": "esbuild src/editor-bridge.js --bundle --format=iife --global-name=CM6 --outfile=src/editor-bundle.js",
     "start": "npm run build:editor && electron .",
+    "package": "npm run build:editor && rimraf dist && electron-builder --publish never",
+    "package:mac": "npm run build:editor && rimraf dist && electron-builder --mac dmg zip --x64 --arm64 --publish never",
+    "package:win:x64": "npm run build:editor && rimraf dist && electron-builder --win nsis zip --x64 --publish never",
+    "package:win:arm64": "npm run build:editor && rimraf dist && electron-builder --win nsis zip --arm64 --publish never",
+    "package:linux": "npm run build:editor && rimraf dist && electron-builder --linux AppImage deb --x64 --publish never",
     "test": "node --test",
     "check": "npm test && node scripts/check-app-files.js"
+  },
+  "build": {
+    "appId": "io.pytestdsl.electronGui",
+    "productName": "Pytest DSL Studio",
+    "executableName": "pytest-dsl-studio",
+    "asar": true,
+    "npmRebuild": false,
+    "publish": null,
+    "electronDownload": {
+      "mirrorOptions": {
+        "mirror": "https://npmmirror.com/mirrors/electron/"
+      }
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "package.json",
+      "!test{,/**}",
+      "!scripts{,/**}",
+      "!dist{,/**}",
+      "!.pytest-dsl-gui{,/**}"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "icon.icns",
+      "artifactName": "pytest-dsl-studio-${version}-mac-${arch}.${ext}",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "icon": "icon.ico",
+      "artifactName": "pytest-dsl-studio-${version}-win-${arch}.${ext}",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "category": "Development",
+      "icon": "icons",
+      "artifactName": "pytest-dsl-studio-${version}-linux-${arch}.${ext}",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "pytest-dsl-studio-${version}-win-${arch}-setup.${ext}",
+      "shortcutName": "Pytest DSL Studio",
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "include": "installer.nsh",
+      "installerIcon": "installerIcon.ico",
+      "uninstallerIcon": "uninstallerIcon.ico"
+    }
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.2",
@@ -20,13 +124,15 @@
     "@lezer/highlight": "^1.2.3",
     "@replit/codemirror-minimap": "^0.5.2",
     "codemirror": "^6.0.2",
-    "electron": "^30.5.1",
     "js-yaml": "^4.1.0"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "devDependencies": {
-    "esbuild": "^0.28.0"
+    "electron": "^30.5.1",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.0",
+    "rimraf": "^6.0.1"
   }
 }

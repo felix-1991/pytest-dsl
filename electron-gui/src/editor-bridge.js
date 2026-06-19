@@ -32,7 +32,14 @@ import {
   syntaxHighlighting,
 } from "@codemirror/language";
 import { search, searchKeymap, closeSearchPanel, highlightSelectionMatches } from "@codemirror/search";
-import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import {
+  autocompletion,
+  completionKeymap,
+  closeBrackets,
+  closeBracketsKeymap,
+  snippet,
+  snippetCompletion,
+} from "@codemirror/autocomplete";
 import { tagHighlighter, tags } from "@lezer/highlight";
 import { showMinimap } from "@replit/codemirror-minimap";
 
@@ -133,6 +140,17 @@ const LANGUAGES = {
   python: pythonLanguage,
   markdown: markdownLanguage,
 };
+
+const METADATA_COMPLETION_TEMPLATES = [
+  ["@name", '@name: "#{名称}"', "测试或资源名称"],
+  ["@description", '@description: "#{描述}"', "说明当前文件用途"],
+  ["@tags", '@tags: [#{标签}]', "测试标签"],
+  ["@author", '@author: "#{作者}"', "作者"],
+  ["@date", '@date: "#{日期}"', "日期"],
+  ["@import", '@import: "#{path}.resource"', "导入 Resource 文件"],
+  ["@remote", '@remote: "http://#{host}:#{port}/" as #{alias}', "远程关键字服务"],
+  ["@data", '@data: "#{file}.csv" using csv', "数据驱动文件"],
+];
 
 // ============================================================
 // Syntax Highlighting (map Lezer tags → our .tok-* CSS classes)
@@ -263,6 +281,334 @@ const debugGutterExt = gutter({
 
 const languageCompartment = new Compartment();
 const readonlyCompartment = new Compartment();
+
+// ============================================================
+// DSL / Resource Completions
+// ============================================================
+
+function createCompletionContext() {
+  return {
+    language: "plain",
+    keywords: [],
+    variables: [],
+  };
+}
+
+function isDslLikeLanguage(language) {
+  return language === "dsl" || language === "resource";
+}
+
+function dslCompletionSource(context) {
+  const completionContext = bridge._completionContext || createCompletionContext();
+  if (!isDslLikeLanguage(completionContext.language)) {
+    return null;
+  }
+
+  const line = context.state.doc.lineAt(context.pos);
+  const prefix = line.text.slice(0, context.pos - line.from);
+  const nextChar = line.text.slice(context.pos - line.from, context.pos - line.from + 1);
+  const variableMatch = prefix.match(/\$\{([A-Za-z0-9_.-]*)$/);
+  if (variableMatch) {
+    const from = context.pos - variableMatch[1].length;
+    return variableCompletions(from, completionContext.variables);
+  }
+
+  const metadataMatch = prefix.match(/^(\s*)(@[\w-]*)$/);
+  if (metadataMatch) {
+    return metadataCompletions(line.from + metadataMatch[1].length);
+  }
+
+  const parameterMatch = parameterCompletionMatch(prefix, context.explicit);
+  if (parameterMatch) {
+    return parameterCompletions(
+      line.from + parameterMatch.from,
+      line.from + parameterMatch.to,
+      completionContext.keywords,
+      parameterMatch,
+    );
+  }
+
+  const keywordMatch = keywordCompletionMatch(prefix);
+  if (keywordMatch) {
+    return keywordCompletions(
+      line.from + keywordMatch.from,
+      line.from + keywordMatch.to,
+      completionContext.keywords,
+      {
+        inBracket: keywordMatch.inBracket,
+        replaceNextBracket: keywordMatch.inBracket && nextChar === "]",
+      },
+    );
+  }
+
+  if (!context.explicit) {
+    return null;
+  }
+
+  return keywordCompletions(context.pos, context.pos, completionContext.keywords, {
+    inBracket: false,
+  });
+}
+
+function keywordCompletionMatch(prefix) {
+  const bracketMatch = prefix.match(/\[([^\]\n]*)$/);
+  if (bracketMatch) {
+    const typed = bracketMatch[1];
+    return {
+      from: prefix.length - typed.length,
+      to: prefix.length,
+      inBracket: true,
+    };
+  }
+
+  const bareMatch = prefix.match(/(?:^|[\s=,|])([\p{L}\p{N}_-]{1,48})$/u);
+  if (!bareMatch) {
+    return null;
+  }
+
+  const typed = bareMatch[1];
+  return {
+    from: prefix.length - typed.length,
+    to: prefix.length,
+    inBracket: false,
+  };
+}
+
+function keywordCompletions(from, to, keywords, options = {}) {
+  const uniqueKeywords = uniqueByLabel(keywords)
+    .filter((keyword) => keyword.name)
+    .slice(0, 500);
+
+  if (uniqueKeywords.length === 0) {
+    return null;
+  }
+
+  return {
+    from,
+    to,
+    options: uniqueKeywords.map((keyword) => ({
+        label: keyword.name,
+        type: "function",
+        detail: keywordDetail(keyword),
+        info: keyword.documentation || keyword.source || "pytest-dsl 关键字",
+        section: "关键字",
+        apply: keywordCompletionApply(keywordSnippetTemplate(keyword, options), options),
+      })),
+    validFor: options.inBracket ? /^[^\]\n]*$/ : /^[\p{L}\p{N}_-]*$/u,
+  };
+}
+
+function keywordCompletionApply(template, options = {}) {
+  const applySnippet = snippet(template);
+  return (view, completion, from, to) => {
+    const replaceTo = options.replaceNextBracket && view.state.doc.sliceString(to, to + 1) === "]" ? to + 1 : to;
+    applySnippet(view, completion, from, replaceTo);
+  };
+}
+
+function keywordSnippetTemplate(keyword, options = {}) {
+  const name = escapeSnippetText(keyword.name);
+  const prefix = options.inBracket ? "" : "[";
+  const params = (keyword.parameters || [])
+    .map((param) => param.name || param.mapping)
+    .filter(Boolean)
+    .slice(0, 8);
+  const paramText = params.length > 0
+    ? `, ${params.map((param) => `${escapeSnippetText(param)}: #{}`).join(", ")}`
+    : "";
+  return `${prefix}${name}]${paramText}`;
+}
+
+function parameterCompletionMatch(prefix, explicit) {
+  const call = lastClosedKeywordCall(prefix);
+  if (!call) {
+    return null;
+  }
+
+  const tail = prefix.slice(call.closeIndex + 1);
+  const hasParameterSeparator = /^\s*,/.test(tail);
+  if (!hasParameterSeparator && !explicit) {
+    return null;
+  }
+
+  const lastComma = tail.lastIndexOf(",");
+  const segmentStart = lastComma >= 0 ? lastComma + 1 : 0;
+  const segment = tail.slice(segmentStart);
+  const tokenMatch = segment.match(/^(\s*)([\p{L}\p{N}_-]*)$/u);
+  if (!tokenMatch) {
+    return null;
+  }
+
+  const from = call.closeIndex + 1 + segmentStart + tokenMatch[1].length;
+  return {
+    keywordName: call.keywordName,
+    from,
+    to: prefix.length,
+    usedParameterNames: usedParameterNames(tail),
+  };
+}
+
+function lastClosedKeywordCall(prefix) {
+  const closeIndex = prefix.lastIndexOf("]");
+  if (closeIndex < 0) {
+    return null;
+  }
+  const openIndex = prefix.lastIndexOf("[", closeIndex);
+  if (openIndex < 0) {
+    return null;
+  }
+
+  const keywordName = prefix.slice(openIndex + 1, closeIndex).trim();
+  if (!keywordName) {
+    return null;
+  }
+
+  return {
+    keywordName,
+    closeIndex,
+  };
+}
+
+function parameterCompletions(from, to, keywords, match) {
+  const parameters = keywordParametersForName(match.keywordName, keywords)
+    .filter((param) => !match.usedParameterNames.has(param.name))
+    .slice(0, 80);
+
+  if (parameters.length === 0) {
+    return null;
+  }
+
+  return {
+    from,
+    to,
+    options: parameters.map((param) =>
+      snippetCompletion(`${escapeSnippetText(param.name)}: #{}`, {
+        label: param.name,
+        type: "property",
+        detail: param.description || "关键字参数",
+        info: param.default === undefined ? "" : `默认值: ${param.default}`,
+        section: "参数",
+      }),
+    ),
+    validFor: /^[\p{L}\p{N}_-]*$/u,
+  };
+}
+
+function keywordParametersForName(keywordName, keywords) {
+  const keyword = uniqueByLabel(keywords)
+    .find((item) => item.name === keywordName);
+  return normalizeKeywordParameters(keyword && keyword.parameters);
+}
+
+function normalizeKeywordParameters(parameters) {
+  const seen = new Set();
+  return (Array.isArray(parameters) ? parameters : [])
+    .map((param) => ({
+      name: String(param && (param.name || param.mapping) ? (param.name || param.mapping) : "").trim(),
+      description: String(param && param.description ? param.description : ""),
+      default: param ? param.default : undefined,
+    }))
+    .filter((param) => {
+      if (!param.name || seen.has(param.name)) {
+        return false;
+      }
+      seen.add(param.name);
+      return true;
+    });
+}
+
+function usedParameterNames(text) {
+  const names = new Set();
+  const pattern = /([\p{L}\p{N}_-]+)\s*:/gu;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    names.add(match[1]);
+  }
+  return names;
+}
+
+function keywordDetail(keyword) {
+  const params = (keyword.parameters || [])
+    .map((param) => param.name || param.mapping)
+    .filter(Boolean);
+  if (params.length > 0) {
+    return params.join(", ");
+  }
+  return keyword.source || keyword.categoryName || "无参数";
+}
+
+function metadataCompletions(from) {
+  return {
+    from,
+    options: METADATA_COMPLETION_TEMPLATES.map(([label, template, detail]) =>
+      snippetCompletion(template, {
+        label,
+        type: "property",
+        detail,
+        section: "元信息",
+      }),
+    ),
+    validFor: /^@[\w-]*$/,
+  };
+}
+
+function variableCompletions(from, variables) {
+  const options = uniqueStrings(variables)
+    .slice(0, 300)
+    .map((name) => ({
+      label: name,
+      type: "variable",
+      detail: "配置变量",
+      apply: `${name}}`,
+      section: "变量",
+    }));
+
+  if (options.length === 0) {
+    return null;
+  }
+
+  return {
+    from,
+    options,
+    validFor: /^[A-Za-z0-9_.-]*$/,
+  };
+}
+
+function uniqueByLabel(keywords) {
+  const seen = new Set();
+  const result = [];
+  (Array.isArray(keywords) ? keywords : []).forEach((keyword) => {
+    const name = String(keyword && keyword.name ? keyword.name : "").trim();
+    if (!name || seen.has(name)) {
+      return;
+    }
+    seen.add(name);
+    result.push({
+      ...keyword,
+      name,
+      parameters: Array.isArray(keyword.parameters) ? keyword.parameters : [],
+    });
+  });
+  return result;
+}
+
+function uniqueStrings(values) {
+  const seen = new Set();
+  return (Array.isArray(values) ? values : [])
+    .map((value) => String(value || "").trim())
+    .filter((value) => {
+      if (!value || seen.has(value)) {
+        return false;
+      }
+      seen.add(value);
+      return true;
+    })
+    .sort((left, right) => left.localeCompare(right, "zh-CN"));
+}
+
+function escapeSnippetText(value) {
+  return String(value || "").replace(/[\\{}]/g, "\\$&");
+}
 
 // ============================================================
 // Theme
@@ -414,7 +760,7 @@ function buildExtensions(opts) {
     foldGutter(),
     search(),
     highlightSelectionMatches(),
-    autocompletion(),
+    autocompletion({ override: [dslCompletionSource], activateOnTyping: true }),
     // Minimap (Facet-based API for @replit/codemirror-minimap >= 0.5)
     showMinimap.of({
       create() {
@@ -523,6 +869,7 @@ const bridge = {
   _view: null,
   _opts: {},
   _extensions: null,
+  _completionContext: createCompletionContext(),
 
   createEditor(parent, opts = {}) {
     if (this._view) {
@@ -546,12 +893,24 @@ const bridge = {
 
   setLanguage(lang) {
     if (!this._view) return;
+    this._completionContext = {
+      ...this._completionContext,
+      language: lang || "plain",
+    };
     const language = LANGUAGES[lang];
     if (language) {
       this._view.dispatch({
         effects: languageCompartment.reconfigure(language),
       });
     }
+  },
+
+  setCompletionContext(context = {}) {
+    this._completionContext = {
+      language: context.language || this._completionContext.language || "plain",
+      keywords: Array.isArray(context.keywords) ? context.keywords : [],
+      variables: Array.isArray(context.variables) ? context.variables : [],
+    };
   },
 
   setContent(text) {
@@ -662,6 +1021,7 @@ const bridge = {
 // Named exports → CM6.createEditor(), CM6.setContent(), etc.
 export const createEditor = bridge.createEditor.bind(bridge);
 export const setLanguage = bridge.setLanguage.bind(bridge);
+export const setCompletionContext = bridge.setCompletionContext.bind(bridge);
 export const setContent = bridge.setContent.bind(bridge);
 export const getContent = bridge.getContent.bind(bridge);
 export const lineCount = bridge.lineCount.bind(bridge);

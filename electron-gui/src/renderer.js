@@ -80,6 +80,10 @@ const state = {
   keywordLoadSeq: 0,
   keywordLoading: false,
   keywords: [],
+  completionKeywords: [],
+  completionKeywordProjectRoot: null,
+  completionKeywordsLoaded: false,
+  completionKeywordLoadPromise: null,
   consoleBuffers: {
     debug: createConsoleBuffer(),
     build: createConsoleBuffer(),
@@ -183,6 +187,7 @@ document.addEventListener("DOMContentLoaded", () => {
     },
   });
   CM6.setEnabled(false);
+  syncEditorCompletionContext();
   setEmptyProjectState();
   appendLog("info", "Electron GUI initialized");
   appendLog("info", "请选择要打开的 pytest-dsl 项目");
@@ -359,6 +364,7 @@ function bindEvents() {
     }
   });
   document.addEventListener("click", closeTransientPanelsForOutsideClick);
+  document.addEventListener("keydown", handleEditorSaveShortcut, true);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeTreeContextMenu();
@@ -479,6 +485,26 @@ function confirmDiscardDirtyBeforeBuild() {
     showActionFeedback("当前文件有未保存修改，已停留在调试页面", "warn");
   }
   return confirmed;
+}
+
+function isSaveShortcut(event) {
+  if (!event || event.defaultPrevented) {
+    return false;
+  }
+  return (
+    event.key.toLowerCase() === "s" &&
+    (event.ctrlKey || event.metaKey) &&
+    !event.altKey && !event.shiftKey
+  );
+}
+
+async function handleEditorSaveShortcut(event) {
+  if (!isSaveShortcut(event)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  await saveCurrentFile({ source: "shortcut" });
 }
 
 function closeTransientPanelsForOutsideClick(event) {
@@ -706,6 +732,7 @@ function applySnapshot(snapshot, logMessage, preferredFile = null) {
     : null;
   if (projectChanged) {
     resetKeywordBrowser();
+    resetEditorCompletionKeywords();
     state.currentBuildId = null;
     state.currentBuildStatus = "";
     state.currentBuildResultsDir = "";
@@ -786,7 +813,8 @@ function setEmptyProjectState() {
   state.readonlySource = null;
   resetAllConsoleState();
   resetKeywordBrowser();
-  el.projectName.textContent = "pytest-dsl Local Workbench";
+  resetEditorCompletionKeywords();
+  el.projectName.textContent = "Pytest DSL Studio";
   el.projectRoot.textContent = "选择一个外部项目开始";
   showActionFeedback("就绪", "info");
   el.branchName.textContent = "local";
@@ -1617,6 +1645,8 @@ async function selectFile(relativePath) {
     CM6.setContent(result.content);
     CM6.setLanguage(detectLanguage(result.relativePath));
     CM6.setEnabled(true);
+    syncEditorCompletionContext();
+    loadEditorCompletionKeywords();
     setDirty(false);
     renderActiveFile();
     renderFileTree();
@@ -2171,6 +2201,7 @@ function handleConfigSelectionChange() {
   state.selectedConfigPaths = Array.from(
     el.configList.querySelectorAll("input[type='checkbox']:checked"),
   ).map((input) => input.value);
+  syncEditorCompletionContext();
   renderConfig();
   renderProject();
   refreshRemoteStatuses();
@@ -2209,6 +2240,102 @@ function selectedMergedConfig() {
     }
   });
   return merged;
+}
+
+function syncEditorCompletionContext() {
+  const language = state.currentFile && !state.readonlySource
+    ? detectLanguage(state.currentFile)
+    : "plain";
+  const shouldComplete = language === "dsl" || language === "resource";
+  if (typeof CM6.setCompletionContext === "function") {
+    CM6.setCompletionContext({
+      language,
+      keywords: shouldComplete ? state.completionKeywords : [],
+      variables: shouldComplete ? flattenConfigVariablePaths(selectedMergedConfig()) : [],
+    });
+  }
+}
+
+async function loadEditorCompletionKeywords() {
+  if (!state.snapshot || !state.currentFile || state.readonlySource) {
+    syncEditorCompletionContext();
+    return;
+  }
+  const language = detectLanguage(state.currentFile);
+  if (!(language === "dsl" || language === "resource")) {
+    syncEditorCompletionContext();
+    return;
+  }
+
+  const projectRoot = state.snapshot.project.rootPath;
+  if (
+    state.completionKeywordsLoaded &&
+    state.completionKeywordProjectRoot === projectRoot
+  ) {
+    syncEditorCompletionContext();
+    return;
+  }
+  if (state.completionKeywordLoadPromise) {
+    return state.completionKeywordLoadPromise;
+  }
+
+  state.completionKeywordProjectRoot = projectRoot;
+  state.completionKeywordLoadPromise = (async () => {
+    try {
+      const result = await api.listKeywords({
+        projectRoot: state.snapshot.project.rootPath,
+        query: "",
+        limit: 500,
+      });
+      if (!state.snapshot || state.snapshot.project.rootPath !== projectRoot) {
+        return;
+      }
+      state.completionKeywords = Array.isArray(result.keywords) ? result.keywords : [];
+      state.completionKeywordsLoaded = true;
+      syncEditorCompletionContext();
+    } catch (error) {
+      if (state.snapshot && state.snapshot.project.rootPath === projectRoot) {
+        state.completionKeywords = [];
+        state.completionKeywordsLoaded = true;
+        syncEditorCompletionContext();
+        appendLog("warn", `关键字补全加载失败: ${errorMessage(error)}`);
+      }
+    } finally {
+      if (state.completionKeywordProjectRoot === projectRoot) {
+        state.completionKeywordLoadPromise = null;
+      }
+    }
+  })();
+
+  return state.completionKeywordLoadPromise;
+}
+
+function resetEditorCompletionKeywords() {
+  state.completionKeywords = [];
+  state.completionKeywordProjectRoot = null;
+  state.completionKeywordsLoaded = false;
+  state.completionKeywordLoadPromise = null;
+  syncEditorCompletionContext();
+}
+
+function flattenConfigVariablePaths(value, prefix = "", result = []) {
+  if (isPlainObject(value)) {
+    Object.keys(value)
+      .sort((left, right) => left.localeCompare(right, "zh-CN"))
+      .forEach((key) => {
+        const path = prefix ? `${prefix}.${key}` : key;
+        flattenConfigVariablePaths(value[key], path, result);
+      });
+    if (prefix) {
+      result.push(prefix);
+    }
+    return result;
+  }
+
+  if (prefix) {
+    result.push(prefix);
+  }
+  return Array.from(new Set(result));
 }
 
 function emptyRemoteStatus() {
@@ -2575,6 +2702,7 @@ async function openExternalReadonlySource(definition) {
   CM6.setContent(result.content);
   CM6.setLanguage(result.language || detectLanguage(result.path));
   CM6.setEnabled(false);
+  syncEditorCompletionContext();
   setDirty(false);
   renderActiveFile();
   renderFileTree();
@@ -2795,13 +2923,23 @@ async function copyGeneratedCommand() {
   return command;
 }
 
-async function saveCurrentFile() {
+async function saveCurrentFile(options = {}) {
   if (!state.snapshot || !state.currentFile) {
     appendLog("warn", "No file selected");
+    if (options.source === "shortcut") {
+      showActionFeedback("没有可保存的文件", "warn");
+    }
     return;
   }
   if (state.readonlySource) {
     appendLog("warn", "只读源码不能保存");
+    if (options.source === "shortcut") {
+      showActionFeedback("只读源码不能保存", "warn");
+    }
+    return;
+  }
+  if (options.source === "shortcut" && !state.dirty) {
+    showActionFeedback("当前文件已是最新", "info");
     return;
   }
 
@@ -2813,6 +2951,10 @@ async function saveCurrentFile() {
       content,
     );
     state.snapshot.metadata = result.metadata || state.snapshot.metadata;
+    if (detectLanguage(state.currentFile) === "resource") {
+      resetEditorCompletionKeywords();
+      loadEditorCompletionKeywords();
+    }
     setDirty(false);
     renderMetadata(state.snapshot.metadata);
     appendLog("pass", `Saved ${result.relativePath} (${result.bytes} bytes)`);

@@ -1,0 +1,77 @@
+name: Electron GUI Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "electron-gui/**"
+      - ".github/workflows/electron-gui-package.yml"
+  pull_request:
+    paths:
+      - "electron-gui/**"
+      - ".github/workflows/electron-gui-package.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            os: macos-latest
+            script: package:mac
+            artifact: electron-gui-macos
+          - name: windows-x64
+            os: windows-latest
+            script: package:win:x64
+            artifact: electron-gui-windows-x64
+          - name: windows-arm64
+            os: windows-latest
+            script: package:win:arm64
+            artifact: electron-gui-windows-arm64
+          - name: linux
+            os: ubuntu-latest
+            script: package:linux
+            artifact: electron-gui-linux
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: electron-gui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix electron-gui
+
+      - name: Run checks
+        run: npm run check --prefix electron-gui
+
+      - name: Package Electron GUI
+        run: npm run ${{ matrix.script }} --prefix electron-gui
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            electron-gui/dist/*
+            !electron-gui/dist/*-unpacked/**
+            !electron-gui/dist/builder-debug.yml
+            !electron-gui/dist/builder-effective-config.yaml
+          if-no-files-found: error
+          retention-days: 14

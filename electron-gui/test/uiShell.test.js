@@ -604,6 +604,27 @@ test("save and syntax check report visible status outside the hidden console", (
   assert.match(css, /\.action-status\.is-error/);
 });
 
+test("editor supports keyboard save with visible shortcut affordance", () => {
+  assert.match(
+    html,
+    /id="saveBtn"[\s\S]*title="保存当前文件 \(Ctrl\/Cmd\+S\)"[\s\S]*aria-keyshortcuts="Control\+S Meta\+S"/,
+  );
+  assert.match(
+    renderer,
+    /document\.addEventListener\("keydown", handleEditorSaveShortcut, true\)/,
+  );
+  assert.match(renderer, /function isSaveShortcut\(event\)/);
+  assert.match(renderer, /event\.key\.toLowerCase\(\) === "s"/);
+  assert.match(renderer, /\(event\.ctrlKey \|\| event\.metaKey\)/);
+  assert.match(renderer, /!event\.altKey && !event\.shiftKey/);
+  assert.match(
+    renderer,
+    /async function handleEditorSaveShortcut\(event\)[\s\S]*if \(!isSaveShortcut\(event\)\) \{[\s\S]*return;[\s\S]*event\.preventDefault\(\);[\s\S]*await saveCurrentFile\(\{ source: "shortcut" \}\)/,
+  );
+  assert.match(renderer, /async function saveCurrentFile\(options = \{\}\)/);
+  assert.match(renderer, /if \(options\.source === "shortcut" && !state\.dirty\)/);
+});
+
 test("console output can be cleared manually and resets before each execution", () => {
   assert.match(html, /id="clearConsoleBtn"/);
   assert.match(html, /title="清空运行输出"/);
@@ -723,6 +744,16 @@ test("workspace title removes the redundant DSL badge", () => {
   assert.match(css, /grid-template-columns:\s*24px minmax\(0,\s*1fr\) auto/);
 });
 
+test("workspace shell uses the Pytest DSL Studio product name", () => {
+  assert.match(html, /<title>Pytest DSL Studio<\/title>/);
+  assert.match(html, /<strong id="projectName"[\s\S]*>Pytest DSL Studio<\/strong\s*>/);
+  assert.match(main, /title: "Pytest DSL Studio"/);
+  assert.match(renderer, /el\.projectName\.textContent = "Pytest DSL Studio"/);
+  assert.doesNotMatch(html, /pytest-dsl Local Workbench/);
+  assert.doesNotMatch(main, /pytest-dsl Local Workbench/);
+  assert.doesNotMatch(renderer, /pytest-dsl Local Workbench/);
+});
+
 test("renderer wires syntax, run, debug, and stop to real execution IPC", () => {
   assert.match(main, /execution:start/);
   assert.match(main, /execution:stop/);
@@ -774,6 +805,36 @@ test("editor keyword browser uses pytest-dsl keyword data and inserts snippets",
   assert.match(css, /\.keyword-row/);
   assert.doesNotMatch(renderer, /Keyword panel shell is not implemented/);
   assert.doesNotMatch(renderer, /Format preview/);
+});
+
+test("editor offers DSL and resource completions from keywords metadata and config variables", () => {
+  assert.match(editorBridge, /snippetCompletion/);
+  assert.match(editorBridge, /snippet\(/);
+  assert.match(editorBridge, /function dslCompletionSource/);
+  assert.match(editorBridge, /const nextChar = line\.text\.slice\(context\.pos - line\.from, context\.pos - line\.from \+ 1\)/);
+  assert.match(editorBridge, /function keywordSnippetTemplate/);
+  assert.match(editorBridge, /function keywordCompletionApply/);
+  assert.match(editorBridge, /const replaceTo = options\.replaceNextBracket && view\.state\.doc\.sliceString\(to, to \+ 1\) === "\]" \? to \+ 1 : to/);
+  assert.match(editorBridge, /function metadataCompletions/);
+  assert.match(editorBridge, /function parameterCompletionMatch/);
+  assert.match(editorBridge, /function parameterCompletions/);
+  assert.match(editorBridge, /function keywordParametersForName/);
+  assert.match(editorBridge, /usedParameterNames/);
+  assert.match(editorBridge, /function variableCompletions/);
+  assert.match(editorBridge, /setCompletionContext/);
+  assert.match(editorBridge, /isDslLikeLanguage/);
+  assert.match(editorBridge, /autocompletion\(\{\s*override:\s*\[dslCompletionSource\]/);
+  assert.match(editorBridge, /replaceNextBracket: keywordMatch\.inBracket && nextChar === "\]"/);
+  assert.doesNotMatch(editorBridge, /line\.from \+ keywordMatch\.to \+ \(keywordMatch\.inBracket && nextChar === "\]" \? 1 : 0\),\s*\n\s*completionContext\.keywords/);
+
+  assert.match(renderer, /completionKeywords/);
+  assert.match(renderer, /syncEditorCompletionContext/);
+  assert.match(renderer, /loadEditorCompletionKeywords/);
+  assert.match(renderer, /flattenConfigVariablePaths\(selectedMergedConfig\(\)\)/);
+  assert.match(renderer, /CM6\.setCompletionContext/);
+  assert.match(renderer, /language === "dsl" \|\| language === "resource"/);
+  assert.match(renderer, /api\.listKeywords\(\{\s*projectRoot: state\.snapshot\.project\.rootPath,[\s\S]*limit: 500/);
+  assert.match(renderer, /syncEditorCompletionContext\(\);[\s\S]*renderActiveFile\(\);/);
 });
 
 test("command bar separates live preview from generated command copying", () => {

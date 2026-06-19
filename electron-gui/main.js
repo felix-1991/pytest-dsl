@@ -1,5 +1,5 @@
 const path = require("node:path");
-const { app, BrowserWindow, clipboard, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu } = require("electron");
 
 const {
   createProjectEntry,
@@ -39,7 +39,7 @@ function createWindow() {
     height: 900,
     minWidth: 1120,
     minHeight: 720,
-    title: "pytest-dsl Local Workbench",
+    title: "Pytest DSL Studio",
     backgroundColor: "#f5f7fb",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -159,6 +159,8 @@ function registerIpc() {
 
 app.whenReady().then(() => {
   registerIpc();
+  // 隐藏默认的应用菜单栏（File / Edit / View / Window / Help）
+  Menu.setApplicationMenu(null);
   createWindow();
 
   app.on("activate", () => {
