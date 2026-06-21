@@ -148,6 +148,18 @@ pytest-dsl 的报告层级来自真实执行结构，而不是运行结束后重
 
 ![DSL API 用例在 Allure 中形成分层步骤](docs/images/readme/allure-api-report.png)
 
+## 从接口测试扩展到端到端
+
+接口测试是 pytest-dsl 最直接的切入点，但关键字模型并不限定测试边界。pytest-dsl 提供类似 Robot Framework 的关键字驱动扩展方式：用例在 DSL 中描述业务流程，具体技术动作封装在可复用关键字中。
+
+团队可以用 `function ... do ... end` 在 DSL 中组合业务关键字，用 `.resource` 文件跨用例复用，也可以通过项目 `keywords/`、Python 注册机制、插件或 XML-RPC 远程服务提供关键字。Python 关键字可以调用现有 Python 库和外部驱动，因此一个流程可以按以下方式组合：
+
+`内置 [HTTP请求] → 团队自定义的页面操作关键字 → 团队自定义的数据校验关键字 → 通用断言和清理步骤`
+
+这使接口准备、界面操作、后台核验和环境收尾可以使用同一套 DSL 业务步骤组织成端到端用例。浏览器、移动端、数据库、消息队列等领域能力需要团队提供对应驱动，并非全部由 pytest-dsl 内置。
+
+这里的“类似”指关键字驱动的组织和扩展方式。pytest-dsl 基于 pytest，继续使用 pytest 的收集、fixture、插件和命令行生态；它不兼容 Robot Framework 的语法、库接口或现有用例，也不是 Robot Framework 的直接替代品。
+
 ## Pytest DSL Studio
 
 Pytest DSL Studio 是仓库中的 Electron 桌面工作台，用于降低项目浏览、编辑和执行成本；它不是 pytest-dsl 的必需运行时。
@@ -240,6 +252,7 @@ npm start --prefix electron-gui
 
 ### 扩展与集成
 
+- 内置 HTTP 关键字可以与 DSL、Python、插件或远程自定义关键字组合，组织跨接口和外部驱动的端到端业务流程。
 - Python 装饰器注册自定义关键字，并声明参数、默认值、分类和返回值。
 - 本地关键字和 XML-RPC 远程关键字调用。
 - pytest 原生 `.dsl` / `.auto` 收集、fixture 和插件生态。
