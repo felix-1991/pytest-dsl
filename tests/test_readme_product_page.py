@@ -25,6 +25,7 @@ def test_readme_is_an_api_first_product_page():
 
 def test_readme_positions_custom_keywords_for_end_to_end_testing():
     content = README.read_text(encoding="utf-8")
+    section_heading = "## 从接口测试扩展到端到端"
     section_match = re.search(
         r"^## 从接口测试扩展到端到端\n(?P<body>.*?)(?=^## |\Z)",
         content,
@@ -38,12 +39,45 @@ def test_readme_positions_custom_keywords_for_end_to_end_testing():
         "类似 Robot Framework 的关键字驱动扩展方式",
         "function ... do ... end",
         ".resource",
-        "不兼容 Robot Framework 的语法",
-        "需要团队提供对应驱动",
+        "项目 `keywords/`",
+        "Python 注册机制",
+        "插件或 XML-RPC 远程服务",
+        "现有 Python 库和外部驱动",
+        "团队自定义的页面操作关键字",
+        "团队自定义的数据校验关键字",
+        "浏览器、移动端、数据库、消息队列等领域能力",
+        "并非全部由 pytest-dsl 内置",
+        "pytest 的收集、插件和命令行生态",
+        "不兼容 Robot Framework 的语法、库接口或现有用例",
+        "不是 Robot Framework 的直接替代品",
     ]
 
     for marker in required:
         assert marker in section
+
+    assert "fixture" not in section.lower()
+    corrected_ecosystem_claims = (
+        "- Python 关键字、pytest 插件和命令行生态仍可继续使用。",
+        "- pytest 原生 `.dsl` / `.auto` 收集、插件和命令行生态。",
+    )
+    misleading_fixture_claims = (
+        "Python 关键字、pytest 插件、fixture 和命令行生态仍可继续使用。",
+        "pytest 原生 `.dsl` / `.auto` 收集、fixture 和插件生态。",
+    )
+    for claim in corrected_ecosystem_claims:
+        assert claim in content
+    for claim in misleading_fixture_claims:
+        assert claim not in content
+
+    assert (
+        content.index("## 从 DSL 到可读报告")
+        < content.index(section_heading)
+        < content.index("## Pytest DSL Studio")
+    )
+    assert (
+        "- 内置 HTTP 关键字可以与 DSL、Python、插件或远程自定义关键字组合，"
+        "组织跨接口和外部驱动的端到端业务流程。"
+    ) in content
 
 
 def test_readme_references_the_three_verified_screenshots():

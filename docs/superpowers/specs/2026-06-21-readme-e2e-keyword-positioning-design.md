@@ -25,7 +25,7 @@ README 只描述仓库当前已经具备的机制：
 
 必须同时明确：
 
-- pytest-dsl 基于 pytest，并继续使用 pytest 的收集、fixture、插件和命令行生态；
+- pytest-dsl 基于 pytest，并继续使用 pytest 的收集、插件和命令行生态；
 - pytest-dsl 不兼容 Robot Framework 的语法、库接口或现有用例；
 - 浏览器、移动端、数据库、消息队列等端到端能力需要团队提供对应的 Python、插件或远程关键字，不宣称全部由 pytest-dsl 内置。
 
@@ -35,7 +35,7 @@ README 只描述仓库当前已经具备的机制：
 
 ## 验证
 
-- README 回归测试固定新章节标题、Robot Framework 边界表述及自定义关键字机制；
+- README 回归测试固定新章节位置、自定义关键字机制、领域边界、Robot Framework 边界及核心能力条目；逐句固定 README 另外两处 pytest 生态表述、拒绝对应的两条旧 fixture 表述，并禁止在新章节中宣称 fixture 支持；
 - README 本地链接检查继续通过；
 - 完整 pytest 回归通过；
 - `git diff --check` 通过。

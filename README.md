@@ -58,7 +58,7 @@ def test_user_login(api_client):
 - 用例作者按固定语法描述业务步骤，不需要每个项目重新设计代码骨架。
 - 关键字调用、参数解析、变量赋值和控制流形成稳定的执行结构。
 - `步骤名称` 直接成为报告中的业务步骤，源码与报告使用同一套命名。
-- Python 关键字、pytest 插件、fixture 和命令行生态仍可继续使用。
+- Python 关键字、pytest 插件和命令行生态仍可继续使用。
 
 ## 一个关键字开始接口测试
 
@@ -158,7 +158,7 @@ pytest-dsl 的报告层级来自真实执行结构，而不是运行结束后重
 
 这使接口准备、界面操作、后台核验和环境收尾可以使用同一套 DSL 业务步骤组织成端到端用例。浏览器、移动端、数据库、消息队列等领域能力需要团队提供对应驱动，并非全部由 pytest-dsl 内置。
 
-这里的“类似”指关键字驱动的组织和扩展方式。pytest-dsl 基于 pytest，继续使用 pytest 的收集、fixture、插件和命令行生态；它不兼容 Robot Framework 的语法、库接口或现有用例，也不是 Robot Framework 的直接替代品。
+这里的“类似”指关键字驱动的组织和扩展方式。pytest-dsl 基于 pytest，继续使用 pytest 的收集、插件和命令行生态；它不兼容 Robot Framework 的语法、库接口或现有用例，也不是 Robot Framework 的直接替代品。
 
 ## Pytest DSL Studio
 
@@ -255,7 +255,7 @@ npm start --prefix electron-gui
 - 内置 HTTP 关键字可以与 DSL、Python、插件或远程自定义关键字组合，组织跨接口和外部驱动的端到端业务流程。
 - Python 装饰器注册自定义关键字，并声明参数、默认值、分类和返回值。
 - 本地关键字和 XML-RPC 远程关键字调用。
-- pytest 原生 `.dsl` / `.auto` 收集、fixture 和插件生态。
+- pytest 原生 `.dsl` / `.auto` 收集、插件和命令行生态。
 - Allure 报告、命令行运行和 Studio 工作台使用同一执行核心。
 
 ## 文档
