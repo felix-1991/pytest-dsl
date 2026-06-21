@@ -1,0 +1,10 @@
+http_clients:
+  local_api:
+    base_url: http://127.0.0.1:8765/
+    timeout: 5
+    verify_ssl: false
+
+api_demo:
+  user_id: 1001
+  username: api_demo
+  password: pytest-dsl

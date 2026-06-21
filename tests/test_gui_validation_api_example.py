@@ -79,3 +79,44 @@ def test_mock_api_rejects_a_profile_request_without_the_captured_token():
         "code": 40101,
         "message": "missing or invalid token",
     }
+
+
+def test_api_quickstart_runs_through_the_real_pytest_dsl_cli(tmp_path):
+    with running_mock_api() as base_url:
+        config_path = tmp_path / "api.yaml"
+        config_path.write_text(
+            "\n".join(
+                [
+                    "http_clients:",
+                    "  local_api:",
+                    f"    base_url: {base_url}",
+                    "    timeout: 5",
+                    "    verify_ssl: false",
+                    "api_demo:",
+                    "  user_id: 1001",
+                    "  username: api_demo",
+                    "  password: pytest-dsl",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest_dsl.cli",
+                "run",
+                "tests/api_quickstart.dsl",
+                "--yaml-vars",
+                str(config_path),
+            ],
+            cwd=EXAMPLE_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert result.returncode == 0, (
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "接口测试核心链路验证完成" in result.stdout
