@@ -1,4 +1,5 @@
 import re
+import subprocess
 from pathlib import Path
 
 
@@ -52,3 +53,30 @@ def test_readme_local_links_and_images_exist():
         if not (ROOT / target).resolve().exists():
             missing.append(raw_target)
     assert missing == []
+
+
+def test_gui_validation_only_exposes_the_api_showcase_to_git():
+    def is_ignored(path: str) -> bool:
+        result = subprocess.run(
+            ["git", "check-ignore", "--no-index", "-q", path],
+            cwd=ROOT,
+            check=False,
+        )
+        return result.returncode == 0
+
+    public_showcase = (
+        "examples/gui_validation/README.md",
+        "examples/gui_validation/config/api.yaml",
+        "examples/gui_validation/tests/api_quickstart.dsl",
+        "examples/gui_validation/tools/mock_api_server.py",
+    )
+    local_validation_assets = (
+        "examples/gui_validation/config/app.yaml",
+        "examples/gui_validation/keywords/local_keyword.py",
+        "examples/gui_validation/resources/local.resource",
+        "examples/gui_validation/tests/remote_gui_smoke.dsl",
+        "examples/gui_validation/tests/local_suite/example.dsl",
+    )
+
+    assert all(not is_ignored(path) for path in public_showcase)
+    assert all(is_ignored(path) for path in local_validation_assets)

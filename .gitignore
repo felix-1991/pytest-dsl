@@ -126,6 +126,19 @@ playwright/.auth
 web-editor/
 .worktrees/
 
+# Keep the local GUI validation harness ignored while publishing the API showcase.
+examples/gui_validation/*
+!examples/gui_validation/README.md
+!examples/gui_validation/config/
+examples/gui_validation/config/*
+!examples/gui_validation/config/api.yaml
+!examples/gui_validation/tests/
+examples/gui_validation/tests/*
+!examples/gui_validation/tests/api_quickstart.dsl
+!examples/gui_validation/tools/
+examples/gui_validation/tools/*
+!examples/gui_validation/tools/mock_api_server.py
+
 # Pytest DSL Studio validation project runtime files
 examples/gui_validation/.pytest-dsl-gui/
 examples/gui_validation/**/.pytest-dsl-generated/
