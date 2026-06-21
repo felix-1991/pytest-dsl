@@ -23,6 +23,29 @@ def test_readme_is_an_api_first_product_page():
     assert len(content.splitlines()) < 500
 
 
+def test_readme_positions_custom_keywords_for_end_to_end_testing():
+    content = README.read_text(encoding="utf-8")
+    section_match = re.search(
+        r"^## 从接口测试扩展到端到端\n(?P<body>.*?)(?=^## |\Z)",
+        content,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    assert section_match is not None, (
+        "README is missing the '## 从接口测试扩展到端到端' section"
+    )
+    section = section_match.group("body")
+    required = [
+        "类似 Robot Framework 的关键字驱动扩展方式",
+        "function ... do ... end",
+        ".resource",
+        "不兼容 Robot Framework 的语法",
+        "需要团队提供对应驱动",
+    ]
+
+    for marker in required:
+        assert marker in section
+
+
 def test_readme_references_the_three_verified_screenshots():
     content = README.read_text(encoding="utf-8")
     for name in (
