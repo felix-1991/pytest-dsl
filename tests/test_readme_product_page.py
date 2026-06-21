@@ -7,32 +7,61 @@ ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
 
 
-def test_readme_is_an_api_first_product_page():
+def test_readme_positions_a_general_framework_with_an_api_entry_path():
     content = README.read_text(encoding="utf-8")
     required = [
+        "# pytest-dsl：用关键字组织从接口到端到端的自动化测试",
+        "通用自动化测试框架",
+        "API 测试是最容易上手、内置能力最完整的实践入口",
+        "框架边界并不限定测试类型",
         "## 为什么是 pytest-dsl",
-        "## 一个关键字开始接口测试",
-        "[HTTP请求]",
-        "allure.step",
-        "## 从 DSL 到可读报告",
-        "## Pytest DSL Studio",
+        "## 框架如何工作",
+        "## 从 API 开始：一个关键字完成请求链路",
+        "## 扩展到复杂测试与端到端",
+        "## 从执行结构到可读报告",
+        "## Pytest DSL Studio：统一的 DSL 工作台",
         "examples/gui_validation/tests/api_quickstart.dsl",
     ]
     for marker in required:
         assert marker in content
+
+    headings = [
+        "## 为什么是 pytest-dsl",
+        "## 框架如何工作",
+        "## 从 API 开始：一个关键字完成请求链路",
+        "## 扩展到复杂测试与端到端",
+        "## 从执行结构到可读报告",
+        "## Pytest DSL Studio：统一的 DSL 工作台",
+        "## 5 分钟：从 API 用例开始",
+        "## 核心能力",
+    ]
+    assert [content.index(heading) for heading in headings] == sorted(
+        content.index(heading) for heading in headings
+    )
+
+    core_headings = [
+        "### DSL 测试表达",
+        "### 关键字扩展与组合",
+        "### HTTP/API 测试",
+        "### 执行、报告与工具",
+    ]
+    assert [content.index(heading) for heading in core_headings] == sorted(
+        content.index(heading) for heading in core_headings
+    )
+    assert "## 一个关键字开始接口测试" not in content
     assert len(content.splitlines()) < 500
 
 
 def test_readme_positions_custom_keywords_for_end_to_end_testing():
     content = README.read_text(encoding="utf-8")
-    section_heading = "## 从接口测试扩展到端到端"
+    section_heading = "## 扩展到复杂测试与端到端"
     section_match = re.search(
-        r"^## 从接口测试扩展到端到端\n(?P<body>.*?)(?=^## |\Z)",
+        r"^## 扩展到复杂测试与端到端\n(?P<body>.*?)(?=^## |\Z)",
         content,
         flags=re.MULTILINE | re.DOTALL,
     )
     assert section_match is not None, (
-        "README is missing the '## 从接口测试扩展到端到端' section"
+        "README is missing the '## 扩展到复杂测试与端到端' section"
     )
     section = section_match.group("body")
     required = [
@@ -56,23 +85,10 @@ def test_readme_positions_custom_keywords_for_end_to_end_testing():
         assert marker in section
 
     assert "fixture" not in section.lower()
-    corrected_ecosystem_claims = (
-        "- Python 关键字、pytest 插件和命令行生态仍可继续使用。",
-        "- pytest 原生 `.dsl` / `.auto` 收集、插件和命令行生态。",
-    )
-    misleading_fixture_claims = (
-        "Python 关键字、pytest 插件、fixture 和命令行生态仍可继续使用。",
-        "pytest 原生 `.dsl` / `.auto` 收集、fixture 和插件生态。",
-    )
-    for claim in corrected_ecosystem_claims:
-        assert claim in content
-    for claim in misleading_fixture_claims:
-        assert claim not in content
-
     assert (
-        content.index("## 从 DSL 到可读报告")
+        content.index("## 从 API 开始：一个关键字完成请求链路")
         < content.index(section_heading)
-        < content.index("## Pytest DSL Studio")
+        < content.index("## 从执行结构到可读报告")
     )
     assert (
         "- 内置 HTTP 关键字可以与 DSL、Python、插件或远程自定义关键字组合，"
