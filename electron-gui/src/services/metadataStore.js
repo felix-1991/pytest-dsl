@@ -8,6 +8,27 @@ function metadataPath(projectRoot) {
   return path.join(projectRoot, METADATA_DIR, METADATA_FILE);
 }
 
+function defaultRuntimeMetadata() {
+  return {
+    pythonExecutable: null,
+    allureExecutable: null
+  };
+}
+
+function normalizeRuntimeMetadata(value) {
+  const normalizeExecutable = (executable) => {
+    if (typeof executable !== "string") {
+      return null;
+    }
+    return executable.trim() || null;
+  };
+
+  return {
+    pythonExecutable: normalizeExecutable(value && value.pythonExecutable),
+    allureExecutable: normalizeExecutable(value && value.allureExecutable)
+  };
+}
+
 function defaultMetadata() {
   return {
     version: 1,
@@ -17,6 +38,7 @@ function defaultMetadata() {
       leftWidth: 308,
       rightWidth: 392
     },
+    runtime: defaultRuntimeMetadata(),
     updatedAt: null
   };
 }
@@ -60,6 +82,23 @@ function recordOpenedFile(projectRoot, relativePath) {
   });
 }
 
+function updateRuntimeMetadata(projectRoot, updates) {
+  const current = readMetadata(projectRoot);
+  const runtimeUpdates = updates && typeof updates === "object" ? updates : {};
+  const runtime = { ...current.runtime };
+
+  for (const field of ["pythonExecutable", "allureExecutable"]) {
+    if (Object.prototype.hasOwnProperty.call(runtimeUpdates, field)) {
+      runtime[field] = runtimeUpdates[field];
+    }
+  }
+
+  return writeMetadata(projectRoot, {
+    ...current,
+    runtime
+  });
+}
+
 function normalizeMetadata(value) {
   const base = defaultMetadata();
   const layout = value && typeof value.layout === "object" ? value.layout : {};
@@ -71,7 +110,8 @@ function normalizeMetadata(value) {
     layout: {
       ...base.layout,
       ...layout
-    }
+    },
+    runtime: normalizeRuntimeMetadata(value && value.runtime)
   };
 }
 
@@ -80,6 +120,6 @@ module.exports = {
   metadataPath,
   readMetadata,
   writeMetadata,
-  recordOpenedFile
+  recordOpenedFile,
+  updateRuntimeMetadata
 };
-
