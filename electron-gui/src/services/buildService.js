@@ -5,6 +5,10 @@ const path = require("node:path");
 const { spawn, execFile } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 
+const {
+  isExecutableAvailable,
+  resolvePythonTarget,
+} = require("./pythonEnvService");
 const { buildPytestTargets } = require("./suiteService");
 
 const runningBuilds = new Map();
@@ -71,6 +75,10 @@ async function startBuildTask(options = {}, callbacks = {}) {
     throw new Error(`Build task is already running: ${plan.buildId}`);
   }
 
+  const spawnTarget = options.pytestCommandOverride
+    ? options.pytestCommandOverride
+    : resolvePytestSpawnTarget(plan, options, env);
+
   prepareBuildDirectories(plan);
   writeManifest(plan, {
     buildId: plan.buildId,
@@ -110,9 +118,6 @@ async function startBuildTask(options = {}, callbacks = {}) {
   });
 
   await maybeStartAllureWatch(task, options, env, callbacks);
-  const spawnTarget = options.pytestCommandOverride
-    ? options.pytestCommandOverride
-    : resolvePytestSpawnTarget(plan, options, env);
 
   const child = spawn(spawnTarget.command, spawnTarget.args, {
     cwd: plan.cwd,
@@ -625,9 +630,10 @@ function resolvePytestSpawnTarget(plan, options = {}, env = process.env) {
       args: plan.args,
     };
   }
+  const target = resolvePythonTarget(plan.cwd, env, options);
   return {
-    command: fallbackPythonExecutable(options),
-    args: ["-m", "pytest", ...plan.args],
+    command: target.command,
+    args: [...target.args, "-m", "pytest", ...plan.args],
   };
 }
 
@@ -822,38 +828,29 @@ function assertProjectRoot(projectRoot) {
 
 function executionEnv(extraEnv) {
   const packageRoot = path.resolve(__dirname, "..", "..", "..");
-  const existingPythonPath = process.env.PYTHONPATH || "";
-  return {
+  const env = {
     ...process.env,
     ...extraEnv,
     PYTHONUNBUFFERED: "1",
+  };
+  if (!isDirectory(path.join(packageRoot, "pytest_dsl"))) {
+    return env;
+  }
+  const existingPythonPath = env.PYTHONPATH || "";
+  return {
+    ...env,
     PYTHONPATH: existingPythonPath
       ? `${packageRoot}${path.delimiter}${existingPythonPath}`
       : packageRoot,
   };
 }
 
-function isExecutableAvailable(command, env = process.env) {
-  if (!command || command.includes("/") || command.includes("\\")) {
-    return Boolean(command && fs.existsSync(command));
+function isDirectory(directory) {
+  try {
+    return fs.statSync(directory).isDirectory();
+  } catch {
+    return false;
   }
-
-  const pathValue = env.PATH || env.Path || env.path || "";
-  const pathExts = process.platform === "win32"
-    ? (env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";")
-    : [""];
-  return pathValue.split(path.delimiter).some((directory) =>
-    pathExts.some((extension) =>
-      fs.existsSync(path.join(directory, `${command}${extension}`)),
-    ),
-  );
-}
-
-function fallbackPythonExecutable(options = {}) {
-  return options.pythonExecutable ||
-    process.env.PYTEST_DSL_PYTHON ||
-    process.env.PYTHON ||
-    "python";
 }
 
 function executableName(name) {

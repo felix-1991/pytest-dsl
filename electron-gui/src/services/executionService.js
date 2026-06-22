@@ -3,6 +3,10 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 
+const {
+  isExecutableAvailable,
+  resolvePythonTarget,
+} = require("./pythonEnvService");
 const { buildPytestTargets } = require("./suiteService");
 
 const STRUCTURED_EVENT_PREFIX = "__PYTEST_DSL_GUI_EVENT__";
@@ -65,9 +69,15 @@ function createExecutionPlan(options) {
 function startExecutionTask(options, callbacks = {}) {
   const plan = createExecutionPlan(options);
   const env = executionEnv(options.env);
-  const spawnTarget = options.commandOverride
-    ? options.commandOverride
-    : resolveSpawnTarget(plan, options, env);
+  let spawnTarget;
+  try {
+    spawnTarget = options.commandOverride
+      ? options.commandOverride
+      : resolveSpawnTarget(plan, options, env);
+  } catch (error) {
+    cleanupTaskDir(plan.cleanupDir);
+    throw error;
+  }
   const command = spawnTarget.command;
   const args = spawnTarget.args;
   const startedAt = Date.now();
@@ -430,60 +440,48 @@ function resolveSpawnTarget(plan, options = {}, env = process.env) {
     };
   }
 
-  if (plan.mode === "syntax" || plan.mode === "debug") {
-    return {
-      command: fallbackPythonExecutable(options),
-      args: ["-m", "pytest_dsl.workbench.runner", ...plan.args],
-    };
-  }
-
-  if (plan.mode === "suite") {
-    return {
-      command: fallbackPythonExecutable(options),
-      args: ["-m", "pytest", ...plan.args],
-    };
-  }
-
+  const target = resolvePythonTarget(plan.cwd, env, options);
   return {
-    command: fallbackPythonExecutable(options),
-    args: ["-m", "pytest_dsl.cli", ...plan.args],
+    command: target.command,
+    args: [...target.args, "-m", pythonModuleForMode(plan.mode), ...plan.args],
   };
 }
 
-function isExecutableAvailable(command, env = process.env) {
-  if (!command || command.includes("/") || command.includes("\\")) {
-    return Boolean(command && fs.existsSync(command));
+function pythonModuleForMode(mode) {
+  if (mode === "syntax" || mode === "debug") {
+    return "pytest_dsl.workbench.runner";
   }
-
-  const pathValue = env.PATH || env.Path || env.path || "";
-  const pathExts = process.platform === "win32"
-    ? (env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";")
-    : [""];
-  return pathValue.split(path.delimiter).some((directory) =>
-    pathExts.some((extension) =>
-      fs.existsSync(path.join(directory, `${command}${extension}`)),
-    ),
-  );
-}
-
-function fallbackPythonExecutable(options = {}) {
-  return options.pythonExecutable ||
-    process.env.PYTEST_DSL_PYTHON ||
-    process.env.PYTHON ||
-    "python";
+  if (mode === "suite") {
+    return "pytest";
+  }
+  return "pytest_dsl.cli";
 }
 
 function executionEnv(extraEnv) {
   const packageRoot = path.resolve(__dirname, "..", "..", "..");
-  const existingPythonPath = process.env.PYTHONPATH || "";
-  return {
+  const env = {
     ...process.env,
     ...extraEnv,
     PYTHONUNBUFFERED: "1",
+  };
+  if (!isDirectory(path.join(packageRoot, "pytest_dsl"))) {
+    return env;
+  }
+  const existingPythonPath = env.PYTHONPATH || "";
+  return {
+    ...env,
     PYTHONPATH: existingPythonPath
       ? `${packageRoot}${path.delimiter}${existingPythonPath}`
       : packageRoot,
   };
+}
+
+function isDirectory(directory) {
+  try {
+    return fs.statSync(directory).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function sanitizeTaskId(taskId) {

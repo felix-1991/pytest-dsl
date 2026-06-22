@@ -13,6 +13,8 @@ const {
   stopBuildTask,
 } = require("../src/services/buildService");
 
+const { updateRuntimeMetadata } = require("../src/services/metadataStore");
+
 function makeTempProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "pytest-dsl-build-"));
 }
@@ -21,6 +23,37 @@ function writeFile(root, relativePath, content) {
   const target = path.join(root, relativePath);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, content, "utf8");
+}
+
+function writeExecutable(root, name, content) {
+  const target = path.join(root, name);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, content, { encoding: "utf8", mode: 0o755 });
+  fs.chmodSync(target, 0o755);
+  return target;
+}
+
+function writeProjectPython(root) {
+  return writeExecutable(
+    root,
+    path.join(".venv", "bin", "python"),
+    `#!${process.execPath}\nconsole.log(process.argv.slice(2).join(' '));\n`,
+  );
+}
+
+function loadPackagedBuildService(root) {
+  const sourceDir = path.resolve(__dirname, "..", "src", "services");
+  const serviceDir = path.join(root, "Resources", "app.asar", "src", "services");
+  fs.mkdirSync(serviceDir, { recursive: true });
+  for (const name of [
+    "buildService.js",
+    "metadataStore.js",
+    "pythonEnvService.js",
+    "suiteService.js",
+  ]) {
+    fs.copyFileSync(path.join(sourceDir, name), path.join(serviceDir, name));
+  }
+  return require(path.join(serviceDir, "buildService.js"));
 }
 
 test("build plans create isolated Allure artifact directories and pytest args", () => {
@@ -224,6 +257,112 @@ test("build tasks are removed when pytest and the report process both exit", asy
   assert.equal(result.status, "passed");
   await waitFor(() => !hasRunningBuild(buildId));
   assert.equal(hasRunningBuild(buildId), false);
+});
+
+test("build uses the project virtualenv Python when PATH is empty", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  writeProjectPython(root);
+  const events = [];
+  const buildId = "project-python-build";
+
+  const result = await startBuildTask(
+    {
+      buildId,
+      projectRoot: root,
+      selectedSuiteIds: ["api"],
+      enableAllureWatch: false,
+      env: {
+        PATH: "",
+        PYTHON: "",
+        PYTEST_DSL_PYTHON: "",
+      },
+    },
+    {
+      onEvent(event) {
+        events.push(event);
+      },
+    },
+  );
+
+  assert.equal(result.status, "passed");
+  assert.ok(events.some((event) => (
+    event.type === "stdout" && event.text.includes("-m pytest")
+  )));
+  assert.equal(events.some((event) => String(event.text || "").includes("ENOENT")), false);
+  assert.equal(hasRunningBuild(buildId), false);
+});
+
+test("Python preflight failure does not start Allure or register a running build", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  const buildId = "invalid-python-preflight";
+  const reportMarker = path.join(root, "report-started.txt");
+  const invalidPython = path.join(root, "missing-python");
+  updateRuntimeMetadata(root, { pythonExecutable: invalidPython });
+
+  try {
+    await assert.rejects(
+      startBuildTask({
+        buildId,
+        projectRoot: root,
+        selectedSuiteIds: ["api"],
+        env: { PATH: "" },
+        allureCommandOverride: {
+          command: process.execPath,
+          args: [
+            "-e",
+            `require('node:fs').writeFileSync(${JSON.stringify(reportMarker)}, 'started'); setInterval(() => {}, 1000);`,
+          ],
+        },
+      }),
+      /Configured Python executable does not exist or is not executable/,
+    );
+
+    assert.equal(fs.existsSync(reportMarker), false);
+    assert.equal(hasRunningBuild(buildId), false);
+    assert.equal(
+      fs.existsSync(path.join(root, ".pytest-dsl-gui", "builds", buildId)),
+      false,
+    );
+  } finally {
+    stopBuildTask(buildId);
+  }
+});
+
+test("packaged builds preserve external PYTHONPATH without adding Resources", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  const packaged = loadPackagedBuildService(root);
+  const externalPythonPath = path.join(root, "external-pythonpath");
+  const events = [];
+
+  const result = await packaged.startBuildTask(
+    {
+      buildId: "packaged-pythonpath-build",
+      projectRoot: root,
+      selectedSuiteIds: ["api"],
+      enableAllureWatch: false,
+      env: {
+        PATH: "",
+        PYTHONPATH: externalPythonPath,
+      },
+      pytestCommandOverride: {
+        command: process.execPath,
+        args: ["-e", "console.log(process.env.PYTHONPATH || '')"],
+      },
+    },
+    {
+      onEvent(event) {
+        events.push(event);
+      },
+    },
+  );
+
+  assert.equal(result.status, "passed");
+  assert.ok(events.some((event) => (
+    event.type === "stdout" && event.text.trim() === externalPythonPath
+  )));
 });
 
 test("completed build logs can be exported as a saved log file", async () => {

@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { execFileSync } = require("node:child_process");
 
 const {
   createExecutionPlan,
@@ -28,6 +29,37 @@ function writeExecutable(root, name, content) {
   fs.writeFileSync(target, content, { encoding: "utf8", mode: 0o755 });
   fs.chmodSync(target, 0o755);
   return target;
+}
+
+function writeProjectPython(root, body = "console.log(process.argv.slice(2).join(' '));") {
+  return writeExecutable(
+    root,
+    path.join(".venv", "bin", "python"),
+    `#!${process.execPath}\n${body}\n`,
+  );
+}
+
+function loadPackagedExecutionService(root) {
+  const sourceDir = path.resolve(__dirname, "..", "src", "services");
+  const serviceDir = path.join(root, "Resources", "app.asar", "src", "services");
+  fs.mkdirSync(serviceDir, { recursive: true });
+  for (const name of [
+    "executionService.js",
+    "metadataStore.js",
+    "pythonEnvService.js",
+    "suiteService.js",
+  ]) {
+    fs.copyFileSync(path.join(sourceDir, name), path.join(serviceDir, name));
+  }
+  return require(path.join(serviceDir, "executionService.js"));
+}
+
+function installedTestPython() {
+  return execFileSync(
+    "python",
+    ["-c", "import allure, sys; print(sys.executable)"],
+    { encoding: "utf8" },
+  ).trim();
 }
 
 test("execution plans materialize selected lines and build syntax command", () => {
@@ -239,6 +271,141 @@ test("execution tasks stream process output and completion status", async () => 
   assert.equal(events.at(-1).type, "completed");
 });
 
+test("normal run uses the project virtualenv Python when PATH is empty", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
+  writeProjectPython(root);
+  const events = [];
+
+  const result = await startExecutionTask(
+    {
+      taskId: "project-python-run",
+      projectRoot: root,
+      relativePath: "tests/case.dsl",
+      mode: "run",
+      content: "[打印], 内容: \"ok\"\n",
+      env: {
+        PATH: "",
+        PYTHON: "",
+        PYTEST_DSL_PYTHON: "",
+      },
+    },
+    {
+      onEvent(event) {
+        events.push(event);
+      },
+    },
+  );
+
+  assert.equal(result.status, "passed");
+  assert.ok(events.some((event) => (
+    event.type === "stdout" && event.text.includes("-m pytest_dsl.cli")
+  )));
+  assert.equal(events.some((event) => String(event.text || "").includes("ENOENT")), false);
+  assert.equal(hasRunningTask("project-python-run"), false);
+});
+
+test("Python fallback maps syntax, debug, and suite execution to their modules", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
+  writeProjectPython(root);
+
+  const cases = [
+    { mode: "syntax", module: "pytest_dsl.workbench.runner" },
+    { mode: "debug", module: "pytest_dsl.workbench.runner" },
+    { mode: "suite", module: "pytest" },
+  ];
+  for (const item of cases) {
+    const events = [];
+    const options = {
+      taskId: `project-python-${item.mode}`,
+      projectRoot: root,
+      mode: item.mode,
+      env: {
+        PATH: "",
+        PYTHON: "",
+        PYTEST_DSL_PYTHON: "",
+      },
+    };
+    if (item.mode !== "suite") {
+      options.relativePath = "tests/case.dsl";
+      options.content = "[打印], 内容: \"ok\"\n";
+    }
+
+    const result = await startExecutionTask(options, {
+      onEvent(event) {
+        events.push(event);
+      },
+    });
+
+    assert.equal(result.status, "passed", item.mode);
+    assert.ok(events.some((event) => (
+      event.type === "stdout" && event.text.includes(`-m ${item.module}`)
+    )), item.mode);
+  }
+});
+
+test("Python resolution failures clean temporary execution files", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
+  const taskId = "invalid-python-cleanup";
+
+  await assert.rejects(
+    async () => startExecutionTask({
+      taskId,
+      projectRoot: root,
+      relativePath: "tests/case.dsl",
+      mode: "run",
+      content: "[打印], 内容: \"ok\"\n",
+      pythonExecutable: path.join(root, "missing-python"),
+      env: { PATH: "" },
+    }),
+    /Configured Python executable does not exist or is not executable/,
+  );
+
+  assert.equal(
+    fs.existsSync(path.join(root, ".pytest-dsl-gui", "runs", taskId)),
+    false,
+  );
+  assert.equal(hasRunningTask(taskId), false);
+});
+
+test("packaged execution preserves external PYTHONPATH without adding Resources", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
+  const packaged = loadPackagedExecutionService(root);
+  const externalPythonPath = path.join(root, "external-pythonpath");
+  const events = [];
+
+  const result = await packaged.startExecutionTask(
+    {
+      taskId: "packaged-pythonpath",
+      projectRoot: root,
+      relativePath: "tests/case.dsl",
+      mode: "run",
+      content: "[打印], 内容: \"ok\"\n",
+      env: {
+        PATH: "",
+        PYTHONPATH: externalPythonPath,
+      },
+      commandOverride: {
+        command: process.execPath,
+        args: ["-e", "console.log(process.env.PYTHONPATH || '')"],
+      },
+    },
+    {
+      onEvent(event) {
+        events.push(event);
+      },
+    },
+  );
+
+  assert.equal(result.status, "passed");
+  assert.ok(events.some((event) => (
+    event.type === "stdout" && event.text.trim() === externalPythonPath
+  )));
+});
+
 test("workbench tasks fall back to the Python module when the public executable is unavailable", async () => {
   const root = makeTempProject();
   writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
@@ -252,6 +419,7 @@ test("workbench tasks fall back to the Python module when the public executable 
       mode: "syntax",
       content: "[打印], 内容: \"ok\"\n",
       workbenchExecutable: "missing-pytest-dsl-workbench-for-test",
+      pythonExecutable: installedTestPython(),
     },
     {
       onEvent(event) {
