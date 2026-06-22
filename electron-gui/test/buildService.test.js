@@ -293,9 +293,55 @@ test("build uses the project virtualenv Python when PATH is empty", async () => 
   assert.equal(hasRunningBuild(buildId), false);
 });
 
-test("Python preflight failure does not start Allure or register a running build", async () => {
+test("build honors task environment PYTEST_DSL_PYTEST as an explicit CLI", async () => {
   const root = makeTempProject();
   writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  writeProjectPython(root);
+  const pytestCommand = writeExecutable(
+    root,
+    path.join("bin", "task-env-pytest"),
+    `#!${process.execPath}\nconsole.log('task env pytest');\n`,
+  );
+  const events = [];
+
+  const result = await startBuildTask(
+    {
+      buildId: "task-env-pytest-build",
+      projectRoot: root,
+      selectedSuiteIds: ["api"],
+      enableAllureWatch: false,
+      env: {
+        PATH: "",
+        PYTHON: "",
+        PYTEST_DSL_PYTHON: "",
+        PYTEST_DSL_PYTEST: pytestCommand,
+      },
+    },
+    {
+      onEvent(event) {
+        events.push(event);
+      },
+    },
+  );
+
+  assert.equal(result.status, "passed");
+  assert.ok(events.some((event) => (
+    event.type === "stdout" && event.text.includes("task env pytest")
+  )));
+  assert.equal(events.some((event) => (
+    event.type === "stdout" && event.text.includes("-m pytest")
+  )), false);
+});
+
+test("Python preflight failure does not start Allure or register a running build", async () => {
+  const root = makeTempProject();
+  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "pytest-dsl-default-pytest-"));
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  writeExecutable(
+    binDir,
+    "pytest",
+    `#!${process.execPath}\nconsole.log('default pytest');\n`,
+  );
   const buildId = "invalid-python-preflight";
   const reportMarker = path.join(root, "report-started.txt");
   const invalidPython = path.join(root, "missing-python");
@@ -307,12 +353,12 @@ test("Python preflight failure does not start Allure or register a running build
         buildId,
         projectRoot: root,
         selectedSuiteIds: ["api"],
-        env: { PATH: "" },
+        env: { PATH: binDir },
         allureCommandOverride: {
           command: process.execPath,
           args: [
             "-e",
-            `require('node:fs').writeFileSync(${JSON.stringify(reportMarker)}, 'started'); setInterval(() => {}, 1000);`,
+            `require('node:fs').writeFileSync(${JSON.stringify(reportMarker)}, 'started'); console.log('http://127.0.0.1:4325'); setInterval(() => {}, 1000);`,
           ],
         },
       }),

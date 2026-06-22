@@ -19,7 +19,7 @@ const ALLURE_REPORT_READY_INTERVAL_MS = 100;
 const ALLURE_REPORT_COMPLETION_WAIT_MS = 2500;
 const ALLURE_EXPORT_TIMEOUT_MS = 60000;
 
-function createBuildPlan(options = {}) {
+function createBuildPlan(options = {}, env = executionEnv(options.env)) {
   const projectRoot = assertProjectRoot(options.projectRoot);
   const buildId = sanitizeId(options.buildId || options.taskId || randomUUID());
   const yamlVars = normalizeYamlVars(options.yamlVars);
@@ -44,7 +44,7 @@ function createBuildPlan(options = {}) {
     taskId: buildId,
     mode: "build",
     cwd: projectRoot,
-    command: commandForPytest(options),
+    command: commandForPytest(options, env),
     args,
     displayCommand: displayBuildCommand(targets, resultsRelativeDir, yamlVars),
     buildDir,
@@ -67,8 +67,8 @@ function createBuildPlan(options = {}) {
 }
 
 async function startBuildTask(options = {}, callbacks = {}) {
-  const plan = createBuildPlan(options);
   const env = executionEnv(options.env);
+  const plan = createBuildPlan(options, env);
   const startedAt = Date.now();
 
   if (runningBuilds.has(plan.buildId)) {
@@ -623,10 +623,11 @@ function detectAllureMajor(candidate, cwd, env) {
   });
 }
 
-function resolvePytestSpawnTarget(plan, options = {}, env = process.env) {
-  if (isExecutableAvailable(plan.command, env)) {
+function resolvePytestSpawnTarget(plan, options = {}, env = {}) {
+  const explicitCommand = explicitPytestCommand(options, env);
+  if (explicitCommand && isExecutableAvailable(explicitCommand, env)) {
     return {
-      command: plan.command,
+      command: explicitCommand,
       args: plan.args,
     };
   }
@@ -637,10 +638,12 @@ function resolvePytestSpawnTarget(plan, options = {}, env = process.env) {
   };
 }
 
-function commandForPytest(options = {}) {
-  return options.pytestExecutable ||
-    process.env.PYTEST_DSL_PYTEST ||
-    "pytest";
+function commandForPytest(options = {}, env = {}) {
+  return explicitPytestCommand(options, env) || "pytest";
+}
+
+function explicitPytestCommand(options = {}, env = {}) {
+  return options.pytestExecutable || env.PYTEST_DSL_PYTEST || null;
 }
 
 function displayBuildCommand(targets, resultsDir, yamlVars) {

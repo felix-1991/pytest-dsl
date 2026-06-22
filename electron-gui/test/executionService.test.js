@@ -305,6 +305,98 @@ test("normal run uses the project virtualenv Python when PATH is empty", async (
   assert.equal(hasRunningTask("project-python-run"), false);
 });
 
+test("default public CLI on PATH does not bypass the project virtualenv Python", async () => {
+  const root = makeTempProject();
+  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "pytest-dsl-default-cli-"));
+  writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
+  writeProjectPython(root);
+  writeExecutable(
+    binDir,
+    "pytest-dsl",
+    `#!${process.execPath}\nconsole.log('default public CLI');\n`,
+  );
+  const events = [];
+
+  const result = await startExecutionTask(
+    {
+      taskId: "default-public-cli",
+      projectRoot: root,
+      relativePath: "tests/case.dsl",
+      mode: "run",
+      content: "[打印], 内容: \"ok\"\n",
+      env: {
+        PATH: binDir,
+        PYTHON: "",
+        PYTEST_DSL_PYTHON: "",
+      },
+    },
+    {
+      onEvent(event) {
+        events.push(event);
+      },
+    },
+  );
+
+  assert.equal(result.status, "passed");
+  assert.ok(events.some((event) => (
+    event.type === "stdout" && event.text.includes("-m pytest_dsl.cli")
+  )));
+  assert.equal(events.some((event) => (
+    event.type === "stdout" && event.text.includes("default public CLI")
+  )), false);
+});
+
+test("task environment public CLI overrides bypass Python only for their modes", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
+  writeProjectPython(root);
+  const cases = [
+    { mode: "syntax", envName: "PYTEST_DSL_WORKBENCH" },
+    { mode: "debug", envName: "PYTEST_DSL_WORKBENCH" },
+    { mode: "suite", envName: "PYTEST_DSL_PYTEST" },
+    { mode: "run", envName: "PYTEST_DSL_CLI" },
+  ];
+
+  for (const item of cases) {
+    const marker = `task env ${item.mode}`;
+    const command = writeExecutable(
+      root,
+      path.join("bin", `task-env-${item.mode}`),
+      `#!${process.execPath}\nconsole.log(${JSON.stringify(marker)});\n`,
+    );
+    const events = [];
+    const options = {
+      taskId: `task-env-${item.mode}`,
+      projectRoot: root,
+      mode: item.mode,
+      env: {
+        PATH: "",
+        PYTHON: "",
+        PYTEST_DSL_PYTHON: "",
+        PYTEST_DSL_WORKBENCH: "",
+        PYTEST_DSL_PYTEST: "",
+        PYTEST_DSL_CLI: "",
+        [item.envName]: command,
+      },
+    };
+    if (item.mode !== "suite") {
+      options.relativePath = "tests/case.dsl";
+      options.content = "[打印], 内容: \"ok\"\n";
+    }
+
+    const result = await startExecutionTask(options, {
+      onEvent(event) {
+        events.push(event);
+      },
+    });
+
+    assert.equal(result.status, "passed", item.mode);
+    assert.ok(events.some((event) => (
+      event.type === "stdout" && event.text.includes(marker)
+    )), item.mode);
+  }
+});
+
 test("Python fallback maps syntax, debug, and suite execution to their modules", async () => {
   const root = makeTempProject();
   writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");

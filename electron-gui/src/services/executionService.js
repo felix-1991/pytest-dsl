@@ -12,7 +12,7 @@ const { buildPytestTargets } = require("./suiteService");
 const STRUCTURED_EVENT_PREFIX = "__PYTEST_DSL_GUI_EVENT__";
 const runningTasks = new Map();
 
-function createExecutionPlan(options) {
+function createExecutionPlan(options, env = executionEnv(options && options.env)) {
   const projectRoot = assertProjectRoot(options.projectRoot);
   const taskId = sanitizeTaskId(options.taskId || randomUUID());
   const mode = normalizeMode(options.mode);
@@ -21,7 +21,7 @@ function createExecutionPlan(options) {
     const selectedSuiteIds = normalizeSelectedSuiteIds(options.selectedSuiteIds);
     const selectedFiles = options.selectedFiles || null;
     const targets = buildPytestTargets(projectRoot, selectedSuiteIds, selectedFiles);
-    const command = commandForMode(mode, options);
+    const command = commandForMode(mode, options, env);
     const args = [...targets, ...yamlArgs(yamlVars)];
     return {
       taskId,
@@ -48,7 +48,7 @@ function createExecutionPlan(options) {
     ...options,
     selection: source.kind === "selection" ? options.selection : null,
   });
-  const command = commandForMode(mode, options);
+  const command = commandForMode(mode, options, env);
 
   const args = commandArgs(mode, target.relativePath, yamlVars, source);
 
@@ -67,8 +67,8 @@ function createExecutionPlan(options) {
 }
 
 function startExecutionTask(options, callbacks = {}) {
-  const plan = createExecutionPlan(options);
   const env = executionEnv(options.env);
+  const plan = createExecutionPlan(options, env);
   let spawnTarget;
   try {
     spawnTarget = options.commandOverride
@@ -328,20 +328,34 @@ function commandArgs(mode, relativePath, yamlVars, source) {
   return [relativePath, ...yamlArgs(yamlVars)];
 }
 
-function commandForMode(mode, options = {}) {
+function commandForMode(mode, options = {}, env = {}) {
+  return explicitCommandForMode(mode, options, env) || defaultCommandForMode(mode);
+}
+
+function explicitCommandForMode(mode, options = {}, env = {}) {
   if (mode === "syntax" || mode === "debug") {
     return options.workbenchExecutable ||
-      process.env.PYTEST_DSL_WORKBENCH ||
-      "pytest-dsl-workbench";
+      env.PYTEST_DSL_WORKBENCH ||
+      null;
   }
   if (mode === "suite") {
     return options.pytestExecutable ||
-      process.env.PYTEST_DSL_PYTEST ||
-      "pytest";
+      env.PYTEST_DSL_PYTEST ||
+      null;
   }
   return options.pytestExecutable ||
-    process.env.PYTEST_DSL_CLI ||
-    "pytest-dsl";
+    env.PYTEST_DSL_CLI ||
+    null;
+}
+
+function defaultCommandForMode(mode) {
+  if (mode === "syntax" || mode === "debug") {
+    return "pytest-dsl-workbench";
+  }
+  if (mode === "suite") {
+    return "pytest";
+  }
+  return "pytest-dsl";
 }
 
 function displayCommand(mode, source, yamlVars) {
@@ -432,10 +446,11 @@ function mapSourceLine(source, line) {
   return line;
 }
 
-function resolveSpawnTarget(plan, options = {}, env = process.env) {
-  if (isExecutableAvailable(plan.command, env)) {
+function resolveSpawnTarget(plan, options = {}, env = {}) {
+  const explicitCommand = explicitCommandForMode(plan.mode, options, env);
+  if (explicitCommand && isExecutableAvailable(explicitCommand, env)) {
     return {
-      command: plan.command,
+      command: explicitCommand,
       args: plan.args,
     };
   }
