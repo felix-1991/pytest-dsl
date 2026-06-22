@@ -5,6 +5,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  metadataPath,
   readMetadata,
   updateRuntimeMetadata,
   writeMetadata
@@ -24,8 +25,9 @@ function writeRawMetadata(projectRoot, metadata) {
   );
 }
 
-test("legacy metadata gains null runtime defaults without losing existing values", () => {
+test("legacy metadata gains null runtime defaults without losing existing values", (t) => {
   const root = makeTempProject();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   writeRawMetadata(root, {
     version: 1,
     lastOpenedFile: "tests/existing.dsl",
@@ -49,53 +51,77 @@ test("legacy metadata gains null runtime defaults without losing existing values
     rightWidth: 516
   });
 
-  const updated = updateRuntimeMetadata(root, {
+  updateRuntimeMetadata(root, {
     pythonExecutable: "/opt/python/bin/python",
+    unsupportedExecutable: "/opt/unsupported/bin/tool",
     lastOpenedFile: "tests/replacement.dsl",
     layout: {
       leftWidth: 1,
       rightWidth: 1
     }
   });
+  const updated = readMetadata(root);
+  const onDisk = JSON.parse(fs.readFileSync(metadataPath(root), "utf8"));
 
   assert.equal(updated.lastOpenedFile, "tests/existing.dsl");
   assert.deepEqual(updated.layout, {
     leftWidth: 420,
     rightWidth: 516
   });
+  assert.deepEqual(updated.runtime, {
+    pythonExecutable: "/opt/python/bin/python",
+    allureExecutable: null
+  });
+  assert.deepEqual(onDisk.runtime, updated.runtime);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(onDisk.runtime, "unsupportedExecutable"),
+    false
+  );
 });
 
-test("Python and Allure runtime overrides save independently", () => {
+test("Python and Allure runtime overrides save independently", (t) => {
   const root = makeTempProject();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
-  const withPython = updateRuntimeMetadata(root, {
+  updateRuntimeMetadata(root, {
     pythonExecutable: "  /opt/python/bin/python  "
   });
-  const withAllure = updateRuntimeMetadata(root, {
-    allureExecutable: "  /opt/allure/bin/allure  "
-  });
+  const withPython = readMetadata(root);
 
   assert.deepEqual(withPython.runtime, {
     pythonExecutable: "/opt/python/bin/python",
     allureExecutable: null
   });
+
+  updateRuntimeMetadata(root, {
+    allureExecutable: "  /opt/allure/bin/allure  "
+  });
+  const withAllure = readMetadata(root);
+
   assert.deepEqual(withAllure.runtime, {
     pythonExecutable: "/opt/python/bin/python",
     allureExecutable: "/opt/allure/bin/allure"
   });
-  assert.deepEqual(readMetadata(root).runtime, withAllure.runtime);
 });
 
-test("resetting one runtime override preserves the other", () => {
+test("resetting one runtime override preserves the other", (t) => {
   const root = makeTempProject();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   updateRuntimeMetadata(root, {
     pythonExecutable: "/opt/python/bin/python",
     allureExecutable: "/opt/allure/bin/allure"
   });
+  const beforeReset = readMetadata(root);
 
-  const metadata = updateRuntimeMetadata(root, {
+  assert.deepEqual(beforeReset.runtime, {
+    pythonExecutable: "/opt/python/bin/python",
+    allureExecutable: "/opt/allure/bin/allure"
+  });
+
+  updateRuntimeMetadata(root, {
     pythonExecutable: null
   });
+  const metadata = readMetadata(root);
 
   assert.deepEqual(metadata.runtime, {
     pythonExecutable: null,
@@ -103,15 +129,17 @@ test("resetting one runtime override preserves the other", () => {
   });
 });
 
-test("runtime metadata converts blank and non-string overrides to null", () => {
+test("runtime metadata converts blank and non-string overrides to null", (t) => {
   const root = makeTempProject();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
-  const metadata = writeMetadata(root, {
+  writeMetadata(root, {
     runtime: {
       pythonExecutable: "   ",
       allureExecutable: 42
     }
   });
+  const metadata = readMetadata(root);
 
   assert.deepEqual(metadata.runtime, {
     pythonExecutable: null,
