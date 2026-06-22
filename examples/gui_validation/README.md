@@ -70,6 +70,12 @@ npm start --prefix electron-gui
 
 Studio 构建页使用 pytest 原生收集和 `--alluredir`；内嵌实时报告需要本机存在 Allure 3 CLI。Studio 是可选辅助工具，CLI 和 pytest 集成不依赖它。
 
+### 配置运行环境
+
+打包版 Studio 不会内置 Python 或 Allure。运行 DSL、调试和构建报告都依赖本机或项目内已安装的 Python 解释器；实时报告与 HTML 报告导出依赖外部 Allure 3 CLI。
+
+可以在顶部菜单"配置 → 运行环境"中为当前项目选择 Python 解释器与 Allure 3 可执行文件；也可以把解释器放在项目根目录的 `.venv` 或 `venv` 目录，Studio 会自动识别。重置按钮可以回到自动发现。
+
 ## 不提交的运行产物
 
 以下目录或文件由 CLI、pytest、Studio 或 Allure 生成，已通过 `.gitignore` 排除：
