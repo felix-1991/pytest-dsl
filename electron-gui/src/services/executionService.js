@@ -5,6 +5,7 @@ const { randomUUID } = require("node:crypto");
 
 const {
   isExecutableAvailable,
+  mergeEnvironment,
   resolvePythonTarget,
 } = require("./pythonEnvService");
 const { buildPytestTargets } = require("./suiteService");
@@ -12,7 +13,10 @@ const { buildPytestTargets } = require("./suiteService");
 const STRUCTURED_EVENT_PREFIX = "__PYTEST_DSL_GUI_EVENT__";
 const runningTasks = new Map();
 
-function createExecutionPlan(options, env = executionEnv(options && options.env)) {
+function createExecutionPlan(
+  options,
+  env = executionEnv(options && options.env, options && options.platform),
+) {
   const projectRoot = assertProjectRoot(options.projectRoot);
   const taskId = sanitizeTaskId(options.taskId || randomUUID());
   const mode = normalizeMode(options.mode);
@@ -67,39 +71,35 @@ function createExecutionPlan(options, env = executionEnv(options && options.env)
 }
 
 function startExecutionTask(options, callbacks = {}) {
-  const env = executionEnv(options.env);
-  const plan = createExecutionPlan(options, env);
-  let spawnTarget;
+  const taskId = sanitizeTaskId(options.taskId || randomUUID());
+  if (runningTasks.has(taskId)) {
+    throw new Error(`Execution task is already running: ${taskId}`);
+  }
+
+  const reservation = { taskId, reserved: true };
+  runningTasks.set(taskId, reservation);
+  const env = executionEnv(options.env, options.platform);
+  let plan = null;
+  let child;
   try {
-    spawnTarget = options.commandOverride
+    plan = createExecutionPlan({ ...options, taskId }, env);
+    const spawnTarget = options.commandOverride
       ? options.commandOverride
       : resolveSpawnTarget(plan, options, env);
+    child = spawn(spawnTarget.command, spawnTarget.args, {
+      cwd: plan.cwd,
+      env,
+      windowsHide: true,
+    });
   } catch (error) {
-    cleanupTaskDir(plan.cleanupDir);
+    if (runningTasks.get(taskId) === reservation) {
+      runningTasks.delete(taskId);
+    }
+    cleanupTaskDir(plan && plan.cleanupDir);
     throw error;
   }
-  const command = spawnTarget.command;
-  const args = spawnTarget.args;
+
   const startedAt = Date.now();
-
-  if (runningTasks.has(plan.taskId)) {
-    throw new Error(`Execution task is already running: ${plan.taskId}`);
-  }
-
-  emit(callbacks, {
-    type: "started",
-    taskId: plan.taskId,
-    mode: plan.mode,
-    command: plan.displayCommand,
-    source: plan.source,
-  });
-
-  const child = spawn(command, args, {
-    cwd: plan.cwd,
-    env,
-    windowsHide: true,
-  });
-
   const task = {
     child,
     plan,
@@ -129,20 +129,21 @@ function startExecutionTask(options, callbacks = {}) {
     });
   });
 
-  return new Promise((resolve) => {
+  const completion = new Promise((resolve) => {
     child.on("close", (exitCode, signal) => {
-      const running = runningTasks.get(plan.taskId);
-      const stopped = Boolean(running && running.stopped);
-      if (running && running.killTimer) {
-        clearTimeout(running.killTimer);
+      flushStdoutBuffer(task, callbacks);
+      if (task.killTimer) {
+        clearTimeout(task.killTimer);
       }
-      runningTasks.delete(plan.taskId);
+      if (runningTasks.get(plan.taskId) === task) {
+        runningTasks.delete(plan.taskId);
+      }
       cleanupTaskDir(plan.cleanupDir);
 
       const result = {
         taskId: plan.taskId,
         mode: plan.mode,
-        status: stopped ? "stopped" : exitCode === 0 ? "passed" : "failed",
+        status: task.stopped ? "stopped" : exitCode === 0 ? "passed" : "failed",
         exitCode,
         signal,
         durationMs: Date.now() - startedAt,
@@ -154,6 +155,15 @@ function startExecutionTask(options, callbacks = {}) {
       resolve(result);
     });
   });
+
+  emit(callbacks, {
+    type: "started",
+    taskId: plan.taskId,
+    mode: plan.mode,
+    command: plan.displayCommand,
+    source: plan.source,
+  });
+  return completion;
 }
 
 function sendExecutionCommand(taskId, command) {
@@ -385,6 +395,15 @@ function handleStdoutChunk(task, text, callbacks) {
   lines.forEach((line) => handleStdoutLine(task, line, callbacks));
 }
 
+function flushStdoutBuffer(task, callbacks) {
+  if (!task.stdoutBuffer) {
+    return;
+  }
+  const tail = task.stdoutBuffer;
+  task.stdoutBuffer = "";
+  handleStdoutLine(task, tail, callbacks);
+}
+
 function handleStdoutLine(task, line, callbacks) {
   if (line.startsWith(STRUCTURED_EVENT_PREFIX)) {
     const event = parseStructuredEvent(task, line.slice(STRUCTURED_EVENT_PREFIX.length));
@@ -472,23 +491,22 @@ function pythonModuleForMode(mode) {
   return "pytest_dsl.cli";
 }
 
-function executionEnv(extraEnv) {
+function executionEnv(extraEnv, platform = process.platform) {
   const packageRoot = path.resolve(__dirname, "..", "..", "..");
-  const env = {
-    ...process.env,
-    ...extraEnv,
+  const env = mergeEnvironment(process.env, extraEnv, platform);
+  const bufferedEnv = mergeEnvironment(env, {
     PYTHONUNBUFFERED: "1",
-  };
+  }, platform);
   if (!isDirectory(path.join(packageRoot, "pytest_dsl"))) {
-    return env;
+    return bufferedEnv;
   }
-  const existingPythonPath = env.PYTHONPATH || "";
-  return {
-    ...env,
+  const existingPythonPath = bufferedEnv.PYTHONPATH || "";
+  const delimiter = platform === "win32" ? ";" : path.delimiter;
+  return mergeEnvironment(bufferedEnv, {
     PYTHONPATH: existingPythonPath
-      ? `${packageRoot}${path.delimiter}${existingPythonPath}`
+      ? `${packageRoot}${delimiter}${existingPythonPath}`
       : packageRoot,
-  };
+  }, platform);
 }
 
 function isDirectory(directory) {

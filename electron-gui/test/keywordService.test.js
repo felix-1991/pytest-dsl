@@ -22,15 +22,13 @@ function writeFile(root, relativePath, content) {
   fs.writeFileSync(target, content, "utf8");
 }
 
-function writeExecutable(root, relativePath, body) {
-  const target = path.join(root, relativePath);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, `#!${process.execPath}\n${body}\n`, {
-    encoding: "utf8",
-    mode: 0o755,
-  });
-  fs.chmodSync(target, 0o755);
-  return target;
+function writeSiteCustomize(directory, lines) {
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(
+    path.join(directory, "sitecustomize.py"),
+    `${lines.join("\n")}\n`,
+    "utf8",
+  );
 }
 
 function setProcessEnv(t, name, value) {
@@ -71,12 +69,37 @@ function keywordPayload(name) {
   });
 }
 
+let cachedTestPython = null;
+
 function installedTestPython() {
-  return execFileSync(
-    "python",
-    ["-c", "import allure, sys; print(sys.executable)"],
-    { encoding: "utf8" },
-  ).trim();
+  if (cachedTestPython) {
+    return cachedTestPython;
+  }
+  const candidates = [
+    [process.env.PYTEST_DSL_TEST_PYTHON, []],
+    [process.env.PYTHON, []],
+    ["python", []],
+    ["python3", []],
+    ["py", ["-3"]],
+  ];
+  for (const [command, prefixArgs] of candidates) {
+    if (!command) {
+      continue;
+    }
+    try {
+      cachedTestPython = execFileSync(
+        command,
+        [...prefixArgs, "-c", "import allure, sys; print(sys.executable)"],
+        { encoding: "utf8" },
+      ).trim();
+      if (cachedTestPython) {
+        return cachedTestPython;
+      }
+    } catch (_error) {
+      // Try the next installed Python command.
+    }
+  }
+  throw new Error("No test Python with pytest-dsl dependencies is available");
 }
 
 test("normalizeKeywordPayload keeps editor-facing keyword fields stable", () => {
@@ -136,14 +159,15 @@ test("listKeywords reads built-in and project resource keywords through pytest-d
   assert.deepEqual(keyword.parameters.map((param) => param.name), ["输入"]);
 });
 
-test("listKeywords uses the Python persisted in project runtime metadata", async () => {
+test("listKeywords uses the Python persisted in project runtime metadata", async (t) => {
   const root = makeTempProject();
-  const python = writeExecutable(
-    root,
-    "runtime/configured-python",
-    `console.log(${JSON.stringify(keywordPayload("配置解释器关键字"))});`,
-  );
-  updateRuntimeMetadata(root, { pythonExecutable: python });
+  writeSiteCustomize(root, [
+    "import os",
+    `print(${JSON.stringify(keywordPayload("配置解释器关键字"))}, flush=True)`,
+    "os._exit(0)",
+  ]);
+  setProcessEnv(t, "PYTHONPATH", root);
+  updateRuntimeMetadata(root, { pythonExecutable: installedTestPython() });
 
   const result = await listKeywords({ projectRoot: root, limit: 20 });
 
@@ -152,13 +176,14 @@ test("listKeywords uses the Python persisted in project runtime metadata", async
 
 test("listKeywords retries an ENOENT candidate with the next resolved Python target", async (t) => {
   const root = makeTempProject();
-  writeExecutable(
-    root,
-    path.join(".venv", "bin", "python"),
-    `console.log(${JSON.stringify(keywordPayload("候选重试关键字"))});`,
-  );
+  writeSiteCustomize(root, [
+    "import os",
+    `print(${JSON.stringify(keywordPayload("候选重试关键字"))}, flush=True)`,
+    "os._exit(0)",
+  ]);
+  setProcessEnv(t, "PYTHONPATH", root);
   setProcessEnv(t, "PYTEST_DSL_PYTHON", path.join(root, "missing-python"));
-  setProcessEnv(t, "PYTHON", "");
+  setProcessEnv(t, "PYTHON", installedTestPython());
 
   const result = await listKeywords({ projectRoot: root, limit: 20 });
 
@@ -180,21 +205,18 @@ test("keyword listing preserves the development PYTHONPATH retry", async (t) => 
   const root = makeTempProject();
   const repoRoot = path.resolve(__dirname, "..", "..");
   const externalPythonPath = path.join(root, "external-pythonpath");
-  const python = writeExecutable(
-    root,
-    "runtime/configured-python",
-    [
-      "const path = require('node:path');",
-      `const repoRoot = ${JSON.stringify(repoRoot)};`,
-      "const firstEntry = String(process.env.PYTHONPATH || '').split(path.delimiter)[0];",
-      "if (firstEntry !== repoRoot) {",
-      "  console.error(\"No module named 'pytest_dsl'\");",
-      "  process.exit(1);",
-      "}",
-      `console.log(${JSON.stringify(keywordPayload("开发路径重试关键字"))});`,
-    ].join("\n"),
-  );
-  updateRuntimeMetadata(root, { pythonExecutable: python });
+  writeSiteCustomize(externalPythonPath, [
+    "import os",
+    "import sys",
+    `repo_root = os.path.normcase(os.path.realpath(${JSON.stringify(repoRoot)}))`,
+    "first_entry = os.environ.get('PYTHONPATH', '').split(os.pathsep)[0]",
+    "if os.path.normcase(os.path.realpath(first_entry)) != repo_root:",
+    "    print(\"No module named 'pytest_dsl'\", file=sys.stderr, flush=True)",
+    "    os._exit(1)",
+    `print(${JSON.stringify(keywordPayload("开发路径重试关键字"))}, flush=True)`,
+    "os._exit(0)",
+  ]);
+  updateRuntimeMetadata(root, { pythonExecutable: installedTestPython() });
   setProcessEnv(t, "PYTHONPATH", externalPythonPath);
 
   const result = await listKeywords({ projectRoot: root, limit: 20 });
@@ -206,17 +228,15 @@ test("packaged keyword listing does not retry with Electron Resources on PYTHONP
   const root = makeTempProject();
   const attemptsPath = path.join(root, "pythonpath-attempts.log");
   const externalPythonPath = path.join(root, "external-pythonpath");
-  const python = writeExecutable(
-    root,
-    "runtime/configured-python",
-    [
-      "const fs = require('node:fs');",
-      `fs.appendFileSync(${JSON.stringify(attemptsPath)}, (process.env.PYTHONPATH || '') + '\\n');`,
-      "console.error(\"No module named 'pytest_dsl'\");",
-      "process.exit(1);",
-    ].join("\n"),
-  );
-  updateRuntimeMetadata(root, { pythonExecutable: python });
+  writeSiteCustomize(externalPythonPath, [
+    "import os",
+    "import sys",
+    `with open(${JSON.stringify(attemptsPath)}, 'a', encoding='utf-8') as stream:`,
+    "    stream.write(os.environ.get('PYTHONPATH', '') + '\\n')",
+    "print(\"No module named 'pytest_dsl'\", file=sys.stderr, flush=True)",
+    "os._exit(1)",
+  ]);
+  updateRuntimeMetadata(root, { pythonExecutable: installedTestPython() });
   setProcessEnv(t, "PYTHONPATH", externalPythonPath);
   const packaged = loadPackagedKeywordService(root);
 

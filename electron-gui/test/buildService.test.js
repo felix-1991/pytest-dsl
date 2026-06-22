@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { execFileSync } = require("node:child_process");
 
 const {
   createBuildPlan,
@@ -25,20 +26,57 @@ function writeFile(root, relativePath, content) {
   fs.writeFileSync(target, content, "utf8");
 }
 
-function writeExecutable(root, name, content) {
-  const target = path.join(root, name);
+function writeNodeCommand(root, name) {
+  const target = path.join(root, process.platform === "win32" ? `${name}.exe` : name);
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, content, { encoding: "utf8", mode: 0o755 });
-  fs.chmodSync(target, 0o755);
+  fs.copyFileSync(process.execPath, target);
+  if (process.platform !== "win32") {
+    fs.chmodSync(target, 0o755);
+  }
   return target;
 }
 
-function writeProjectPython(root) {
-  return writeExecutable(
-    root,
-    path.join(".venv", "bin", "python"),
-    `#!${process.execPath}\nconsole.log(process.argv.slice(2).join(' '));\n`,
-  );
+function prepareBuildPythonRuntime(root) {
+  const pythonExecutable = installedTestPython();
+  writeFile(root, "pytest.py", [
+    "import sys",
+    "print('-m pytest ' + ' '.join(sys.argv[1:]), flush=True)",
+    "",
+  ].join("\n"));
+  return { pythonExecutable };
+}
+
+let cachedTestPython = null;
+
+function installedTestPython() {
+  if (cachedTestPython) {
+    return cachedTestPython;
+  }
+  const candidates = [
+    [process.env.PYTEST_DSL_TEST_PYTHON, []],
+    [process.env.PYTHON, []],
+    ["python", []],
+    ["python3", []],
+    ["py", ["-3"]],
+  ];
+  for (const [command, prefixArgs] of candidates) {
+    if (!command) {
+      continue;
+    }
+    try {
+      cachedTestPython = execFileSync(
+        command,
+        [...prefixArgs, "-c", "import sys; print(sys.executable)"],
+        { encoding: "utf8" },
+      ).trim();
+      if (cachedTestPython) {
+        return cachedTestPython;
+      }
+    } catch (_error) {
+      // Try the next installed Python command.
+    }
+  }
+  throw new Error("No test Python is available");
 }
 
 function loadPackagedBuildService(root) {
@@ -136,6 +174,8 @@ test("build tasks stream pytest output, emit report url, and persist a manifest"
 
     const stopped = stopBuildTask(buildId);
     assert.equal(stopped.stopped, true);
+    assert.equal(hasRunningBuild(buildId), true);
+    await waitFor(() => !hasRunningBuild(buildId));
     assert.equal(hasRunningBuild(buildId), false);
   } finally {
     stopBuildTask(buildId);
@@ -259,10 +299,173 @@ test("build tasks are removed when pytest and the report process both exit", asy
   assert.equal(hasRunningBuild(buildId), false);
 });
 
-test("build uses the project virtualenv Python when PATH is empty", async () => {
+test("ordinary stopped builds keep their map entry through child close and finish stopped", async () => {
   const root = makeTempProject();
   writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
-  writeProjectPython(root);
+  const buildId = "ordinary-stopped-build";
+  const events = [];
+  const pending = startBuildTask({
+    buildId,
+    projectRoot: root,
+    selectedSuiteIds: ["api"],
+    enableAllureWatch: false,
+    pytestCommandOverride: {
+      command: process.execPath,
+      args: ["-e", "console.log('ready'); setInterval(() => {}, 1000);"],
+    },
+  }, {
+    onEvent(event) {
+      events.push(event);
+    },
+  });
+
+  await waitFor(() => events.some((event) => (
+    event.type === "stdout" && event.text.includes("ready")
+  )));
+  const stopped = stopBuildTask(buildId);
+  assert.equal(stopped.stopped, true);
+  assert.equal(hasRunningBuild(buildId), true);
+
+  const result = await pending;
+  assert.equal(result.status, "stopped");
+  await waitFor(() => !hasRunningBuild(buildId));
+  assert.equal(events.filter((event) => event.type === "build-completed").length, 1);
+  assert.equal(events.find((event) => event.type === "build-completed").status, "stopped");
+});
+
+test("cancellation during delayed Allure resolution never starts report or build children", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  const buildId = "cancel-allure-resolution";
+  const buildMarker = path.join(root, "build-started.txt");
+  const events = [];
+  let stopResult = null;
+
+  const result = await startBuildTask({
+    buildId,
+    projectRoot: root,
+    selectedSuiteIds: ["api"],
+    allureExecutable: process.execPath,
+    allureVersionDetector: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return 3;
+    },
+    pytestCommandOverride: {
+      command: process.execPath,
+      args: [
+        "-e",
+        `require('node:fs').writeFileSync(${JSON.stringify(buildMarker)}, 'started')`,
+      ],
+    },
+  }, {
+    onEvent(event) {
+      events.push(event);
+      if (event.type === "build-started") {
+        setTimeout(() => {
+          stopResult = stopBuildTask(buildId);
+        }, 50);
+      }
+    },
+  });
+
+  assert.equal(stopResult && stopResult.stopped, true);
+  assert.equal(result.status, "stopped");
+  assert.equal(fs.existsSync(buildMarker), false);
+  assert.equal(events.some((event) => event.type === "report-started"), false);
+  assert.equal(events.filter((event) => event.type === "build-completed").length, 1);
+  assert.equal(hasRunningBuild(buildId), false);
+});
+
+test("SIGTERM-resistant build child is escalated and completes stopped", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  const buildId = "sigkill-stopped-build";
+  const termMarker = path.join(root, "sigterm-seen.txt");
+  const events = [];
+  const pending = startBuildTask({
+    buildId,
+    projectRoot: root,
+    selectedSuiteIds: ["api"],
+    enableAllureWatch: false,
+    pytestCommandOverride: {
+      command: process.execPath,
+      args: ["-e", [
+        "const fs = require('node:fs');",
+        `process.on('SIGTERM', () => fs.writeFileSync(${JSON.stringify(termMarker)}, 'seen'));`,
+        "console.log('ready');",
+        "setTimeout(() => process.exit(88), 2500);",
+        "setInterval(() => {}, 1000);",
+      ].join(" ")],
+    },
+  }, {
+    onEvent(event) {
+      events.push(event);
+    },
+  });
+
+  await waitFor(() => events.some((event) => (
+    event.type === "stdout" && event.text.includes("ready")
+  )));
+  stopBuildTask(buildId);
+  const result = await pending;
+
+  assert.equal(result.status, "stopped");
+  if (process.platform !== "win32") {
+    assert.equal(fs.existsSync(termMarker), true);
+    assert.equal(result.signal, "SIGKILL");
+  }
+  assert.equal(hasRunningBuild(buildId), false);
+  assert.equal(events.filter((event) => event.type === "build-completed").length, 1);
+});
+
+test("build child environment applies Windows key replacement semantics", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  const externalPythonPath = path.join(root, "external-pythonpath");
+  const events = [];
+
+  const result = await startBuildTask({
+    buildId: "windows-env-merge-build",
+    projectRoot: root,
+    selectedSuiteIds: ["api"],
+    enableAllureWatch: false,
+    platform: "win32",
+    env: {
+      Path: "stale-path",
+      PATH: "restricted-path",
+      PathExt: ".CMD",
+      PATHEXT: ".EXE;.CMD",
+      PythonPath: "stale-pythonpath",
+      PYTHONPATH: externalPythonPath,
+    },
+    pytestCommandOverride: {
+      command: process.execPath,
+      args: ["-e", [
+        "const keys = Object.keys(process.env).filter(key =>",
+        "  ['path', 'pathext', 'pythonpath'].includes(key.toLowerCase()));",
+        "console.log(JSON.stringify({ keys, PATH: process.env.PATH,",
+        "  PATHEXT: process.env.PATHEXT, PYTHONPATH: process.env.PYTHONPATH }));",
+      ].join(" ")],
+    },
+  }, {
+    onEvent(event) {
+      events.push(event);
+    },
+  });
+
+  const output = events.find((event) => event.type === "stdout");
+  const payload = JSON.parse(output.text);
+  assert.equal(result.status, "passed");
+  assert.equal(payload.PATH, "restricted-path");
+  assert.equal(payload.PATHEXT, ".EXE;.CMD");
+  assert.deepEqual(payload.keys.sort(), ["PATH", "PATHEXT", "PYTHONPATH"]);
+  assert.equal(payload.PYTHONPATH.split(";").at(-1), externalPythonPath);
+});
+
+test("build uses configured absolute Python when PATH is empty", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  const runtimeOptions = prepareBuildPythonRuntime(root);
   const events = [];
   const buildId = "project-python-build";
 
@@ -272,6 +475,7 @@ test("build uses the project virtualenv Python when PATH is empty", async () => 
       projectRoot: root,
       selectedSuiteIds: ["api"],
       enableAllureWatch: false,
+      ...runtimeOptions,
       env: {
         PATH: "",
         PYTHON: "",
@@ -296,25 +500,22 @@ test("build uses the project virtualenv Python when PATH is empty", async () => 
 test("build honors task environment PYTEST_DSL_PYTEST as an explicit CLI", async () => {
   const root = makeTempProject();
   writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
-  writeProjectPython(root);
-  const pytestCommand = writeExecutable(
-    root,
-    path.join("bin", "task-env-pytest"),
-    `#!${process.execPath}\nconsole.log('task env pytest');\n`,
-  );
+  const runtimeOptions = prepareBuildPythonRuntime(root);
+  writeFile(root, "task-env-pytest.js", "console.log('task env pytest')\n");
   const events = [];
 
   const result = await startBuildTask(
     {
       buildId: "task-env-pytest-build",
       projectRoot: root,
-      selectedSuiteIds: ["api"],
+      selectedFiles: ["task-env-pytest.js"],
       enableAllureWatch: false,
+      ...runtimeOptions,
       env: {
         PATH: "",
         PYTHON: "",
         PYTEST_DSL_PYTHON: "",
-        PYTEST_DSL_PYTEST: pytestCommand,
+        PYTEST_DSL_PYTEST: process.execPath,
       },
     },
     {
@@ -337,11 +538,8 @@ test("Python preflight failure does not start Allure or register a running build
   const root = makeTempProject();
   const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "pytest-dsl-default-pytest-"));
   writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
-  writeExecutable(
-    binDir,
-    "pytest",
-    `#!${process.execPath}\nconsole.log('default pytest');\n`,
-  );
+  writeFile(root, "default-pytest.js", "console.log('default pytest')\n");
+  writeNodeCommand(binDir, "pytest");
   const buildId = "invalid-python-preflight";
   const reportMarker = path.join(root, "report-started.txt");
   const invalidPython = path.join(root, "missing-python");
@@ -352,8 +550,8 @@ test("Python preflight failure does not start Allure or register a running build
       startBuildTask({
         buildId,
         projectRoot: root,
-        selectedSuiteIds: ["api"],
-        env: { PATH: binDir },
+        selectedFiles: ["default-pytest.js"],
+        env: { PATH: binDir, PATHEXT: ".EXE;.CMD" },
         allureCommandOverride: {
           command: process.execPath,
           args: [

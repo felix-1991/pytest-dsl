@@ -7,6 +7,7 @@ const test = require("node:test");
 const { updateRuntimeMetadata } = require("../src/services/metadataStore");
 const {
   isExecutableAvailable,
+  mergeEnvironment,
   resolvePythonCommand,
   resolvePythonCommands,
   resolvePythonTarget,
@@ -21,7 +22,7 @@ function makeTempProject(t) {
 
 function writeExecutable(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, "#!/bin/sh\nexit 0\n", "utf8");
+  fs.writeFileSync(filePath, "test executable fixture\n", "utf8");
   fs.chmodSync(filePath, 0o755);
   return filePath;
 }
@@ -31,6 +32,40 @@ function projectPython(root, environment = ".venv", platform = "linux") {
     ? path.join(root, environment, "Scripts", "python.exe")
     : path.join(root, environment, "bin", "python");
 }
+
+test("mergeEnvironment canonicalizes Windows path-like keys without duplicates", () => {
+  const merged = mergeEnvironment({
+    Path: "base-path",
+    PATH: "stale-base-path",
+    PathExt: ".CMD",
+    PythonPath: "base-pythonpath",
+    Feature: "base-feature",
+    FEATURE: "stale-feature",
+  }, {
+    path: "override-path",
+    PATHEXT: ".EXE;.CMD",
+    pythonpath: "override-pythonpath",
+    feature: "override-feature",
+  }, "win32");
+
+  assert.equal(merged.PATH, "override-path");
+  assert.equal(merged.PATHEXT, ".EXE;.CMD");
+  assert.equal(merged.PYTHONPATH, "override-pythonpath");
+  assert.equal(merged.feature, "override-feature");
+  assert.deepEqual(
+    Object.keys(merged).filter((key) => (
+      ["path", "pathext", "pythonpath", "feature"].includes(key.toLowerCase())
+    )),
+    ["PATH", "PATHEXT", "PYTHONPATH", "feature"],
+  );
+});
+
+test("mergeEnvironment keeps POSIX environment key casing distinct", () => {
+  assert.deepEqual(mergeEnvironment({ Path: "base" }, { PATH: "override" }, "linux"), {
+    Path: "base",
+    PATH: "override",
+  });
+});
 
 test("saved project Python is an exclusive configured target", (t) => {
   const root = makeTempProject(t);

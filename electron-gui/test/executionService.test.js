@@ -23,20 +23,40 @@ function writeFile(root, relativePath, content) {
   fs.writeFileSync(target, content, "utf8");
 }
 
-function writeExecutable(root, name, content) {
-  const target = path.join(root, name);
+function writeNodeCommand(root, name) {
+  const target = path.join(root, process.platform === "win32" ? `${name}.exe` : name);
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, content, { encoding: "utf8", mode: 0o755 });
-  fs.chmodSync(target, 0o755);
+  fs.copyFileSync(process.execPath, target);
+  if (process.platform !== "win32") {
+    fs.chmodSync(target, 0o755);
+  }
   return target;
 }
 
-function writeProjectPython(root, body = "console.log(process.argv.slice(2).join(' '));") {
-  return writeExecutable(
-    root,
-    path.join(".venv", "bin", "python"),
-    `#!${process.execPath}\n${body}\n`,
-  );
+function writePythonRuntimeModules(root) {
+  writeFile(root, "pytest_dsl/__init__.py", "");
+  writeFile(root, "pytest_dsl/cli.py", [
+    "import sys",
+    "print('-m pytest_dsl.cli ' + ' '.join(sys.argv[1:]), flush=True)",
+    "",
+  ].join("\n"));
+  writeFile(root, "pytest_dsl/workbench/__init__.py", "");
+  writeFile(root, "pytest_dsl/workbench/runner.py", [
+    "import sys",
+    "print('-m pytest_dsl.workbench.runner ' + ' '.join(sys.argv[1:]), flush=True)",
+    "",
+  ].join("\n"));
+  writeFile(root, "pytest.py", [
+    "import sys",
+    "print('-m pytest ' + ' '.join(sys.argv[1:]), flush=True)",
+    "",
+  ].join("\n"));
+}
+
+function preparePythonRuntime(root) {
+  const pythonExecutable = installedTestPython();
+  writePythonRuntimeModules(root);
+  return { pythonExecutable };
 }
 
 function loadPackagedExecutionService(root) {
@@ -54,12 +74,37 @@ function loadPackagedExecutionService(root) {
   return require(path.join(serviceDir, "executionService.js"));
 }
 
+let cachedTestPython = null;
+
 function installedTestPython() {
-  return execFileSync(
-    "python",
-    ["-c", "import allure, sys; print(sys.executable)"],
-    { encoding: "utf8" },
-  ).trim();
+  if (cachedTestPython) {
+    return cachedTestPython;
+  }
+  const candidates = [
+    [process.env.PYTEST_DSL_TEST_PYTHON, []],
+    [process.env.PYTHON, []],
+    ["python", []],
+    ["python3", []],
+    ["py", ["-3"]],
+  ];
+  for (const [command, prefixArgs] of candidates) {
+    if (!command) {
+      continue;
+    }
+    try {
+      cachedTestPython = execFileSync(
+        command,
+        [...prefixArgs, "-c", "import allure, sys; print(sys.executable)"],
+        { encoding: "utf8" },
+      ).trim();
+      if (cachedTestPython) {
+        return cachedTestPython;
+      }
+    } catch (_error) {
+      // Try the next installed Python command.
+    }
+  }
+  throw new Error("No test Python with pytest-dsl dependencies is available");
 }
 
 test("execution plans materialize selected lines and build syntax command", () => {
@@ -271,10 +316,177 @@ test("execution tasks stream process output and completion status", async () => 
   assert.equal(events.at(-1).type, "completed");
 });
 
-test("normal run uses the project virtualenv Python when PATH is empty", async () => {
+test("duplicate sanitized task ids do not overwrite the active staged file", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/case.dsl", "[打印], 内容: \"disk\"\n");
+  const events = [];
+  const taskId = "duplicate/id";
+  const stagedPath = path.join(
+    root,
+    ".pytest-dsl-gui",
+    "runs",
+    "duplicate_id",
+    "tests",
+    "case.dsl",
+  );
+  const pending = startExecutionTask(
+    {
+      taskId,
+      projectRoot: root,
+      relativePath: "tests/case.dsl",
+      mode: "run",
+      content: "[打印], 内容: \"first\"\n",
+      commandOverride: {
+        command: process.execPath,
+        args: ["-e", "console.log('ready'); setInterval(() => {}, 1000);"],
+      },
+    },
+    {
+      onEvent(event) {
+        events.push(event);
+      },
+    },
+  );
+
+  try {
+    await waitFor(() => events.some((event) => (
+      event.type === "stdout" && event.text.includes("ready")
+    )));
+    assert.equal(fs.readFileSync(stagedPath, "utf8"), "[打印], 内容: \"first\"\n");
+
+    assert.throws(() => startExecutionTask({
+      taskId,
+      projectRoot: root,
+      relativePath: "tests/case.dsl",
+      mode: "run",
+      content: "[打印], 内容: \"second\"\n",
+      commandOverride: {
+        command: process.execPath,
+        args: ["-e", "process.exit(0)"],
+      },
+    }), /Execution task is already running: duplicate_id/);
+
+    assert.equal(fs.readFileSync(stagedPath, "utf8"), "[打印], 内容: \"first\"\n");
+  } finally {
+    stopExecutionTask(taskId);
+    await pending;
+  }
+});
+
+test("execution flushes ordinary stdout tail without a trailing newline", async () => {
   const root = makeTempProject();
   writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
-  writeProjectPython(root);
+  const events = [];
+
+  const result = await startExecutionTask({
+    taskId: "stdout-tail",
+    projectRoot: root,
+    relativePath: "tests/case.dsl",
+    mode: "run",
+    content: "[打印], 内容: \"ok\"\n",
+    commandOverride: {
+      command: process.execPath,
+      args: ["-e", "process.stdout.write('tail-without-newline')"],
+    },
+  }, {
+    onEvent(event) {
+      events.push(event);
+    },
+  });
+
+  assert.equal(result.status, "passed");
+  assert.ok(events.some((event) => (
+    event.type === "stdout" && event.text.includes("tail-without-newline")
+  )));
+  assert.equal(events.at(-1).type, "completed");
+});
+
+test("execution flushes structured debug event tail without a trailing newline", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
+  const events = [];
+  const payload = JSON.stringify({
+    type: "debug_step",
+    phase: "start",
+    line: 1,
+    nodeType: "KeywordCall",
+    description: "tail debug event",
+  });
+
+  const result = await startExecutionTask({
+    taskId: "structured-tail",
+    projectRoot: root,
+    relativePath: "tests/case.dsl",
+    mode: "debug",
+    content: "[打印], 内容: \"ok\"\n",
+    commandOverride: {
+      command: process.execPath,
+      args: ["-e", `process.stdout.write('__PYTEST_DSL_GUI_EVENT__' + ${JSON.stringify(payload)})`],
+    },
+  }, {
+    onEvent(event) {
+      events.push(event);
+    },
+  });
+
+  assert.equal(result.status, "passed");
+  assert.ok(events.some((event) => (
+    event.type === "debug-step" &&
+    event.description === "tail debug event" &&
+    event.line === 1
+  )));
+  assert.equal(events.at(-1).type, "completed");
+});
+
+test("execution child environment applies Windows key replacement semantics", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
+  const externalPythonPath = path.join(root, "external-pythonpath");
+  const events = [];
+
+  const result = await startExecutionTask({
+    taskId: "windows-env-merge",
+    projectRoot: root,
+    relativePath: "tests/case.dsl",
+    mode: "run",
+    content: "[打印], 内容: \"ok\"\n",
+    platform: "win32",
+    env: {
+      Path: "stale-path",
+      PATH: "restricted-path",
+      PathExt: ".CMD",
+      PATHEXT: ".EXE;.CMD",
+      PythonPath: "stale-pythonpath",
+      PYTHONPATH: externalPythonPath,
+    },
+    commandOverride: {
+      command: process.execPath,
+      args: ["-e", [
+        "const keys = Object.keys(process.env).filter(key =>",
+        "  ['path', 'pathext', 'pythonpath'].includes(key.toLowerCase()));",
+        "console.log(JSON.stringify({ keys, PATH: process.env.PATH,",
+        "  PATHEXT: process.env.PATHEXT, PYTHONPATH: process.env.PYTHONPATH }));",
+      ].join(" ")],
+    },
+  }, {
+    onEvent(event) {
+      events.push(event);
+    },
+  });
+
+  const output = events.find((event) => event.type === "stdout");
+  const payload = JSON.parse(output.text);
+  assert.equal(result.status, "passed");
+  assert.equal(payload.PATH, "restricted-path");
+  assert.equal(payload.PATHEXT, ".EXE;.CMD");
+  assert.deepEqual(payload.keys.sort(), ["PATH", "PATHEXT", "PYTHONPATH"]);
+  assert.equal(payload.PYTHONPATH.split(";").at(-1), externalPythonPath);
+});
+
+test("normal run uses configured absolute Python when PATH is empty", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
+  const runtimeOptions = preparePythonRuntime(root);
   const events = [];
 
   const result = await startExecutionTask(
@@ -284,6 +496,7 @@ test("normal run uses the project virtualenv Python when PATH is empty", async (
       relativePath: "tests/case.dsl",
       mode: "run",
       content: "[打印], 内容: \"ok\"\n",
+      ...runtimeOptions,
       env: {
         PATH: "",
         PYTHON: "",
@@ -305,16 +518,12 @@ test("normal run uses the project virtualenv Python when PATH is empty", async (
   assert.equal(hasRunningTask("project-python-run"), false);
 });
 
-test("default public CLI on PATH does not bypass the project virtualenv Python", async () => {
+test("default public CLI on PATH does not bypass resolved project Python", async () => {
   const root = makeTempProject();
   const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "pytest-dsl-default-cli-"));
   writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
-  writeProjectPython(root);
-  writeExecutable(
-    binDir,
-    "pytest-dsl",
-    `#!${process.execPath}\nconsole.log('default public CLI');\n`,
-  );
+  const runtimeOptions = preparePythonRuntime(root);
+  writeNodeCommand(binDir, "pytest-dsl");
   const events = [];
 
   const result = await startExecutionTask(
@@ -323,9 +532,11 @@ test("default public CLI on PATH does not bypass the project virtualenv Python",
       projectRoot: root,
       relativePath: "tests/case.dsl",
       mode: "run",
-      content: "[打印], 内容: \"ok\"\n",
+      content: "console.log('default public CLI')\n",
+      ...runtimeOptions,
       env: {
         PATH: binDir,
+        PATHEXT: ".EXE;.CMD",
         PYTHON: "",
         PYTEST_DSL_PYTHON: "",
       },
@@ -349,7 +560,7 @@ test("default public CLI on PATH does not bypass the project virtualenv Python",
 test("task environment public CLI overrides bypass Python only for their modes", async () => {
   const root = makeTempProject();
   writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
-  writeProjectPython(root);
+  const runtimeOptions = preparePythonRuntime(root);
   const cases = [
     { mode: "syntax", envName: "PYTEST_DSL_WORKBENCH" },
     { mode: "debug", envName: "PYTEST_DSL_WORKBENCH" },
@@ -359,16 +570,17 @@ test("task environment public CLI overrides bypass Python only for their modes",
 
   for (const item of cases) {
     const marker = `task env ${item.mode}`;
-    const command = writeExecutable(
-      root,
-      path.join("bin", `task-env-${item.mode}`),
-      `#!${process.execPath}\nconsole.log(${JSON.stringify(marker)});\n`,
-    );
+    if (item.mode === "syntax" || item.mode === "debug") {
+      writeFile(root, item.mode, `console.log(${JSON.stringify(marker)})\n`);
+    } else if (item.mode === "suite") {
+      writeFile(root, "suite-cli.js", `console.log(${JSON.stringify(marker)})\n`);
+    }
     const events = [];
     const options = {
       taskId: `task-env-${item.mode}`,
       projectRoot: root,
       mode: item.mode,
+      ...runtimeOptions,
       env: {
         PATH: "",
         PYTHON: "",
@@ -376,12 +588,16 @@ test("task environment public CLI overrides bypass Python only for their modes",
         PYTEST_DSL_WORKBENCH: "",
         PYTEST_DSL_PYTEST: "",
         PYTEST_DSL_CLI: "",
-        [item.envName]: command,
+        [item.envName]: process.execPath,
       },
     };
-    if (item.mode !== "suite") {
+    if (item.mode === "suite") {
+      options.selectedFiles = ["suite-cli.js"];
+    } else {
       options.relativePath = "tests/case.dsl";
-      options.content = "[打印], 内容: \"ok\"\n";
+      options.content = item.mode === "run"
+        ? `console.log(${JSON.stringify(marker)})\n`
+        : "[打印], 内容: \"ok\"\n";
     }
 
     const result = await startExecutionTask(options, {
@@ -400,7 +616,7 @@ test("task environment public CLI overrides bypass Python only for their modes",
 test("Python fallback maps syntax, debug, and suite execution to their modules", async () => {
   const root = makeTempProject();
   writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
-  writeProjectPython(root);
+  const runtimeOptions = preparePythonRuntime(root);
 
   const cases = [
     { mode: "syntax", module: "pytest_dsl.workbench.runner" },
@@ -413,6 +629,7 @@ test("Python fallback maps syntax, debug, and suite execution to their modules",
       taskId: `project-python-${item.mode}`,
       projectRoot: root,
       mode: item.mode,
+      ...runtimeOptions,
       env: {
         PATH: "",
         PYTHON: "",
@@ -531,11 +748,8 @@ test("workbench executable lookup honors the task environment PATH", async () =>
   const root = makeTempProject();
   const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "pytest-dsl-bin-"));
   writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
-  writeExecutable(
-    binDir,
-    "env-workbench",
-    "#!/bin/sh\necho \"env workbench $@\"\n",
-  );
+  writeFile(root, "syntax", "console.log('env workbench syntax')\n");
+  writeNodeCommand(binDir, "env-workbench");
   const events = [];
 
   const result = await startExecutionTask(
@@ -548,6 +762,7 @@ test("workbench executable lookup honors the task environment PATH", async () =>
       workbenchExecutable: "env-workbench",
       env: {
         PATH: binDir,
+        PATHEXT: ".EXE;.CMD",
       },
     },
     {

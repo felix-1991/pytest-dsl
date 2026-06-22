@@ -3,6 +3,35 @@ const path = require("node:path");
 
 const { readMetadata } = require("./metadataStore");
 
+const WINDOWS_CANONICAL_ENV_KEYS = new Map([
+  ["path", "PATH"],
+  ["pathext", "PATHEXT"],
+  ["pythonpath", "PYTHONPATH"],
+]);
+
+function mergeEnvironment(base = {}, overrides = {}, platform = process.platform) {
+  const normalizedBase = base && typeof base === "object" ? base : {};
+  const normalizedOverrides = overrides && typeof overrides === "object" ? overrides : {};
+  if (platform !== "win32") {
+    return { ...normalizedBase, ...normalizedOverrides };
+  }
+
+  const merged = {};
+  for (const [key, value] of [
+    ...Object.entries(normalizedBase),
+    ...Object.entries(normalizedOverrides),
+  ]) {
+    const normalizedKey = key.toLowerCase();
+    for (const existingKey of Object.keys(merged)) {
+      if (existingKey.toLowerCase() === normalizedKey) {
+        delete merged[existingKey];
+      }
+    }
+    merged[WINDOWS_CANONICAL_ENV_KEYS.get(normalizedKey) || key] = value;
+  }
+  return merged;
+}
+
 function resolvePythonCommand(projectRoot, env = process.env, options = {}) {
   const commands = resolvePythonCommands(projectRoot, env, options);
   return options && options.all ? commands : commands[0];
@@ -248,6 +277,7 @@ function normalizeOptions(options) {
 
 module.exports = {
   isExecutableAvailable,
+  mergeEnvironment,
   resolvePythonCommand,
   resolvePythonCommands,
   resolvePythonTarget,
