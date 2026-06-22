@@ -78,7 +78,7 @@ test("configured Allure missing returns allure-config-invalid", async () => {
 
 test("no Allure anywhere returns allure-not-found", async () => {
   const root = makeTempProject();
-  const result = await resolveAllureRuntime(root, { PATH: "" });
+  const result = await resolveAllureRuntime(root, { PATH: "" }, { skipCommonPaths: true });
   assert.equal(result.available, false);
   assert.equal(result.reason, "allure-not-found");
 });
@@ -91,7 +91,7 @@ test("project node_modules Allure 3 is discovered before PATH", async () => {
     "Allure commandline, version 3.0.5",
   );
 
-  const result = await resolveAllureRuntime(root, { PATH: "" });
+  const result = await resolveAllureRuntime(root, { PATH: "" }, { skipCommonPaths: true });
   assert.equal(result.available, true);
   assert.equal(result.source, "project-node-modules");
   assert.equal(result.command, projectAllure);
@@ -112,7 +112,7 @@ test("non-configured v2 candidate is skipped, allowing v3 fallback", async () =>
     ? "@echo off\necho Allure commandline, version 3.2.0\n"
     : "#!/bin/sh\necho \"Allure commandline, version 3.2.0\"\n");
 
-  const result = await resolveAllureRuntime(root, { PATH: pathBinDir });
+  const result = await resolveAllureRuntime(root, { PATH: pathBinDir }, { skipCommonPaths: true });
   assert.equal(result.available, true);
   assert.equal(result.version, "3.2.0");
   assert.equal(result.command, "allure");

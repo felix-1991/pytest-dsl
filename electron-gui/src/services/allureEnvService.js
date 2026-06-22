@@ -47,6 +47,27 @@ function resolveAllureCandidates(projectRoot, env = process.env, options = {}) {
       configured: false,
     });
   }
+  // Check common package manager locations for macOS (Electron apps may not inherit full PATH)
+  // This can be disabled via options.skipCommonPaths for testing
+  if (!options.skipCommonPaths) {
+    const commonAllurePaths = [
+      "/opt/homebrew/bin/allure",
+      "/usr/local/bin/allure",
+    ];
+    for (const allurePath of commonAllurePaths) {
+      if (fs.existsSync(allurePath)) {
+        const alreadyAdded = candidates.some((c) => c.command === allurePath);
+        if (!alreadyAdded) {
+          candidates.push({
+            command: allurePath,
+            args: [],
+            source: "homebrew",
+            configured: false,
+          });
+        }
+      }
+    }
+  }
   if (isExecutableAvailable("allure", env)) {
     candidates.push({
       command: "allure",
@@ -132,12 +153,16 @@ function unavailable(reason, message, candidate = null, version = null) {
 
 function detectAllureVersion(candidate, cwd, env) {
   return new Promise((resolve) => {
+    // Only enhance PATH for absolute-path commands that might have shebangs needing node
+    // For relative commands like "allure" from PATH, use the original env
+    const needsPathEnhancement = path.isAbsolute(candidate.command);
+    const execEnv = needsPathEnhancement ? enhancePathForExecutables(env) : env;
     const child = execFile(
       candidate.command,
       [...candidate.args, "--version"],
       {
         cwd,
-        env,
+        env: execEnv,
         timeout: ALLURE_VERSION_TIMEOUT_MS,
         windowsHide: true,
       },
@@ -164,6 +189,33 @@ function assertProjectRoot(projectRoot) {
     throw new Error(`Project root does not exist: ${projectRoot}`);
   }
   return root;
+}
+
+// Enhance PATH with common locations where Node.js and other tools may be installed
+// This is needed because Electron apps launched from Finder don't inherit the shell's PATH
+function enhancePathForExecutables(env) {
+  if (!env || typeof env !== "object") {
+    env = {};
+  }
+  const commonPaths = [
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/usr/local/sbin",
+  ];
+  const currentPath = env.PATH || env.Path || "";
+  const separator = process.platform === "win32" ? ";" : ":";
+  const pathParts = currentPath.split(separator).filter(Boolean);
+  const newPathParts = [...pathParts];
+  for (const p of commonPaths) {
+    if (!newPathParts.includes(p) && fs.existsSync(p)) {
+      newPathParts.unshift(p);
+    }
+  }
+  return {
+    ...env,
+    PATH: newPathParts.join(separator),
+  };
 }
 
 module.exports = {

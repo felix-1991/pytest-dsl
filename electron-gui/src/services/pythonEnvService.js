@@ -104,6 +104,22 @@ function resolvePythonTargets(projectRoot, env = process.env, options = {}) {
     addTarget(targets, "python", [], "path");
     addTarget(targets, "py", ["-3"], "path");
   } else {
+    // Check common package manager locations for macOS (Electron apps may not inherit full PATH)
+    // This can be disabled via options.skipCommonPaths for testing
+    if (!normalizedOptions.skipCommonPaths) {
+      const commonPythonPaths = [
+        "/opt/homebrew/bin/python3",
+        "/opt/homebrew/bin/python",
+        "/usr/local/bin/python3",
+        "/usr/local/bin/python",
+      ];
+      for (const pythonPath of commonPythonPaths) {
+        if (isUsableFile(pythonPath, platform, normalizedEnv)) {
+          addTarget(targets, pythonPath, [], "homebrew");
+          break;
+        }
+      }
+    }
     addTarget(targets, "python3", [], "path");
     addTarget(targets, "python", [], "path");
   }

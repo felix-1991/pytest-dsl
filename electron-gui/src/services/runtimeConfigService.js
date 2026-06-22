@@ -140,6 +140,13 @@ function runPythonProbeAsync(target, projectRoot, env, options) {
             resolve({ status: "missing", detail: "pytest or pytest_dsl" });
             return;
           }
+          if (error.signal) {
+            resolve({
+              status: "error",
+              detail: `Python was terminated by signal ${error.signal}. This may be caused by macOS security restrictions or the Python binary being quarantined.`,
+            });
+            return;
+          }
           resolve({ status: "error", detail: error.message });
           return;
         }
