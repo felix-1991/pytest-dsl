@@ -47,13 +47,10 @@ function resolveAllureCandidates(projectRoot, env = process.env, options = {}) {
       configured: false,
     });
   }
-  // Check common package manager locations for macOS (Electron apps may not inherit full PATH)
+  // Check common package manager locations (Electron apps may not inherit full PATH)
   // This can be disabled via options.skipCommonPaths for testing
   if (!options.skipCommonPaths) {
-    const commonAllurePaths = [
-      "/opt/homebrew/bin/allure",
-      "/usr/local/bin/allure",
-    ];
+    const commonAllurePaths = getCommonAllurePaths();
     for (const allurePath of commonAllurePaths) {
       if (fs.existsSync(allurePath)) {
         const alreadyAdded = candidates.some((c) => c.command === allurePath);
@@ -61,7 +58,7 @@ function resolveAllureCandidates(projectRoot, env = process.env, options = {}) {
           candidates.push({
             command: allurePath,
             args: [],
-            source: "homebrew",
+            source: "common-path",
             configured: false,
           });
         }
@@ -77,6 +74,32 @@ function resolveAllureCandidates(projectRoot, env = process.env, options = {}) {
     });
   }
   return candidates;
+}
+
+// Get common paths where Allure might be installed, based on platform
+function getCommonAllurePaths() {
+  if (process.platform === "win32") {
+    // Windows: Check common installation locations
+    const paths = [];
+    // Chocolatey installation
+    const chocolateyBin = path.join(process.env.ChocolateyInstall || "C:\\ProgramData\\chocolatey", "bin");
+    paths.push(path.join(chocolateyBin, "allure.cmd"));
+    paths.push(path.join(chocolateyBin, "allure.bat"));
+    // Scoop installation (user-local)
+    const scoopShim = path.join(process.env.USERPROFILE || "", "scoop", "shims");
+    paths.push(path.join(scoopShim, "allure.cmd"));
+    paths.push(path.join(scoopShim, "allure.bat"));
+    // Common install directories
+    paths.push("C:\\allure\\bin\\allure.cmd");
+    paths.push("C:\\allure\\bin\\allure.bat");
+    return paths.filter(Boolean);
+  }
+  // macOS/Linux: Check common homebrew and system paths
+  return [
+    "/opt/homebrew/bin/allure",
+    "/usr/local/bin/allure",
+    "/usr/bin/allure",
+  ];
 }
 
 async function resolveAllureRuntime(projectRoot, env = process.env, options = {}) {
@@ -192,30 +215,62 @@ function assertProjectRoot(projectRoot) {
 }
 
 // Enhance PATH with common locations where Node.js and other tools may be installed
-// This is needed because Electron apps launched from Finder don't inherit the shell's PATH
+// This is needed because Electron apps launched from Finder/Start Menu don't inherit the shell's PATH
 function enhancePathForExecutables(env) {
   if (!env || typeof env !== "object") {
     env = {};
   }
-  const commonPaths = [
-    "/opt/homebrew/bin",
-    "/opt/homebrew/sbin",
-    "/usr/local/bin",
-    "/usr/local/sbin",
-  ];
-  const currentPath = env.PATH || env.Path || "";
+  const commonPaths = getCommonExecutablePaths();
   const separator = process.platform === "win32" ? ";" : ":";
+  // Handle Windows case-insensitive PATH key
+  const pathKey = Object.keys(env).find((k) => k.toLowerCase() === "path") || "PATH";
+  const currentPath = env[pathKey] || "";
   const pathParts = currentPath.split(separator).filter(Boolean);
   const newPathParts = [...pathParts];
+  const pathSet = new Set(pathParts.map((p) => p.toLowerCase()));
   for (const p of commonPaths) {
-    if (!newPathParts.includes(p) && fs.existsSync(p)) {
+    if (!pathSet.has(p.toLowerCase()) && fs.existsSync(p)) {
       newPathParts.unshift(p);
+      pathSet.add(p.toLowerCase());
     }
   }
   return {
     ...env,
-    PATH: newPathParts.join(separator),
+    [pathKey]: newPathParts.join(separator),
   };
+}
+
+// Get common paths where executables (like Node.js) might be installed, based on platform
+function getCommonExecutablePaths() {
+  if (process.platform === "win32") {
+    // Windows: Check common Node.js and tool installation locations
+    const paths = [];
+    // Node.js default installation
+    paths.push("C:\\Program Files\\nodejs");
+    paths.push("C:\\Program Files (x86)\\nodejs");
+    // User-local npm global
+    const appData = process.env.APPDATA || "";
+    if (appData) {
+      paths.push(path.join(appData, "npm"));
+      paths.push(path.join(appData, "Roaming", "npm"));
+    }
+    // Chocolatey
+    const chocolateyBin = path.join(process.env.ChocolateyInstall || "C:\\ProgramData\\chocolatey", "bin");
+    paths.push(chocolateyBin);
+    // Scoop
+    const scoopShim = path.join(process.env.USERPROFILE || "", "scoop", "shims");
+    paths.push(scoopShim);
+    return paths.filter(Boolean);
+  }
+  // macOS/Linux: Check common homebrew and system paths
+  return [
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/usr/local/sbin",
+    "/usr/bin",
+    "/bin",
+  ];
 }
 
 module.exports = {

@@ -77,7 +77,7 @@ test("saved project Python is an exclusive configured target", (t) => {
     PYTEST_DSL_PYTHON: "/env/pytest-dsl-python",
     PYTHON: "/env/python",
     PATH: "/bin",
-  }, { platform: "linux" }), [{
+  }, { platform: "linux", skipCommonPaths: true }), [{
     command: configured,
     args: [],
     source: "project-config",
@@ -115,7 +115,7 @@ test("invalid saved Python fails without falling back", (t) => {
     () => resolvePythonTarget(root, {
       PYTEST_DSL_PYTHON: environmentPython,
       PATH: path.dirname(environmentPython),
-    }, { platform: "linux" }),
+    }, { platform: "linux", skipCommonPaths: true }),
     (error) => {
       assert.match(
         error.message,
@@ -174,7 +174,7 @@ test("environment candidates precede the project virtualenv", (t) => {
       PYTEST_DSL_PYTHON: ` ${pytestDslPython} `,
       PYTHON: python,
       PATH: "",
-    }, { platform: "linux" }).slice(0, 3),
+    }, { platform: "linux", skipCommonPaths: true }).slice(0, 3),
     [
       { command: pytestDslPython, args: [], source: "environment", configured: false },
       { command: python, args: [], source: "environment", configured: false },
@@ -188,7 +188,7 @@ test("project .venv precedes venv and resolves with an empty PATH", (t) => {
   const dotVenvPython = writeExecutable(projectPython(root, ".venv"));
   writeExecutable(projectPython(root, "venv"));
 
-  assert.deepEqual(resolvePythonTarget(root, { PATH: "" }, { platform: "linux" }), {
+  assert.deepEqual(resolvePythonTarget(root, { PATH: "" }, { platform: "linux", skipCommonPaths: true }), {
     command: dotVenvPython,
     args: [],
     source: "project-venv",
@@ -201,7 +201,7 @@ test("project venv is discovered when .venv is absent and PATH is empty", (t) =>
   const venvPython = writeExecutable(projectPython(root, "venv"));
 
   assert.equal(
-    resolvePythonTarget(root, { PATH: "" }, { platform: "linux" }).command,
+    resolvePythonTarget(root, { PATH: "" }, { platform: "linux", skipCommonPaths: true }).command,
     venvPython,
   );
 });
@@ -209,7 +209,7 @@ test("project venv is discovered when .venv is absent and PATH is empty", (t) =>
 test("POSIX fallback order is python3 then python", (t) => {
   const root = makeTempProject(t);
 
-  assert.deepEqual(resolvePythonTargets(root, { PATH: "" }, { platform: "linux" }), [
+  assert.deepEqual(resolvePythonTargets(root, { PATH: "" }, { platform: "linux", skipCommonPaths: true }), [
     { command: "python3", args: [], source: "path", configured: false },
     { command: "python", args: [], source: "path", configured: false },
   ]);
@@ -218,7 +218,7 @@ test("POSIX fallback order is python3 then python", (t) => {
 test("Windows targets include python and py -3", (t) => {
   const root = makeTempProject(t);
 
-  assert.deepEqual(resolvePythonTargets(root, { PATH: "" }, { platform: "win32" }), [
+  assert.deepEqual(resolvePythonTargets(root, { PATH: "" }, { platform: "win32", skipCommonPaths: true }), [
     { command: "python", args: [], source: "path", configured: false },
     { command: "py", args: ["-3"], source: "path", configured: false },
   ]);
@@ -233,7 +233,7 @@ test("Windows resolution selects py with -3 through mixed-case Path and PathExt"
   assert.deepEqual(resolvePythonTarget(root, {
     Path: bin,
     PathExt: ".CuStOm",
-  }, { platform: "win32" }), {
+  }, { platform: "win32", skipCommonPaths: true }), {
     command: "py",
     args: ["-3"],
     source: "path",
@@ -248,7 +248,7 @@ test("duplicate normalized candidates are removed without changing order", (t) =
     PYTEST_DSL_PYTHON: " python3 ",
     PYTHON: "python3",
     PATH: "",
-  }, { platform: "linux" }), [
+  }, { platform: "linux", skipCommonPaths: true }), [
     { command: "python3", args: [], source: "environment", configured: false },
     { command: "python", args: [], source: "path", configured: false },
   ]);
@@ -261,7 +261,7 @@ test("Windows duplicate candidates normalize separators and case", (t) => {
     PYTEST_DSL_PYTHON: "C:\\Tools\\Python.EXE",
     PYTHON: "c:/tools/python.exe",
     PATH: "",
-  }, { platform: "win32" }), [
+  }, { platform: "win32", skipCommonPaths: true }), [
     {
       command: "C:\\Tools\\Python.EXE",
       args: [],
@@ -276,7 +276,7 @@ test("Windows duplicate candidates normalize separators and case", (t) => {
 test("legacy command resolvers keep exclusive env overrides and python-first fallback", (t) => {
   const root = makeTempProject(t);
   const env = { PYTEST_DSL_PYTHON: "/opt/custom/python", PATH: "" };
-  const options = { platform: "linux" };
+  const options = { platform: "linux", skipCommonPaths: true };
 
   assert.equal(resolvePythonCommand(root, env, options), "/opt/custom/python");
   assert.deepEqual(resolvePythonCommands(root, env, options), ["/opt/custom/python"]);
@@ -288,7 +288,7 @@ test("legacy command resolvers keep exclusive env overrides and python-first fal
     "python",
     "python3",
   ]);
-  assert.deepEqual(resolvePythonCommands(root, { PATH: "" }, { platform: "win32" }), [
+  assert.deepEqual(resolvePythonCommands(root, { PATH: "" }, { platform: "win32", skipCommonPaths: true }), [
     "python",
     "python3",
   ]);
@@ -342,7 +342,7 @@ test("resolvePythonTarget reports every checked command when none is usable", (t
   const root = makeTempProject(t);
 
   assert.throws(
-    () => resolvePythonTarget(root, { PATH: "" }, { platform: "linux" }),
+    () => resolvePythonTarget(root, { PATH: "" }, { platform: "linux", skipCommonPaths: true }),
     (error) => {
       assert.match(error.message, /Checked: python3, python/);
       assert.match(error.message, /Configuration > Runtime/);

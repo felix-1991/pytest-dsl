@@ -100,31 +100,64 @@ function resolvePythonTargets(projectRoot, env = process.env, options = {}) {
   const venvPython = findProjectVenvPython(projectRoot, platform, normalizedEnv);
   addTarget(targets, venvPython, [], "project-venv");
 
+  // Check common package manager locations (Electron apps may not inherit full PATH)
+  // This can be disabled via options.skipCommonPaths for testing
+  if (!normalizedOptions.skipCommonPaths) {
+    const commonPythonPaths = getCommonPythonPaths(platform);
+    for (const pythonPath of commonPythonPaths) {
+      if (isUsableFile(pythonPath, platform, normalizedEnv)) {
+        addTarget(targets, pythonPath, [], "common-path");
+        break;
+      }
+    }
+  }
+
   if (platform === "win32") {
     addTarget(targets, "python", [], "path");
     addTarget(targets, "py", ["-3"], "path");
   } else {
-    // Check common package manager locations for macOS (Electron apps may not inherit full PATH)
-    // This can be disabled via options.skipCommonPaths for testing
-    if (!normalizedOptions.skipCommonPaths) {
-      const commonPythonPaths = [
-        "/opt/homebrew/bin/python3",
-        "/opt/homebrew/bin/python",
-        "/usr/local/bin/python3",
-        "/usr/local/bin/python",
-      ];
-      for (const pythonPath of commonPythonPaths) {
-        if (isUsableFile(pythonPath, platform, normalizedEnv)) {
-          addTarget(targets, pythonPath, [], "homebrew");
-          break;
-        }
-      }
-    }
     addTarget(targets, "python3", [], "path");
     addTarget(targets, "python", [], "path");
   }
 
   return dedupeTargets(targets, platform);
+}
+
+// Get common paths where Python might be installed, based on platform
+function getCommonPythonPaths(platform) {
+  if (platform === "win32") {
+    // Windows: Check common Python installation locations
+    const paths = [];
+    const localAppData = process.env.LOCALAPPDATA || "";
+    const userProfile = process.env.USERPROFILE || "";
+    // User-local Python installations
+    if (localAppData) {
+      paths.push(path.join(localAppData, "Programs", "Python", "Python312", "python.exe"));
+      paths.push(path.join(localAppData, "Programs", "Python", "Python311", "python.exe"));
+      paths.push(path.join(localAppData, "Programs", "Python", "Python310", "python.exe"));
+      paths.push(path.join(localAppData, "Programs", "Python", "Python39", "python.exe"));
+    }
+    // Microsoft Store Python
+    if (userProfile) {
+      paths.push(path.join(userProfile, "AppData", "Local", "Microsoft", "WindowsApps", "python.exe"));
+      paths.push(path.join(userProfile, "AppData", "Local", "Microsoft", "WindowsApps", "python3.exe"));
+    }
+    // System-wide installation
+    paths.push("C:\\Python312\\python.exe");
+    paths.push("C:\\Python311\\python.exe");
+    paths.push("C:\\Python310\\python.exe");
+    paths.push("C:\\Python39\\python.exe");
+    return paths.filter(Boolean);
+  }
+  // macOS/Linux: Check common homebrew and system paths
+  return [
+    "/opt/homebrew/bin/python3",
+    "/opt/homebrew/bin/python",
+    "/usr/local/bin/python3",
+    "/usr/local/bin/python",
+    "/usr/bin/python3",
+    "/usr/bin/python",
+  ];
 }
 
 function configuredPython(projectRoot, options) {
