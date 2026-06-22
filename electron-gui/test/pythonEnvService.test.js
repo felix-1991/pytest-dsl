@@ -82,7 +82,10 @@ test("invalid saved Python fails without falling back", (t) => {
       PATH: path.dirname(environmentPython),
     }, { platform: "linux" }),
     (error) => {
-      assert.match(error.message, /Configured Python executable does not exist/);
+      assert.match(
+        error.message,
+        /Configured Python executable does not exist or is not executable/,
+      );
       assert.match(error.message, /Configuration > Runtime/);
       assert.match(error.message, new RegExp(missing.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
       return true;
@@ -103,7 +106,25 @@ test("invalid options.pythonExecutable fails without falling back", (t) => {
       platform: "linux",
       pythonExecutable: missing,
     }),
-    /Configured Python executable does not exist/,
+    /Configured Python executable does not exist or is not executable/,
+  );
+});
+
+test("Windows configured Python rejects extensions outside PATHEXT", (t) => {
+  const root = makeTempProject(t);
+  const configured = path.join(root, "runtime", "python.txt");
+  fs.mkdirSync(path.dirname(configured), { recursive: true });
+  fs.writeFileSync(configured, "not a Windows executable", "utf8");
+
+  assert.throws(
+    () => resolvePythonTargets(root, {
+      PATH: "",
+      PATHEXT: ".EXE",
+    }, {
+      platform: "win32",
+      pythonExecutable: configured,
+    }),
+    /Configured Python executable does not exist or is not executable/,
   );
 });
 
@@ -168,6 +189,23 @@ test("Windows targets include python and py -3", (t) => {
   ]);
 });
 
+test("Windows resolution selects py with -3 through mixed-case Path and PathExt", (t) => {
+  const root = makeTempProject(t);
+  const bin = path.join(root, "bin");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(path.join(bin, "py.CUSTOM"), "windows launcher", "utf8");
+
+  assert.deepEqual(resolvePythonTarget(root, {
+    Path: bin,
+    PathExt: ".CuStOm",
+  }, { platform: "win32" }), {
+    command: "py",
+    args: ["-3"],
+    source: "path",
+    configured: false,
+  });
+});
+
 test("duplicate normalized candidates are removed without changing order", (t) => {
   const root = makeTempProject(t);
 
@@ -178,6 +216,25 @@ test("duplicate normalized candidates are removed without changing order", (t) =
   }, { platform: "linux" }), [
     { command: "python3", args: [], source: "environment", configured: false },
     { command: "python", args: [], source: "path", configured: false },
+  ]);
+});
+
+test("Windows duplicate candidates normalize separators and case", (t) => {
+  const root = makeTempProject(t);
+
+  assert.deepEqual(resolvePythonTargets(root, {
+    PYTEST_DSL_PYTHON: "C:\\Tools\\Python.EXE",
+    PYTHON: "c:/tools/python.exe",
+    PATH: "",
+  }, { platform: "win32" }), [
+    {
+      command: "C:\\Tools\\Python.EXE",
+      args: [],
+      source: "environment",
+      configured: false,
+    },
+    { command: "python", args: [], source: "path", configured: false },
+    { command: "py", args: ["-3"], source: "path", configured: false },
   ]);
 });
 
@@ -205,12 +262,21 @@ test("legacy command resolvers keep exclusive env overrides and python-first fal
 test("isExecutableAvailable checks absolute paths and POSIX execute permission", (t) => {
   const root = makeTempProject(t);
   const executable = writeExecutable(path.join(root, "bin", "python3"));
-  const nonExecutable = path.join(root, "bin", "plain-file");
+  const nonExecutable = path.join(root, "bin", "plain-file.EXE");
+  const textFile = path.join(root, "bin", "plain-file.txt");
   fs.writeFileSync(nonExecutable, "not executable", "utf8");
+  fs.writeFileSync(textFile, "not a Windows executable", "utf8");
 
   assert.equal(isExecutableAvailable(executable, { PATH: "" }, "linux"), true);
   assert.equal(isExecutableAvailable(nonExecutable, { PATH: "" }, "linux"), false);
-  assert.equal(isExecutableAvailable(nonExecutable, { PATH: "" }, "win32"), true);
+  assert.equal(
+    isExecutableAvailable(nonExecutable, { PATH: "", pathext: ".exe" }, "win32"),
+    true,
+  );
+  assert.equal(
+    isExecutableAvailable(textFile, { PATH: "", PATHEXT: ".EXE" }, "win32"),
+    false,
+  );
   assert.equal(isExecutableAvailable(path.join(root, "missing"), { PATH: "" }, "linux"), false);
 });
 
@@ -219,12 +285,21 @@ test("isExecutableAvailable searches PATH and Windows PATHEXT", (t) => {
   const bin = path.join(root, "bin");
   writeExecutable(path.join(bin, "python3"));
   fs.writeFileSync(path.join(bin, "python.CMD"), "windows shim", "utf8");
+  fs.writeFileSync(path.join(bin, "python.txt"), "not executable", "utf8");
 
   assert.equal(isExecutableAvailable("python3", { PATH: bin }, "linux"), true);
   assert.equal(isExecutableAvailable("python", {
     PATH: bin,
     PATHEXT: ".CMD;.EXE",
   }, "win32"), true);
+  assert.equal(isExecutableAvailable("python", {
+    path: bin,
+    pathext: ".cmd",
+  }, "win32"), true);
+  assert.equal(isExecutableAvailable("python.txt", {
+    Path: bin,
+    PathExt: ".EXE",
+  }, "win32"), false);
   assert.equal(isExecutableAvailable("python", { PATH: "" }, "linux"), false);
 });
 

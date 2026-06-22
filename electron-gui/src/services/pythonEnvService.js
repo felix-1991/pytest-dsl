@@ -57,7 +57,7 @@ function resolvePythonTargets(projectRoot, env = process.env, options = {}) {
   if (configured) {
     if (!isExecutableAvailable(configured, normalizedEnv, platform)) {
       throw new Error(
-        `Configured Python executable does not exist: ${configured}. ` +
+        `Configured Python executable does not exist or is not executable: ${configured}. ` +
         "Choose a Python interpreter in Configuration > Runtime.",
       );
     }
@@ -68,7 +68,7 @@ function resolvePythonTargets(projectRoot, env = process.env, options = {}) {
   addTarget(targets, normalizedEnv.PYTEST_DSL_PYTHON, [], "environment");
   addTarget(targets, normalizedEnv.PYTHON, [], "environment");
 
-  const venvPython = findProjectVenvPython(projectRoot, platform);
+  const venvPython = findProjectVenvPython(projectRoot, platform, normalizedEnv);
   addTarget(targets, venvPython, [], "project-venv");
 
   if (platform === "win32") {
@@ -93,7 +93,7 @@ function configuredPython(projectRoot, options) {
   return normalizeCommand(metadata && metadata.runtime && metadata.runtime.pythonExecutable);
 }
 
-function findProjectVenvPython(projectRoot, platform = process.platform) {
+function findProjectVenvPython(projectRoot, platform = process.platform, env = process.env) {
   if (!projectRoot) {
     return null;
   }
@@ -109,7 +109,7 @@ function findProjectVenvPython(projectRoot, platform = process.platform) {
         path.join(root, "venv", "bin", "python"),
       ];
 
-  return candidates.find((candidate) => isUsableFile(candidate, platform)) || null;
+  return candidates.find((candidate) => isUsableFile(candidate, platform, env)) || null;
 }
 
 function isExecutableAvailable(command, env = process.env, platform = process.platform) {
@@ -118,12 +118,12 @@ function isExecutableAvailable(command, env = process.env, platform = process.pl
     return false;
   }
 
+  const normalizedEnv = env && typeof env === "object" ? env : {};
   if (isPathCommand(normalized)) {
-    return isUsableFile(normalized, platform);
+    return isUsableFile(normalized, platform, normalizedEnv);
   }
 
-  const normalizedEnv = env && typeof env === "object" ? env : {};
-  const pathValue = normalizedEnv.PATH || normalizedEnv.Path || normalizedEnv.path || "";
+  const pathValue = environmentValue(normalizedEnv, "PATH");
   if (!pathValue) {
     return false;
   }
@@ -135,7 +135,7 @@ function isExecutableAvailable(command, env = process.env, platform = process.pl
     .map((directory) => directory.trim())
     .filter(Boolean)
     .some((directory) => names.some((name) => (
-      isUsableFile(path.join(directory, name), platform)
+      isUsableFile(path.join(directory, name), platform, normalizedEnv)
     )));
 }
 
@@ -143,21 +143,42 @@ function executableNames(command, env, platform) {
   if (platform !== "win32") {
     return [command];
   }
-  if (path.win32.extname(command)) {
-    return [command];
+  const extensions = windowsExecutableExtensions(env);
+  const commandExtension = normalizeWindowsExtension(path.win32.extname(command));
+  if (commandExtension) {
+    return extensions.includes(commandExtension) ? [command] : [];
   }
 
-  const extensions = String(env.PATHEXT || ".EXE;.CMD;.BAT;.COM")
-    .split(";")
-    .map((extension) => extension.trim())
-    .filter(Boolean);
-  const names = [command];
+  const names = [];
   for (const extension of extensions) {
     names.push(`${command}${extension}`);
-    names.push(`${command}${extension.toLowerCase()}`);
     names.push(`${command}${extension.toUpperCase()}`);
   }
   return [...new Set(names)];
+}
+
+function windowsExecutableExtensions(env) {
+  const pathExt = environmentValue(env, "PATHEXT") || ".EXE;.CMD;.BAT;.COM";
+  return [...new Set(String(pathExt)
+    .split(";")
+    .map(normalizeWindowsExtension)
+    .filter(Boolean))];
+}
+
+function normalizeWindowsExtension(extension) {
+  const normalized = String(extension || "").trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return normalized.startsWith(".") ? normalized : `.${normalized}`;
+}
+
+function environmentValue(env, name) {
+  const expected = name.toLowerCase();
+  const entry = Object.entries(env).find(([key, value]) => (
+    key.toLowerCase() === expected && value !== null && value !== undefined && value !== ""
+  ));
+  return entry ? entry[1] : "";
 }
 
 function isPathCommand(command) {
@@ -167,14 +188,16 @@ function isPathCommand(command) {
     command.includes("\\");
 }
 
-function isUsableFile(filePath, platform) {
+function isUsableFile(filePath, platform, env = process.env) {
   try {
     if (!fs.statSync(filePath).isFile()) {
       return false;
     }
-    if (platform !== "win32") {
-      fs.accessSync(filePath, fs.constants.X_OK);
+    if (platform === "win32") {
+      const extension = normalizeWindowsExtension(path.win32.extname(filePath));
+      return Boolean(extension && windowsExecutableExtensions(env).includes(extension));
     }
+    fs.accessSync(filePath, fs.constants.X_OK);
     return true;
   } catch {
     return false;
@@ -200,7 +223,9 @@ function pythonTarget(command, args, source, configured) {
 function dedupeTargets(targets, platform) {
   const seen = new Set();
   return targets.filter((target) => {
-    const command = platform === "win32" ? target.command.toLowerCase() : target.command;
+    const command = platform === "win32"
+      ? path.win32.normalize(target.command).toLowerCase()
+      : target.command;
     const key = JSON.stringify([command, target.args]);
     if (seen.has(key)) {
       return false;
