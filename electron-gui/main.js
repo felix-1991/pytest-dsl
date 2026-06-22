@@ -30,6 +30,11 @@ const {
   findKeywordDefinitions,
   readSourceFile
 } = require("./src/services/keywordDefinitionService");
+const {
+  getRuntimeStatus,
+  resetRuntimeExecutable,
+  saveRuntimeExecutable
+} = require("./src/services/runtimeConfigService");
 
 const DEFAULT_PROJECT_ROOT = path.resolve(__dirname, "..");
 
@@ -154,6 +159,20 @@ function registerIpc() {
       ...options,
       destinationPath: result.filePath,
     });
+  });
+  ipcMain.handle("runtime:status", (_event, options) => getRuntimeStatus(options));
+  ipcMain.handle("runtime:select", async (event, options) => {
+    const result = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
+      title: options.kind === "allure" ? "选择 Allure 3 可执行文件" : "选择 Python 解释器",
+      properties: ["openFile"],
+    });
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+    saveRuntimeExecutable(options.projectRoot, options.kind, result.filePaths[0]);
+    return getRuntimeStatus({ projectRoot: options.projectRoot });
+  });
+  ipcMain.handle("runtime:reset", (_event, options) => {
+    resetRuntimeExecutable(options.projectRoot, options.kind);
+    return getRuntimeStatus({ projectRoot: options.projectRoot });
   });
 }
 

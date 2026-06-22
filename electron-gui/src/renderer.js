@@ -299,6 +299,15 @@ function cacheElements() {
     "entryDialogInput",
     "entryDialogError",
     "entryDialogCancel",
+    "runtimeConfig",
+    "runtimePythonStatus",
+    "runtimePythonPath",
+    "runtimePythonSelectBtn",
+    "runtimePythonAutoBtn",
+    "runtimeAllureStatus",
+    "runtimeAllurePath",
+    "runtimeAllureSelectBtn",
+    "runtimeAllureAutoBtn",
   ].forEach((id) => {
     el[id] = document.getElementById(id);
   });
@@ -428,6 +437,18 @@ function bindEvents() {
   }
   if (typeof api.onBuildEvent === "function") {
     api.onBuildEvent(handleBuildEvent);
+  }
+  if (el.runtimePythonSelectBtn) {
+    el.runtimePythonSelectBtn.addEventListener("click", () => changeRuntime("python", false));
+  }
+  if (el.runtimePythonAutoBtn) {
+    el.runtimePythonAutoBtn.addEventListener("click", () => changeRuntime("python", true));
+  }
+  if (el.runtimeAllureSelectBtn) {
+    el.runtimeAllureSelectBtn.addEventListener("click", () => changeRuntime("allure", false));
+  }
+  if (el.runtimeAllureAutoBtn) {
+    el.runtimeAllureAutoBtn.addEventListener("click", () => changeRuntime("allure", true));
   }
 }
 
@@ -758,6 +779,7 @@ function applySnapshot(snapshot, logMessage, preferredFile = null) {
   startDynamicRemoteMonitoring();
   renderMetadata(snapshot.metadata);
   renderDeductions();
+  refreshRuntimeStatus();
   appendLog("info", `${logMessage}: ${snapshot.project.rootPath}`);
 
   const editableFiles = getEditableFiles(snapshot);
@@ -835,6 +857,12 @@ function setEmptyProjectState() {
   el.configMerged.textContent = "{}";
   renderMetadata({ lastOpenedFile: null, recentFiles: [], updatedAt: null });
   el.deductionList.innerHTML = `<li>未打开项目</li>`;
+  renderRuntimeStatus({
+    projectRoot: null,
+    config: { pythonExecutable: null, allureExecutable: null },
+    python: null,
+    allure: null,
+  });
   clearEditor("选择一个文件");
   setRunningState(false);
 }
@@ -1737,6 +1765,93 @@ function renderMetadata(metadata) {
   `,
     )
     .join("");
+}
+
+async function refreshRuntimeStatus() {
+  if (!state.snapshot) return;
+  const projectRoot = state.snapshot.project.rootPath;
+  if (typeof api.getRuntimeStatus !== "function") return;
+  try {
+    const result = await api.getRuntimeStatus({ projectRoot });
+    if (!state.snapshot || state.snapshot.project.rootPath !== projectRoot) return;
+    renderRuntimeStatus(result);
+  } catch (error) {
+    appendLog("error", `Runtime status probe failed: ${error.message}`);
+  }
+}
+
+function renderRuntimeStatus(status) {
+  if (!status) return;
+  renderRuntimeRow(
+    "python",
+    status.python,
+    "Python 未配置",
+  );
+  renderRuntimeRow(
+    "allure",
+    status.allure,
+    "Allure 未配置",
+  );
+  if (state.snapshot) {
+    state.snapshot.metadata = {
+      ...state.snapshot.metadata,
+      runtime: status.config,
+    };
+  }
+}
+
+function renderRuntimeRow(kind, info, fallbackLabel) {
+  const statusEl = kind === "python" ? el.runtimePythonStatus : el.runtimeAllureStatus;
+  const pathEl = kind === "python" ? el.runtimePythonPath : el.runtimeAllurePath;
+  if (!statusEl || !pathEl) return;
+  statusEl.classList.remove("online", "warning", "offline", "unchecked");
+  if (!info) {
+    statusEl.classList.add("unchecked");
+    pathEl.textContent = fallbackLabel;
+    pathEl.title = fallbackLabel;
+    return;
+  }
+  if (info.available) {
+    statusEl.classList.add("online");
+    const display = info.source === "project-config"
+      ? info.command
+      : `${info.command}${info.version ? ` (v${info.version})` : ""} · ${info.source}`;
+    pathEl.textContent = display;
+    pathEl.title = info.message || display;
+    return;
+  }
+  const isConfigured = info.source === "project-config";
+  const isAllure = kind === "allure";
+  if (isAllure && !isConfigured && info.reason === "allure-not-found") {
+    statusEl.classList.add("warning");
+    pathEl.textContent = info.message || "Allure 未找到 (可选)";
+    pathEl.title = pathEl.textContent;
+    return;
+  }
+  statusEl.classList.add("offline");
+  pathEl.textContent = info.message || `${kind} 不可用`;
+  pathEl.title = pathEl.textContent;
+}
+
+async function changeRuntime(kind, reset = false) {
+  if (!state.snapshot) return;
+  const projectRoot = state.snapshot.project.rootPath;
+  const method = reset ? api.resetRuntimeExecutable : api.selectRuntimeExecutable;
+  if (typeof method !== "function") return;
+  try {
+    const result = await method({ projectRoot, kind });
+    if (!result || result.canceled) return;
+    renderRuntimeStatus(result);
+    if (state.snapshot) {
+      state.snapshot.metadata = {
+        ...state.snapshot.metadata,
+        runtime: result.config,
+      };
+      renderMetadata(state.snapshot.metadata);
+    }
+  } catch (error) {
+    appendLog("error", `Failed to update runtime: ${error.message}`);
+  }
 }
 
 function getEditableFiles(snapshot = state.snapshot) {
