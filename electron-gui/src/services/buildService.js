@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const http = require("node:http");
 const https = require("node:https");
 const path = require("node:path");
-const { spawn, execFile } = require("node:child_process");
+const { spawn } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 
 const {
@@ -10,11 +10,11 @@ const {
   mergeEnvironment,
   resolvePythonTarget,
 } = require("./pythonEnvService");
+const { resolveAllureRuntime } = require("./allureEnvService");
 const { buildPytestTargets } = require("./suiteService");
 
 const runningBuilds = new Map();
 const URL_PATTERN = /(https?:\/\/[^\s'"]+)/;
-const ALLURE_VERSION_TIMEOUT_MS = 3000;
 const ALLURE_REPORT_READY_TIMEOUT_MS = 1500;
 const ALLURE_REPORT_READY_INTERVAL_MS = 100;
 const ALLURE_REPORT_COMPLETION_WAIT_MS = 2500;
@@ -463,17 +463,14 @@ async function maybeStartAllureWatch(task, options, env, callbacks) {
 }
 
 async function resolveAllureExportSpawnTarget(plan, options = {}, env = process.env) {
-  const candidates = allureCandidates(plan.cwd, options, env);
-  for (const candidate of candidates) {
-    const major = await detectAllureMajor(candidate, plan.cwd, env);
-    if (major >= 3) {
-      return {
-        command: candidate.command,
-        args: candidate.args,
-      };
-    }
+  const runtime = await resolveAllureRuntime(plan.cwd, env, options);
+  if (!runtime.available) {
+    return null;
   }
-  return null;
+  return {
+    command: runtime.command,
+    args: runtime.args,
+  };
 }
 
 function runAllureReportExport(spawnTarget, plan, env) {
@@ -651,72 +648,21 @@ async function resolveAllureWatchSpawnTarget(
   env = process.env,
   task = null,
 ) {
-  const candidates = allureCandidates(plan.cwd, options, env);
-  const versionDetector = typeof options.allureVersionDetector === "function"
-    ? options.allureVersionDetector
-    : detectAllureMajor;
-  for (const candidate of candidates) {
-    const major = await versionDetector(candidate, plan.cwd, env);
-    if (task && task.stopped) {
-      return null;
-    }
-    if (major >= 3) {
-      return {
-        command: candidate.command,
-        args: [
-          ...candidate.args,
-          "watch",
-          plan.allureResultsDir,
-        ],
-      };
-    }
+  const runtime = await resolveAllureRuntime(plan.cwd, env, options);
+  if (task && task.stopped) {
+    return null;
   }
-  return null;
-}
-
-function allureCandidates(projectRoot, options = {}, env = process.env) {
-  const configured = options.allureExecutable || env.PYTEST_DSL_ALLURE;
-  const guiAllure = path.resolve(__dirname, "..", "..", "node_modules", ".bin", executableName("allure"));
-  const projectAllure = path.join(projectRoot, "node_modules", ".bin", executableName("allure"));
-  const candidates = [];
-  if (configured) {
-    candidates.push({ command: configured, args: [] });
+  if (!runtime.available) {
+    return null;
   }
-  if (fs.existsSync(guiAllure)) {
-    candidates.push({ command: guiAllure, args: [] });
-  }
-  if (fs.existsSync(projectAllure)) {
-    candidates.push({ command: projectAllure, args: [] });
-  }
-  if (isExecutableAvailable("allure", env)) {
-    candidates.push({ command: "allure", args: [] });
-  }
-  return candidates;
-}
-
-function detectAllureMajor(candidate, cwd, env) {
-  return new Promise((resolve) => {
-    const child = execFile(
-      candidate.command,
-      [...candidate.args, "--version"],
-      {
-        cwd,
-        env,
-        timeout: ALLURE_VERSION_TIMEOUT_MS,
-        windowsHide: true,
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          resolve(null);
-          return;
-        }
-        const text = `${stdout || ""}\n${stderr || ""}`;
-        const match = text.match(/(\d+)\.(\d+)\.(\d+)/);
-        resolve(match ? Number(match[1]) : null);
-      },
-    );
-    child.on("error", () => resolve(null));
-  });
+  return {
+    command: runtime.command,
+    args: [
+      ...runtime.args,
+      "watch",
+      plan.allureResultsDir,
+    ],
+  };
 }
 
 function resolvePytestSpawnTarget(plan, options = {}, env = {}) {
@@ -949,10 +895,6 @@ function isDirectory(directory) {
   } catch {
     return false;
   }
-}
-
-function executableName(name) {
-  return process.platform === "win32" ? `${name}.cmd` : name;
 }
 
 function sanitizeId(value) {

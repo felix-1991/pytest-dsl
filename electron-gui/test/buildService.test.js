@@ -84,6 +84,7 @@ function loadPackagedBuildService(root) {
   const serviceDir = path.join(root, "Resources", "app.asar", "src", "services");
   fs.mkdirSync(serviceDir, { recursive: true });
   for (const name of [
+    "allureEnvService.js",
     "buildService.js",
     "metadataStore.js",
     "pythonEnvService.js",
