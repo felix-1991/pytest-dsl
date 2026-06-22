@@ -2,20 +2,28 @@ const fs = require("node:fs");
 const http = require("node:http");
 const https = require("node:https");
 const path = require("node:path");
-const { spawn, execFile } = require("node:child_process");
+const { spawn } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 
+const {
+  isExecutableAvailable,
+  mergeEnvironment,
+  resolvePythonTarget,
+} = require("./pythonEnvService");
+const { resolveAllureRuntime } = require("./allureEnvService");
 const { buildPytestTargets } = require("./suiteService");
 
 const runningBuilds = new Map();
 const URL_PATTERN = /(https?:\/\/[^\s'"]+)/;
-const ALLURE_VERSION_TIMEOUT_MS = 3000;
 const ALLURE_REPORT_READY_TIMEOUT_MS = 1500;
 const ALLURE_REPORT_READY_INTERVAL_MS = 100;
 const ALLURE_REPORT_COMPLETION_WAIT_MS = 2500;
 const ALLURE_EXPORT_TIMEOUT_MS = 60000;
 
-function createBuildPlan(options = {}) {
+function createBuildPlan(
+  options = {},
+  env = executionEnv(options.env, options.platform),
+) {
   const projectRoot = assertProjectRoot(options.projectRoot);
   const buildId = sanitizeId(options.buildId || options.taskId || randomUUID());
   const yamlVars = normalizeYamlVars(options.yamlVars);
@@ -40,7 +48,7 @@ function createBuildPlan(options = {}) {
     taskId: buildId,
     mode: "build",
     cwd: projectRoot,
-    command: commandForPytest(options),
+    command: commandForPytest(options, env),
     args,
     displayCommand: displayBuildCommand(targets, resultsRelativeDir, yamlVars),
     buildDir,
@@ -63,13 +71,17 @@ function createBuildPlan(options = {}) {
 }
 
 async function startBuildTask(options = {}, callbacks = {}) {
-  const plan = createBuildPlan(options);
-  const env = executionEnv(options.env);
+  const env = executionEnv(options.env, options.platform);
+  const plan = createBuildPlan(options, env);
   const startedAt = Date.now();
 
   if (runningBuilds.has(plan.buildId)) {
     throw new Error(`Build task is already running: ${plan.buildId}`);
   }
+
+  const spawnTarget = options.pytestCommandOverride
+    ? options.pytestCommandOverride
+    : resolvePytestSpawnTarget(plan, options, env);
 
   prepareBuildDirectories(plan);
   writeManifest(plan, {
@@ -83,6 +95,10 @@ async function startBuildTask(options = {}, callbacks = {}) {
     reportUrl: null,
   });
 
+  let resolveCompletion;
+  const completion = new Promise((resolve) => {
+    resolveCompletion = resolve;
+  });
   const task = {
     plan,
     buildChild: null,
@@ -95,6 +111,13 @@ async function startBuildTask(options = {}, callbacks = {}) {
     reportReadyPending: false,
     reportReadyResolved: false,
     reportReadyWaiters: [],
+    buildFinished: false,
+    buildExitCode: null,
+    buildSignal: null,
+    completionSettled: false,
+    resolveCompletion,
+    startedAt,
+    callbacks,
   };
   runningBuilds.set(plan.buildId, task);
 
@@ -109,17 +132,51 @@ async function startBuildTask(options = {}, callbacks = {}) {
     allureReportDir: plan.allureReportDir,
   });
 
-  await maybeStartAllureWatch(task, options, env, callbacks);
-  const spawnTarget = options.pytestCommandOverride
-    ? options.pytestCommandOverride
-    : resolvePytestSpawnTarget(plan, options, env);
+  try {
+    await maybeStartAllureWatch(task, options, env, callbacks);
+  } catch (error) {
+    const text = `${error.message}\n`;
+    fs.appendFileSync(plan.stderrPath, text);
+    emit(callbacks, {
+      type: "stderr",
+      taskId: plan.buildId,
+      buildId: plan.buildId,
+      text,
+    });
+    task.buildFinished = true;
+    task.buildExitCode = 1;
+    settleBuildCompletion(task);
+    return completion;
+  }
 
-  const child = spawn(spawnTarget.command, spawnTarget.args, {
-    cwd: plan.cwd,
-    env,
-    windowsHide: true,
-  });
-  task.buildChild = child;
+  if (task.stopped) {
+    task.buildFinished = true;
+    settleBuildCompletion(task);
+    return completion;
+  }
+
+  let child;
+  try {
+    child = spawn(spawnTarget.command, spawnTarget.args, {
+      cwd: plan.cwd,
+      env,
+      windowsHide: true,
+    });
+    task.buildChild = child;
+  } catch (error) {
+    const text = `${error.message}\n`;
+    fs.appendFileSync(plan.stderrPath, text);
+    emit(callbacks, {
+      type: "stderr",
+      taskId: plan.buildId,
+      buildId: plan.buildId,
+      text,
+    });
+    task.buildFinished = true;
+    task.buildExitCode = 1;
+    settleBuildCompletion(task);
+    return completion;
+  }
 
   child.stdout.on("data", (chunk) => {
     const text = chunk.toString();
@@ -154,58 +211,69 @@ async function startBuildTask(options = {}, callbacks = {}) {
     });
   });
 
-  return new Promise((resolve) => {
-    child.on("close", async (exitCode, signal) => {
-      const running = runningBuilds.get(plan.buildId);
-      const stopped = Boolean(running && running.stopped);
+  child.on("close", async (exitCode, signal) => {
+    if (task.buildChild === child) {
       task.buildChild = null;
-      if (running && running.killTimer) {
-        clearTimeout(running.killTimer);
-      }
+    }
+    task.buildFinished = true;
+    task.buildExitCode = exitCode;
+    task.buildSignal = signal;
 
-      if (!stopped) {
-        await waitForReportReadyBeforeCompletion(task);
-      }
-
-      const status = stopped ? "stopped" : exitCode === 0 ? "passed" : "failed";
-      const completedAt = Date.now();
-      const result = {
-        taskId: plan.buildId,
-        buildId: plan.buildId,
-        mode: "build",
-        status,
-        exitCode,
-        signal,
-        durationMs: completedAt - startedAt,
-        reportUrl: task.reportUrl,
-        allureResultsDir: plan.allureResultsDir,
-        allureReportDir: plan.allureReportDir,
-      };
-
-      writeManifest(plan, {
-        buildId: plan.buildId,
-        status,
-        startedAt: new Date(startedAt).toISOString(),
-        completedAt: new Date(completedAt).toISOString(),
-        durationMs: result.durationMs,
-        command: plan.displayCommand,
-        source: plan.source,
-        exitCode,
-        signal,
-        allureResultsDir: plan.allureResultsDir,
-        allureReportDir: plan.allureReportDir,
-        reportUrl: task.reportUrl,
-      });
-
-      emit(callbacks, {
-        type: "build-completed",
-        ...result,
-      });
-
-      deleteBuildIfIdle(task);
-      resolve(result);
-    });
+    if (!task.stopped) {
+      await waitForReportReadyBeforeCompletion(task);
+    }
+    settleBuildCompletion(task);
   });
+
+  return completion;
+}
+
+function settleBuildCompletion(task) {
+  if (task.completionSettled || !task.buildFinished) {
+    return;
+  }
+  if (task.stopped && (task.buildChild || task.reportChild)) {
+    return;
+  }
+
+  task.completionSettled = true;
+  const completedAt = Date.now();
+  const status = task.stopped
+    ? "stopped"
+    : task.buildExitCode === 0 ? "passed" : "failed";
+  const result = {
+    taskId: task.plan.buildId,
+    buildId: task.plan.buildId,
+    mode: "build",
+    status,
+    exitCode: task.buildExitCode,
+    signal: task.buildSignal,
+    durationMs: completedAt - task.startedAt,
+    reportUrl: task.reportUrl,
+    allureResultsDir: task.plan.allureResultsDir,
+    allureReportDir: task.plan.allureReportDir,
+  };
+
+  writeManifest(task.plan, {
+    buildId: task.plan.buildId,
+    status,
+    startedAt: new Date(task.startedAt).toISOString(),
+    completedAt: new Date(completedAt).toISOString(),
+    durationMs: result.durationMs,
+    command: task.plan.displayCommand,
+    source: task.plan.source,
+    exitCode: task.buildExitCode,
+    signal: task.buildSignal,
+    allureResultsDir: task.plan.allureResultsDir,
+    allureReportDir: task.plan.allureReportDir,
+    reportUrl: task.reportUrl,
+  });
+  emit(task.callbacks, {
+    type: "build-completed",
+    ...result,
+  });
+  task.resolveCompletion(result);
+  deleteBuildIfIdle(task);
 }
 
 function stopBuildTask(buildId) {
@@ -216,25 +284,31 @@ function stopBuildTask(buildId) {
   }
 
   task.stopped = true;
-  if (task.buildChild && !task.buildChild.killed) {
-    task.buildChild.kill("SIGTERM");
-  }
-  if (task.reportChild && !task.reportChild.killed) {
-    task.reportChild.kill("SIGTERM");
-  }
-  task.killTimer = setTimeout(() => {
-    if (task.buildChild && !task.buildChild.killed) {
-      task.buildChild.kill("SIGKILL");
+  signalBuildChildren(task, "SIGTERM");
+  if (!task.killTimer) {
+    task.killTimer = setTimeout(() => {
+      signalBuildChildren(task, "SIGKILL");
+    }, 1500);
+    if (typeof task.killTimer.unref === "function") {
+      task.killTimer.unref();
     }
-    if (task.reportChild && !task.reportChild.killed) {
-      task.reportChild.kill("SIGKILL");
-    }
-  }, 1500);
-  if (typeof task.killTimer.unref === "function") {
-    task.killTimer.unref();
   }
-  runningBuilds.delete(normalized);
+  settleBuildCompletion(task);
   return { stopped: true, buildId: normalized };
+}
+
+function signalBuildChildren(task, signal) {
+  for (const child of [task.buildChild, task.reportChild]) {
+    if (isChildAlive(child)) {
+      child.kill(signal);
+    }
+  }
+}
+
+function isChildAlive(child) {
+  return Boolean(
+    child && child.exitCode === null && child.signalCode === null,
+  );
 }
 
 function hasRunningBuild(buildId) {
@@ -311,6 +385,10 @@ async function exportAllureReportFile(options = {}) {
 }
 
 async function maybeStartAllureWatch(task, options, env, callbacks) {
+  if (task.stopped) {
+    markReportReadyResolved(task);
+    return;
+  }
   if (options.enableAllureWatch === false) {
     emit(callbacks, {
       type: "report-unavailable",
@@ -324,7 +402,11 @@ async function maybeStartAllureWatch(task, options, env, callbacks) {
 
   const spawnTarget = options.allureCommandOverride
     ? options.allureCommandOverride
-    : await resolveAllureWatchSpawnTarget(task.plan, options, env);
+    : await resolveAllureWatchSpawnTarget(task.plan, options, env, task);
+  if (task.stopped) {
+    markReportReadyResolved(task);
+    return;
+  }
   if (!spawnTarget) {
     emit(callbacks, {
       type: "report-unavailable",
@@ -342,13 +424,6 @@ async function maybeStartAllureWatch(task, options, env, callbacks) {
     windowsHide: true,
   });
   task.reportChild = child;
-
-  emit(callbacks, {
-    type: "report-started",
-    taskId: task.plan.buildId,
-    buildId: task.plan.buildId,
-    command: [spawnTarget.command, ...spawnTarget.args].join(" "),
-  });
 
   const handleText = (text) => {
     task.reportBuffer += text;
@@ -371,24 +446,31 @@ async function maybeStartAllureWatch(task, options, env, callbacks) {
     markReportReadyResolved(task);
   });
   child.on("close", () => {
-    task.reportChild = null;
+    if (task.reportChild === child) {
+      task.reportChild = null;
+    }
     markReportReadyResolved(task);
+    settleBuildCompletion(task);
     deleteBuildIfIdle(task);
+  });
+
+  emit(callbacks, {
+    type: "report-started",
+    taskId: task.plan.buildId,
+    buildId: task.plan.buildId,
+    command: [spawnTarget.command, ...spawnTarget.args].join(" "),
   });
 }
 
 async function resolveAllureExportSpawnTarget(plan, options = {}, env = process.env) {
-  const candidates = allureCandidates(plan.cwd, options, env);
-  for (const candidate of candidates) {
-    const major = await detectAllureMajor(candidate, plan.cwd, env);
-    if (major >= 3) {
-      return {
-        command: candidate.command,
-        args: candidate.args,
-      };
-    }
+  const runtime = await resolveAllureRuntime(plan.cwd, env, options);
+  if (!runtime.available) {
+    return null;
   }
-  return null;
+  return {
+    command: runtime.command,
+    args: runtime.args,
+  };
 }
 
 function runAllureReportExport(spawnTarget, plan, env) {
@@ -548,93 +630,62 @@ function delay(ms) {
 function deleteBuildIfIdle(task) {
   if (
     runningBuilds.get(task.plan.buildId) === task &&
+    task.completionSettled &&
     !task.buildChild &&
     !task.reportChild
   ) {
+    if (task.killTimer) {
+      clearTimeout(task.killTimer);
+      task.killTimer = null;
+    }
     runningBuilds.delete(task.plan.buildId);
   }
 }
 
-async function resolveAllureWatchSpawnTarget(plan, options = {}, env = process.env) {
-  const candidates = allureCandidates(plan.cwd, options, env);
-  for (const candidate of candidates) {
-    const major = await detectAllureMajor(candidate, plan.cwd, env);
-    if (major >= 3) {
-      return {
-        command: candidate.command,
-        args: [
-          ...candidate.args,
-          "watch",
-          plan.allureResultsDir,
-        ],
-      };
-    }
+async function resolveAllureWatchSpawnTarget(
+  plan,
+  options = {},
+  env = process.env,
+  task = null,
+) {
+  const runtime = await resolveAllureRuntime(plan.cwd, env, options);
+  if (task && task.stopped) {
+    return null;
   }
-  return null;
-}
-
-function allureCandidates(projectRoot, options = {}, env = process.env) {
-  const configured = options.allureExecutable || env.PYTEST_DSL_ALLURE;
-  const guiAllure = path.resolve(__dirname, "..", "..", "node_modules", ".bin", executableName("allure"));
-  const projectAllure = path.join(projectRoot, "node_modules", ".bin", executableName("allure"));
-  const candidates = [];
-  if (configured) {
-    candidates.push({ command: configured, args: [] });
-  }
-  if (fs.existsSync(guiAllure)) {
-    candidates.push({ command: guiAllure, args: [] });
-  }
-  if (fs.existsSync(projectAllure)) {
-    candidates.push({ command: projectAllure, args: [] });
-  }
-  if (isExecutableAvailable("allure", env)) {
-    candidates.push({ command: "allure", args: [] });
-  }
-  return candidates;
-}
-
-function detectAllureMajor(candidate, cwd, env) {
-  return new Promise((resolve) => {
-    const child = execFile(
-      candidate.command,
-      [...candidate.args, "--version"],
-      {
-        cwd,
-        env,
-        timeout: ALLURE_VERSION_TIMEOUT_MS,
-        windowsHide: true,
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          resolve(null);
-          return;
-        }
-        const text = `${stdout || ""}\n${stderr || ""}`;
-        const match = text.match(/(\d+)\.(\d+)\.(\d+)/);
-        resolve(match ? Number(match[1]) : null);
-      },
-    );
-    child.on("error", () => resolve(null));
-  });
-}
-
-function resolvePytestSpawnTarget(plan, options = {}, env = process.env) {
-  if (isExecutableAvailable(plan.command, env)) {
-    return {
-      command: plan.command,
-      args: plan.args,
-    };
+  if (!runtime.available) {
+    return null;
   }
   return {
-    command: fallbackPythonExecutable(options),
-    args: ["-m", "pytest", ...plan.args],
+    command: runtime.command,
+    args: [
+      ...runtime.args,
+      "watch",
+      plan.allureResultsDir,
+    ],
   };
 }
 
-function commandForPytest(options = {}) {
-  return options.pytestExecutable ||
-    process.env.PYTEST_DSL_PYTEST ||
-    "pytest";
+function resolvePytestSpawnTarget(plan, options = {}, env = {}) {
+  const explicitCommand = explicitPytestCommand(options, env);
+  if (explicitCommand && isExecutableAvailable(explicitCommand, env)) {
+    return {
+      command: explicitCommand,
+      args: plan.args,
+    };
+  }
+  const target = resolvePythonTarget(plan.cwd, env, options);
+  return {
+    command: target.command,
+    args: [...target.args, "-m", "pytest", ...plan.args],
+  };
+}
+
+function commandForPytest(options = {}, env = {}) {
+  return explicitPytestCommand(options, env) || "pytest";
+}
+
+function explicitPytestCommand(options = {}, env = {}) {
+  return options.pytestExecutable || env.PYTEST_DSL_PYTEST || null;
 }
 
 function displayBuildCommand(targets, resultsDir, yamlVars) {
@@ -820,44 +871,30 @@ function assertProjectRoot(projectRoot) {
   return root;
 }
 
-function executionEnv(extraEnv) {
+function executionEnv(extraEnv, platform = process.platform) {
   const packageRoot = path.resolve(__dirname, "..", "..", "..");
-  const existingPythonPath = process.env.PYTHONPATH || "";
-  return {
-    ...process.env,
-    ...extraEnv,
+  const env = mergeEnvironment(process.env, extraEnv, platform);
+  const bufferedEnv = mergeEnvironment(env, {
     PYTHONUNBUFFERED: "1",
-    PYTHONPATH: existingPythonPath
-      ? `${packageRoot}${path.delimiter}${existingPythonPath}`
-      : packageRoot,
-  };
-}
-
-function isExecutableAvailable(command, env = process.env) {
-  if (!command || command.includes("/") || command.includes("\\")) {
-    return Boolean(command && fs.existsSync(command));
+  }, platform);
+  if (!isDirectory(path.join(packageRoot, "pytest_dsl"))) {
+    return bufferedEnv;
   }
-
-  const pathValue = env.PATH || env.Path || env.path || "";
-  const pathExts = process.platform === "win32"
-    ? (env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";")
-    : [""];
-  return pathValue.split(path.delimiter).some((directory) =>
-    pathExts.some((extension) =>
-      fs.existsSync(path.join(directory, `${command}${extension}`)),
-    ),
-  );
+  const existingPythonPath = bufferedEnv.PYTHONPATH || "";
+  const delimiter = platform === "win32" ? ";" : path.delimiter;
+  return mergeEnvironment(bufferedEnv, {
+    PYTHONPATH: existingPythonPath
+      ? `${packageRoot}${delimiter}${existingPythonPath}`
+      : packageRoot,
+  }, platform);
 }
 
-function fallbackPythonExecutable(options = {}) {
-  return options.pythonExecutable ||
-    process.env.PYTEST_DSL_PYTHON ||
-    process.env.PYTHON ||
-    "python";
-}
-
-function executableName(name) {
-  return process.platform === "win32" ? `${name}.cmd` : name;
+function isDirectory(directory) {
+  try {
+    return fs.statSync(directory).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function sanitizeId(value) {

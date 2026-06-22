@@ -891,3 +891,34 @@ test("editor exposes go-to-definition for DSL keyword calls", () => {
   assert.match(renderer, /CM6\.scrollToLine/);
   assert.match(renderer, /readonlySource/);
 });
+
+test("runtime config section exposes Python and Allure controls", () => {
+  [
+    "runtimeConfig",
+    "runtimePythonStatus",
+    "runtimePythonPath",
+    "runtimePythonSelectBtn",
+    "runtimePythonAutoBtn",
+    "runtimeAllureStatus",
+    "runtimeAllurePath",
+    "runtimeAllureSelectBtn",
+    "runtimeAllureAutoBtn",
+  ].forEach((id) => {
+    assert.match(html, new RegExp(`id="${id}"`), `missing #${id}`);
+  });
+
+  assert.match(html, /运行环境/);
+  assert.match(html, /Python/);
+  assert.match(html, /Allure 3/);
+
+  assert.match(main, /runtime:status/);
+  assert.match(main, /runtime:select/);
+  assert.match(main, /runtime:reset/);
+  assert.match(main, /getRuntimeStatus/);
+  assert.match(main, /saveRuntimeExecutable/);
+  assert.match(main, /resetRuntimeExecutable/);
+
+  assert.match(preload, /getRuntimeStatus/);
+  assert.match(preload, /selectRuntimeExecutable/);
+  assert.match(preload, /resetRuntimeExecutable/);
+});

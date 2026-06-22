@@ -3,12 +3,20 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 
+const {
+  isExecutableAvailable,
+  mergeEnvironment,
+  resolvePythonTarget,
+} = require("./pythonEnvService");
 const { buildPytestTargets } = require("./suiteService");
 
 const STRUCTURED_EVENT_PREFIX = "__PYTEST_DSL_GUI_EVENT__";
 const runningTasks = new Map();
 
-function createExecutionPlan(options) {
+function createExecutionPlan(
+  options,
+  env = executionEnv(options && options.env, options && options.platform),
+) {
   const projectRoot = assertProjectRoot(options.projectRoot);
   const taskId = sanitizeTaskId(options.taskId || randomUUID());
   const mode = normalizeMode(options.mode);
@@ -17,7 +25,7 @@ function createExecutionPlan(options) {
     const selectedSuiteIds = normalizeSelectedSuiteIds(options.selectedSuiteIds);
     const selectedFiles = options.selectedFiles || null;
     const targets = buildPytestTargets(projectRoot, selectedSuiteIds, selectedFiles);
-    const command = commandForMode(mode, options);
+    const command = commandForMode(mode, options, env);
     const args = [...targets, ...yamlArgs(yamlVars)];
     return {
       taskId,
@@ -44,7 +52,7 @@ function createExecutionPlan(options) {
     ...options,
     selection: source.kind === "selection" ? options.selection : null,
   });
-  const command = commandForMode(mode, options);
+  const command = commandForMode(mode, options, env);
 
   const args = commandArgs(mode, target.relativePath, yamlVars, source);
 
@@ -63,33 +71,35 @@ function createExecutionPlan(options) {
 }
 
 function startExecutionTask(options, callbacks = {}) {
-  const plan = createExecutionPlan(options);
-  const env = executionEnv(options.env);
-  const spawnTarget = options.commandOverride
-    ? options.commandOverride
-    : resolveSpawnTarget(plan, options, env);
-  const command = spawnTarget.command;
-  const args = spawnTarget.args;
-  const startedAt = Date.now();
-
-  if (runningTasks.has(plan.taskId)) {
-    throw new Error(`Execution task is already running: ${plan.taskId}`);
+  const taskId = sanitizeTaskId(options.taskId || randomUUID());
+  if (runningTasks.has(taskId)) {
+    throw new Error(`Execution task is already running: ${taskId}`);
   }
 
-  emit(callbacks, {
-    type: "started",
-    taskId: plan.taskId,
-    mode: plan.mode,
-    command: plan.displayCommand,
-    source: plan.source,
-  });
+  const reservation = { taskId, reserved: true };
+  runningTasks.set(taskId, reservation);
+  const env = executionEnv(options.env, options.platform);
+  let plan = null;
+  let child;
+  try {
+    plan = createExecutionPlan({ ...options, taskId }, env);
+    const spawnTarget = options.commandOverride
+      ? options.commandOverride
+      : resolveSpawnTarget(plan, options, env);
+    child = spawn(spawnTarget.command, spawnTarget.args, {
+      cwd: plan.cwd,
+      env,
+      windowsHide: true,
+    });
+  } catch (error) {
+    if (runningTasks.get(taskId) === reservation) {
+      runningTasks.delete(taskId);
+    }
+    cleanupTaskDir(plan && plan.cleanupDir);
+    throw error;
+  }
 
-  const child = spawn(command, args, {
-    cwd: plan.cwd,
-    env,
-    windowsHide: true,
-  });
-
+  const startedAt = Date.now();
   const task = {
     child,
     plan,
@@ -119,20 +129,21 @@ function startExecutionTask(options, callbacks = {}) {
     });
   });
 
-  return new Promise((resolve) => {
+  const completion = new Promise((resolve) => {
     child.on("close", (exitCode, signal) => {
-      const running = runningTasks.get(plan.taskId);
-      const stopped = Boolean(running && running.stopped);
-      if (running && running.killTimer) {
-        clearTimeout(running.killTimer);
+      flushStdoutBuffer(task, callbacks);
+      if (task.killTimer) {
+        clearTimeout(task.killTimer);
       }
-      runningTasks.delete(plan.taskId);
+      if (runningTasks.get(plan.taskId) === task) {
+        runningTasks.delete(plan.taskId);
+      }
       cleanupTaskDir(plan.cleanupDir);
 
       const result = {
         taskId: plan.taskId,
         mode: plan.mode,
-        status: stopped ? "stopped" : exitCode === 0 ? "passed" : "failed",
+        status: task.stopped ? "stopped" : exitCode === 0 ? "passed" : "failed",
         exitCode,
         signal,
         durationMs: Date.now() - startedAt,
@@ -144,6 +155,15 @@ function startExecutionTask(options, callbacks = {}) {
       resolve(result);
     });
   });
+
+  emit(callbacks, {
+    type: "started",
+    taskId: plan.taskId,
+    mode: plan.mode,
+    command: plan.displayCommand,
+    source: plan.source,
+  });
+  return completion;
 }
 
 function sendExecutionCommand(taskId, command) {
@@ -318,20 +338,34 @@ function commandArgs(mode, relativePath, yamlVars, source) {
   return [relativePath, ...yamlArgs(yamlVars)];
 }
 
-function commandForMode(mode, options = {}) {
+function commandForMode(mode, options = {}, env = {}) {
+  return explicitCommandForMode(mode, options, env) || defaultCommandForMode(mode);
+}
+
+function explicitCommandForMode(mode, options = {}, env = {}) {
   if (mode === "syntax" || mode === "debug") {
     return options.workbenchExecutable ||
-      process.env.PYTEST_DSL_WORKBENCH ||
-      "pytest-dsl-workbench";
+      env.PYTEST_DSL_WORKBENCH ||
+      null;
   }
   if (mode === "suite") {
     return options.pytestExecutable ||
-      process.env.PYTEST_DSL_PYTEST ||
-      "pytest";
+      env.PYTEST_DSL_PYTEST ||
+      null;
   }
   return options.pytestExecutable ||
-    process.env.PYTEST_DSL_CLI ||
-    "pytest-dsl";
+    env.PYTEST_DSL_CLI ||
+    null;
+}
+
+function defaultCommandForMode(mode) {
+  if (mode === "syntax" || mode === "debug") {
+    return "pytest-dsl-workbench";
+  }
+  if (mode === "suite") {
+    return "pytest";
+  }
+  return "pytest-dsl";
 }
 
 function displayCommand(mode, source, yamlVars) {
@@ -359,6 +393,15 @@ function handleStdoutChunk(task, text, callbacks) {
   task.stdoutBuffer = lines.pop() || "";
 
   lines.forEach((line) => handleStdoutLine(task, line, callbacks));
+}
+
+function flushStdoutBuffer(task, callbacks) {
+  if (!task.stdoutBuffer) {
+    return;
+  }
+  const tail = task.stdoutBuffer;
+  task.stdoutBuffer = "";
+  handleStdoutLine(task, tail, callbacks);
 }
 
 function handleStdoutLine(task, line, callbacks) {
@@ -422,68 +465,56 @@ function mapSourceLine(source, line) {
   return line;
 }
 
-function resolveSpawnTarget(plan, options = {}, env = process.env) {
-  if (isExecutableAvailable(plan.command, env)) {
+function resolveSpawnTarget(plan, options = {}, env = {}) {
+  const explicitCommand = explicitCommandForMode(plan.mode, options, env);
+  if (explicitCommand && isExecutableAvailable(explicitCommand, env)) {
     return {
-      command: plan.command,
+      command: explicitCommand,
       args: plan.args,
     };
   }
 
-  if (plan.mode === "syntax" || plan.mode === "debug") {
-    return {
-      command: fallbackPythonExecutable(options),
-      args: ["-m", "pytest_dsl.workbench.runner", ...plan.args],
-    };
-  }
-
-  if (plan.mode === "suite") {
-    return {
-      command: fallbackPythonExecutable(options),
-      args: ["-m", "pytest", ...plan.args],
-    };
-  }
-
+  const target = resolvePythonTarget(plan.cwd, env, options);
   return {
-    command: fallbackPythonExecutable(options),
-    args: ["-m", "pytest_dsl.cli", ...plan.args],
+    command: target.command,
+    args: [...target.args, "-m", pythonModuleForMode(plan.mode), ...plan.args],
   };
 }
 
-function isExecutableAvailable(command, env = process.env) {
-  if (!command || command.includes("/") || command.includes("\\")) {
-    return Boolean(command && fs.existsSync(command));
+function pythonModuleForMode(mode) {
+  if (mode === "syntax" || mode === "debug") {
+    return "pytest_dsl.workbench.runner";
   }
-
-  const pathValue = env.PATH || env.Path || env.path || "";
-  const pathExts = process.platform === "win32"
-    ? (env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";")
-    : [""];
-  return pathValue.split(path.delimiter).some((directory) =>
-    pathExts.some((extension) =>
-      fs.existsSync(path.join(directory, `${command}${extension}`)),
-    ),
-  );
+  if (mode === "suite") {
+    return "pytest";
+  }
+  return "pytest_dsl.cli";
 }
 
-function fallbackPythonExecutable(options = {}) {
-  return options.pythonExecutable ||
-    process.env.PYTEST_DSL_PYTHON ||
-    process.env.PYTHON ||
-    "python";
-}
-
-function executionEnv(extraEnv) {
+function executionEnv(extraEnv, platform = process.platform) {
   const packageRoot = path.resolve(__dirname, "..", "..", "..");
-  const existingPythonPath = process.env.PYTHONPATH || "";
-  return {
-    ...process.env,
-    ...extraEnv,
+  const env = mergeEnvironment(process.env, extraEnv, platform);
+  const bufferedEnv = mergeEnvironment(env, {
     PYTHONUNBUFFERED: "1",
+  }, platform);
+  if (!isDirectory(path.join(packageRoot, "pytest_dsl"))) {
+    return bufferedEnv;
+  }
+  const existingPythonPath = bufferedEnv.PYTHONPATH || "";
+  const delimiter = platform === "win32" ? ";" : path.delimiter;
+  return mergeEnvironment(bufferedEnv, {
     PYTHONPATH: existingPythonPath
-      ? `${packageRoot}${path.delimiter}${existingPythonPath}`
+      ? `${packageRoot}${delimiter}${existingPythonPath}`
       : packageRoot,
-  };
+  }, platform);
+}
+
+function isDirectory(directory) {
+  try {
+    return fs.statSync(directory).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function sanitizeTaskId(taskId) {

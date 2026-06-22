@@ -203,6 +203,10 @@ npm start --prefix electron-gui
 
 在 Studio 中打开 `examples/gui_validation`，选择 `config/api.yaml`，再打开 `tests/api_quickstart.dsl`。构建页的内嵌实时报告需要本机可用的 Allure 3 CLI。
 
+#### 项目运行环境与外部依赖
+
+打包版 Studio 不会内置 Python、pytest-dsl 或 Allure。项目优先使用根目录 `.venv`/`venv` 中已安装 pytest-dsl 与测试依赖的解释器；也可以在顶部”配置 → 运行环境”中为当前项目选择 Python。Allure 3 是外部依赖，用于实时报告和 HTML 报告导出，可在同一区域选择其可执行文件。
+
 更完整的项目说明见 [`examples/gui_validation/README.md`](examples/gui_validation/README.md)。
 
 ## 核心能力

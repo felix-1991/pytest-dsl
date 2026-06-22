@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
 
-const { resolvePythonCommands } = require("./pythonEnvService");
+const { resolvePythonTargets } = require("./pythonEnvService");
 
 const PYTHON_TIMEOUT_MS = 15000;
 const PYTHON_MAX_BUFFER = 10 * 1024 * 1024;
@@ -305,13 +305,20 @@ function parseResourceParameters(rawParameters) {
 
 function runPythonDefinitionQuery(projectRoot, keywordName) {
   return new Promise((resolve, reject) => {
-    const commands = resolvePythonCommands(projectRoot, process.env);
+    const targets = resolvePythonTargets(projectRoot, process.env);
     const envs = pythonQueryEnvs();
 
-    const tryCommand = (commandIndex, envIndex = 0) => {
+    const tryTarget = (targetIndex, envIndex = 0) => {
+      const target = targets[targetIndex];
       execFile(
-        commands[commandIndex],
-        ["-c", PYTHON_DEFINITION_SCRIPT, projectRoot, keywordName],
+        target.command,
+        [
+          ...target.args,
+          "-c",
+          PYTHON_DEFINITION_SCRIPT,
+          projectRoot,
+          keywordName,
+        ],
         {
           cwd: projectRoot,
           env: envs[envIndex],
@@ -319,12 +326,12 @@ function runPythonDefinitionQuery(projectRoot, keywordName) {
           maxBuffer: PYTHON_MAX_BUFFER,
         },
         (error, stdout, stderr) => {
-          if (error && error.code === "ENOENT" && commandIndex + 1 < commands.length) {
-            tryCommand(commandIndex + 1, envIndex);
+          if (error && error.code === "ENOENT" && targetIndex + 1 < targets.length) {
+            tryTarget(targetIndex + 1, envIndex);
             return;
           }
           if (error && shouldRetryWithDevPythonPath(stderr) && envIndex + 1 < envs.length) {
-            tryCommand(0, envIndex + 1);
+            tryTarget(0, envIndex + 1);
             return;
           }
           if (error) {
@@ -343,12 +350,16 @@ function runPythonDefinitionQuery(projectRoot, keywordName) {
       );
     };
 
-    tryCommand(0, 0);
+    tryTarget(0, 0);
   });
 }
 
 function pythonQueryEnvs() {
-  return [process.env, devPythonPathEnv()];
+  const envs = [process.env];
+  if (isDirectory(path.join(REPO_ROOT, "pytest_dsl"))) {
+    envs.push(devPythonPathEnv());
+  }
+  return envs;
 }
 
 function devPythonPathEnv() {
@@ -357,6 +368,14 @@ function devPythonPathEnv() {
     ...process.env,
     PYTHONPATH: existing ? `${REPO_ROOT}${path.delimiter}${existing}` : REPO_ROOT,
   };
+}
+
+function isDirectory(directory) {
+  try {
+    return fs.statSync(directory).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function shouldRetryWithDevPythonPath(stderr) {

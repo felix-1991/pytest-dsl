@@ -189,3 +189,18 @@ test("github workflow packages electron gui for macos windows x64 windows arm64 
     ),
   );
 });
+
+test("packaged app documents that runtime prerequisites are external", () => {
+  const readme = fs.readFileSync(path.join(repoRoot, "README.md"), "utf8");
+  const exampleReadme = fs.readFileSync(
+    path.join(repoRoot, "examples", "gui_validation", "README.md"),
+    "utf8",
+  );
+
+  assert.match(readme, /项目.*\.venv/);
+  assert.match(readme, /运行环境.*Python/);
+  assert.match(readme, /Allure 3.*外部/);
+
+  assert.match(exampleReadme, /配置.*运行环境/);
+  assert.match(exampleReadme, /不会内置 Python 或 Allure/);
+});
