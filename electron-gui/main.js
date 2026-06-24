@@ -37,6 +37,7 @@ const {
 } = require("./src/services/runtimeConfigService");
 
 const DEFAULT_PROJECT_ROOT = path.resolve(__dirname, "..");
+const PYTHON_DIRECTORY_SELECTION_MODE = "python-directory";
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -164,7 +165,8 @@ function registerIpc() {
   ipcMain.handle("runtime:select", async (event, options) => {
     const result = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
       title: options.kind === "allure" ? "选择 Allure 3 可执行文件" : "选择 Python 解释器",
-      properties: ["openFile"],
+      defaultPath: options.projectRoot,
+      properties: runtimeDialogProperties(options.kind, options.selectionMode),
     });
     if (result.canceled || result.filePaths.length === 0) return { canceled: true };
     saveRuntimeExecutable(options.projectRoot, options.kind, result.filePaths[0]);
@@ -174,6 +176,16 @@ function registerIpc() {
     resetRuntimeExecutable(options.projectRoot, options.kind);
     return getRuntimeStatus({ projectRoot: options.projectRoot });
   });
+}
+
+function runtimeDialogProperties(kind, selectionMode) {
+  if (kind !== "python") {
+    return ["openFile"];
+  }
+  if (selectionMode === PYTHON_DIRECTORY_SELECTION_MODE || !selectionMode) {
+    return ["openDirectory", "showHiddenFiles"];
+  }
+  return ["openDirectory", "showHiddenFiles"];
 }
 
 app.whenReady().then(() => {

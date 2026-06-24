@@ -67,6 +67,26 @@ test("saveRuntimeExecutable persists the path", () => {
   assert.equal(updated.runtime.allureExecutable, allure);
 });
 
+test("saveRuntimeExecutable resolves a Python virtualenv directory", () => {
+  const root = makeTempProject();
+  const python = writeExecutable(path.join(root, ".venv", "bin", "python"));
+
+  saveRuntimeExecutable(root, "python", path.join(root, ".venv"));
+
+  const metadata = readMetadata(root);
+  assert.equal(metadata.runtime.pythonExecutable, python);
+});
+
+test("saveRuntimeExecutable resolves a Python project directory with a virtualenv", () => {
+  const root = makeTempProject();
+  const python = writeExecutable(path.join(root, "venv", "bin", "python"));
+
+  saveRuntimeExecutable(root, "python", root);
+
+  const metadata = readMetadata(root);
+  assert.equal(metadata.runtime.pythonExecutable, python);
+});
+
 test("resetRuntimeExecutable clears the saved path", () => {
   const root = makeTempProject();
   const python = writeExecutable(path.join(root, "python"));
@@ -125,6 +145,40 @@ test("getRuntimeStatus reports missing dependencies as python-dependency-missing
   assert.equal(result.python.reason, "python-dependency-missing");
 });
 
+test("getRuntimeStatus includes actionable Python probe failure details", async () => {
+  const root = makeTempProject();
+  const python = writeExecutable(projectPython(root));
+
+  const result = await getRuntimeStatus({
+    projectRoot: root,
+    env: { PATH: "" },
+    platform: "linux",
+    pythonDependencyProbe: () => ({
+      status: "error",
+      detail: "Python was terminated by signal SIGKILL.",
+      signal: "SIGKILL",
+    }),
+    allureRuntimeProbe: () => ({
+      available: false,
+      command: null,
+      args: [],
+      source: null,
+      version: null,
+      reason: "allure-not-found",
+      message: "Allure 3 was not found",
+    }),
+  });
+
+  assert.equal(result.python.available, false);
+  assert.equal(result.python.reason, "python-probe-failed");
+  assert.match(result.python.message, /SIGKILL/);
+  assert.match(result.python.message, new RegExp(python.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(result.python.detail, /Command:/);
+  assert.match(result.python.detail, /project virtualenv/);
+  assert.match(result.python.action, /Rebuild the project virtualenv/);
+  assert.equal(result.python.checked[0].command, python);
+});
+
 test("getRuntimeStatus reports available python when probe succeeds", async () => {
   const root = makeTempProject();
   const python = writeExecutable(projectPython(root));
@@ -146,6 +200,110 @@ test("getRuntimeStatus reports available python when probe succeeds", async () =
   });
   assert.equal(result.python.available, true);
   assert.equal(result.python.reason, null);
+  assert.equal(result.python.source, "project-venv");
+});
+
+test("getRuntimeStatus tries later project venv candidates when the first probe fails", async () => {
+  const root = makeTempProject();
+  const dotVenvPython = writeExecutable(projectPython(root));
+  const venvPython = writeExecutable(path.join(root, "venv", "bin", "python"));
+  const probed = [];
+
+  const result = await getRuntimeStatus({
+    projectRoot: root,
+    env: { PATH: "" },
+    platform: "linux",
+    pythonDependencyProbe: (target) => {
+      probed.push(target.command);
+      if (target.command === dotVenvPython) {
+        return { status: "missing", detail: "pytest_dsl" };
+      }
+      return { status: "ok", executable: target.command };
+    },
+    allureRuntimeProbe: () => ({
+      available: false,
+      command: null,
+      args: [],
+      source: null,
+      version: null,
+      reason: "allure-not-found",
+      message: "Allure 3 was not found",
+    }),
+  });
+
+  assert.equal(result.python.available, true);
+  assert.equal(result.python.command, venvPython);
+  assert.equal(result.python.source, "project-venv");
+  assert.deepEqual(probed, [dotVenvPython, venvPython]);
+  assert.equal(result.python.checked[0].probeStatus, "missing");
+  assert.equal(result.python.checked[1].probeStatus, "ok");
+});
+
+test("getRuntimeStatus tries later PATH candidates when the first probe lacks dependencies", async () => {
+  const root = makeTempProject();
+  const binOne = path.join(root, "bin-one");
+  const binTwo = path.join(root, "bin-two");
+  const systemPython = writeExecutable(path.join(binOne, "python3"));
+  const pyenvPython = writeExecutable(path.join(binTwo, "python"));
+  const probed = [];
+
+  const result = await getRuntimeStatus({
+    projectRoot: root,
+    env: { PATH: `${binOne}${path.delimiter}${binTwo}` },
+    platform: "linux",
+    pythonDependencyProbe: (target) => {
+      probed.push(target.command);
+      if (target.command === systemPython) {
+        return { status: "missing", detail: "pytest_dsl" };
+      }
+      return { status: "ok", executable: target.command };
+    },
+    allureRuntimeProbe: () => ({
+      available: false,
+      command: null,
+      args: [],
+      source: null,
+      version: null,
+      reason: "allure-not-found",
+      message: "Allure 3 was not found",
+    }),
+  });
+
+  assert.equal(result.python.available, true);
+  assert.equal(result.python.command, pyenvPython);
+  assert.equal(result.python.source, "path");
+  assert.deepEqual(probed, [systemPython, pyenvPython]);
+  assert.equal(result.python.checked[0].probeStatus, "missing");
+  assert.equal(result.python.checked[1].probeStatus, "ok");
+});
+
+test("getRuntimeStatus prefers project virtualenv over environment python", async () => {
+  const root = makeTempProject();
+  const venvPython = writeExecutable(projectPython(root));
+  const envPython = writeExecutable(path.join(root, "env", "python"));
+
+  const result = await getRuntimeStatus({
+    projectRoot: root,
+    env: {
+      PATH: "",
+      PYTEST_DSL_PYTHON: envPython,
+      PYTHON: envPython,
+    },
+    platform: "linux",
+    pythonDependencyProbe: (target) => ({ status: "ok", executable: target.command }),
+    allureRuntimeProbe: () => ({
+      available: false,
+      command: null,
+      args: [],
+      source: null,
+      version: null,
+      reason: "allure-not-found",
+      message: "Allure 3 was not found",
+    }),
+  });
+
+  assert.equal(result.python.available, true);
+  assert.equal(result.python.command, venvPython);
   assert.equal(result.python.source, "project-venv");
 });
 

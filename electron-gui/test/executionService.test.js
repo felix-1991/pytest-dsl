@@ -33,6 +33,13 @@ function writeNodeCommand(root, name) {
   return target;
 }
 
+function writeExecutable(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, "utf8");
+  fs.chmodSync(filePath, 0o755);
+  return filePath;
+}
+
 function writePythonRuntimeModules(root) {
   writeFile(root, "pytest_dsl/__init__.py", "");
   writeFile(root, "pytest_dsl/cli.py", [
@@ -67,6 +74,7 @@ function loadPackagedExecutionService(root) {
     "executionService.js",
     "metadataStore.js",
     "pythonEnvService.js",
+    "runtimePathService.js",
     "suiteService.js",
   ]) {
     fs.copyFileSync(path.join(sourceDir, name), path.join(serviceDir, name));
@@ -677,6 +685,38 @@ test("Python resolution failures clean temporary execution files", async () => {
     false,
   );
   assert.equal(hasRunningTask(taskId), false);
+});
+
+test("Python runtime preflight failures stop file and suite execution before spawning", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
+  const python = writeExecutable(path.join(root, ".venv", "bin", "python"), [
+    "#!/bin/sh",
+    "echo \"ModuleNotFoundError: No module named 'pytest_dsl'\" >&2",
+    "exit 1",
+    "",
+  ].join("\n"));
+
+  for (const mode of ["run", "suite"]) {
+    const taskId = `preflight-${mode}`;
+    const options = {
+      taskId,
+      projectRoot: root,
+      mode,
+      pythonExecutable: python,
+      env: { PATH: "" },
+    };
+    if (mode !== "suite") {
+      options.relativePath = "tests/case.dsl";
+      options.content = "[打印], 内容: \"ok\"\n";
+    }
+
+    await assert.rejects(
+      async () => startExecutionTask(options),
+      /Python 3\.9.*pip install pytest-dsl/,
+    );
+    assert.equal(hasRunningTask(taskId), false);
+  }
 });
 
 test("packaged execution preserves external PYTHONPATH without adding Resources", async () => {

@@ -10,6 +10,7 @@ const {
   mergeEnvironment,
   resolvePythonCommand,
   resolvePythonCommands,
+  resolvePythonRuntimeTarget,
   resolvePythonTarget,
   resolvePythonTargets,
 } = require("../src/services/pythonEnvService");
@@ -23,6 +24,13 @@ function makeTempProject(t) {
 function writeExecutable(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, "test executable fixture\n", "utf8");
+  fs.chmodSync(filePath, 0o755);
+  return filePath;
+}
+
+function writeScript(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, "utf8");
   fs.chmodSync(filePath, 0o755);
   return filePath;
 }
@@ -163,7 +171,7 @@ test("Windows configured Python rejects extensions outside PATHEXT", (t) => {
   );
 });
 
-test("environment candidates precede the project virtualenv", (t) => {
+test("project virtualenv precedes environment candidates during auto detection", (t) => {
   const root = makeTempProject(t);
   const pytestDslPython = writeExecutable(path.join(root, "env", "pytest-dsl-python"));
   const python = writeExecutable(path.join(root, "env", "python"));
@@ -176,9 +184,9 @@ test("environment candidates precede the project virtualenv", (t) => {
       PATH: "",
     }, { platform: "linux", skipCommonPaths: true }).slice(0, 3),
     [
+      { command: venvPython, args: [], source: "project-venv", configured: false },
       { command: pytestDslPython, args: [], source: "environment", configured: false },
       { command: python, args: [], source: "environment", configured: false },
-      { command: venvPython, args: [], source: "project-venv", configured: false },
     ],
   );
 });
@@ -196,6 +204,25 @@ test("project .venv precedes venv and resolves with an empty PATH", (t) => {
   });
 });
 
+test("project .venv and venv are both discovered before environment candidates", (t) => {
+  const root = makeTempProject(t);
+  const dotVenvPython = writeExecutable(projectPython(root, ".venv"));
+  const venvPython = writeExecutable(projectPython(root, "venv"));
+  const envPython = writeExecutable(path.join(root, "env", "python"));
+
+  assert.deepEqual(
+    resolvePythonTargets(root, {
+      PYTEST_DSL_PYTHON: envPython,
+      PATH: "",
+    }, { platform: "linux", skipCommonPaths: true }).slice(0, 3),
+    [
+      { command: dotVenvPython, args: [], source: "project-venv", configured: false },
+      { command: venvPython, args: [], source: "project-venv", configured: false },
+      { command: envPython, args: [], source: "environment", configured: false },
+    ],
+  );
+});
+
 test("project venv is discovered when .venv is absent and PATH is empty", (t) => {
   const root = makeTempProject(t);
   const venvPython = writeExecutable(projectPython(root, "venv"));
@@ -204,6 +231,59 @@ test("project venv is discovered when .venv is absent and PATH is empty", (t) =>
     resolvePythonTarget(root, { PATH: "" }, { platform: "linux", skipCommonPaths: true }).command,
     venvPython,
   );
+});
+
+test("runtime preflight requires Python 3.9 or newer", (t) => {
+  const root = makeTempProject(t);
+  writeScript(projectPython(root), [
+    "#!/bin/sh",
+    "echo 'Python 3.9 or newer is required; current Python is 3.8.18' >&2",
+    "exit 1",
+    "",
+  ].join("\n"));
+
+  assert.throws(
+    () => resolvePythonRuntimeTarget(root, { PATH: "" }, { platform: "linux", skipCommonPaths: true }),
+    /Python 3\.9.*pip install pytest-dsl/,
+  );
+});
+
+test("runtime preflight retries a later candidate when the first lacks pytest-dsl", (t) => {
+  const root = makeTempProject(t);
+  const badPython = writeScript(path.join(root, "bin-one", "python3"), [
+    "#!/bin/sh",
+    "echo \"ModuleNotFoundError: No module named 'pytest_dsl'\" >&2",
+    "exit 1",
+    "",
+  ].join("\n"));
+  const goodPython = writeScript(path.join(root, "bin-two", "python"), [
+    "#!/bin/sh",
+    "echo '/ok/python'",
+    "",
+  ].join("\n"));
+
+  const target = resolvePythonRuntimeTarget(root, {
+    PATH: `${path.dirname(badPython)}${path.delimiter}${path.dirname(goodPython)}`,
+  }, { platform: "linux", skipCommonPaths: true, skipShellPathDiscovery: true });
+
+  assert.equal(target.command, goodPython);
+});
+
+test("POSIX runtime detection can use login shell PATH without fixed install paths", (t) => {
+  const root = makeTempProject(t);
+  const shellBin = path.join(root, "shell-bin");
+  const shellPython = writeExecutable(path.join(shellBin, "python3"));
+
+  assert.deepEqual(resolvePythonTarget(root, { PATH: "" }, {
+    platform: "linux",
+    skipCommonPaths: true,
+    shellPathProvider: () => shellBin,
+  }), {
+    command: shellPython,
+    args: [],
+    source: "path",
+    configured: false,
+  });
 });
 
 test("POSIX fallback order is python3 then python", (t) => {
@@ -230,15 +310,15 @@ test("Windows resolution selects py with -3 through mixed-case Path and PathExt"
   fs.mkdirSync(bin, { recursive: true });
   fs.writeFileSync(path.join(bin, "py.CUSTOM"), "windows launcher", "utf8");
 
-  assert.deepEqual(resolvePythonTarget(root, {
+  const target = resolvePythonTarget(root, {
     Path: bin,
     PathExt: ".CuStOm",
-  }, { platform: "win32", skipCommonPaths: true }), {
-    command: "py",
-    args: ["-3"],
-    source: "path",
-    configured: false,
-  });
+  }, { platform: "win32", skipCommonPaths: true });
+
+  assert.equal(target.command.toLowerCase(), path.join(bin, "py.custom").toLowerCase());
+  assert.deepEqual(target.args, ["-3"]);
+  assert.equal(target.source, "path");
+  assert.equal(target.configured, false);
 });
 
 test("duplicate normalized candidates are removed without changing order", (t) => {
@@ -273,22 +353,26 @@ test("Windows duplicate candidates normalize separators and case", (t) => {
   ]);
 });
 
-test("legacy command resolvers keep exclusive env overrides and python-first fallback", (t) => {
+test("legacy command resolvers prefer project virtualenv before env and keep python-first fallback", (t) => {
   const root = makeTempProject(t);
+  const venvPython = writeExecutable(projectPython(root));
   const env = { PYTEST_DSL_PYTHON: "/opt/custom/python", PATH: "" };
   const options = { platform: "linux", skipCommonPaths: true };
 
-  assert.equal(resolvePythonCommand(root, env, options), "/opt/custom/python");
-  assert.deepEqual(resolvePythonCommands(root, env, options), ["/opt/custom/python"]);
+  assert.equal(resolvePythonCommand(root, env, options), venvPython);
+  assert.deepEqual(resolvePythonCommands(root, env, options), [venvPython, "/opt/custom/python"]);
   assert.deepEqual(
     resolvePythonCommand(root, env, { ...options, all: true }),
-    ["/opt/custom/python"],
+    [venvPython, "/opt/custom/python"],
   );
-  assert.deepEqual(resolvePythonCommands(root, { PATH: "" }, options), [
+
+  const noVenvRoot = makeTempProject(t);
+  assert.deepEqual(resolvePythonCommands(noVenvRoot, env, options), ["/opt/custom/python"]);
+  assert.deepEqual(resolvePythonCommands(noVenvRoot, { PATH: "" }, options), [
     "python",
     "python3",
   ]);
-  assert.deepEqual(resolvePythonCommands(root, { PATH: "" }, { platform: "win32", skipCommonPaths: true }), [
+  assert.deepEqual(resolvePythonCommands(noVenvRoot, { PATH: "" }, { platform: "win32", skipCommonPaths: true }), [
     "python",
     "python3",
   ]);

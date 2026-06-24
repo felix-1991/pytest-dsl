@@ -7,10 +7,32 @@ const html = fs.readFileSync(
   path.resolve(__dirname, "../src/index.html"),
   "utf8",
 );
-const renderer = fs.readFileSync(
+const rendererEntry = fs.readFileSync(
   path.resolve(__dirname, "../src/renderer.js"),
   "utf8",
 );
+const rendererModules = [
+  "../src/renderer/buildReportController.js",
+  "../src/renderer/commandController.js",
+  "../src/renderer/configController.js",
+  "../src/renderer/consoleController.js",
+  "../src/renderer/executionController.js",
+  "../src/renderer/fileController.js",
+  "../src/renderer/keywordController.js",
+  "../src/renderer/layoutController.js",
+  "../src/renderer/projectController.js",
+  "../src/renderer/projectTreeController.js",
+  "../src/renderer/remoteStatusController.js",
+  "../src/renderer/runtimeController.js",
+  "../src/renderer/state.js",
+  "../src/renderer/suiteTreeController.js",
+  "../src/renderer/treeVirtualizer.js",
+  "../src/renderer/utils.js",
+  "../src/renderer/workspaceController.js",
+]
+  .map((modulePath) => fs.readFileSync(path.resolve(__dirname, modulePath), "utf8"))
+  .join("\n");
+const renderer = [rendererEntry, rendererModules].join("\n");
 const main = fs.readFileSync(
   path.resolve(__dirname, "../main.js"),
   "utf8",
@@ -27,8 +49,13 @@ const css = fs.readFileSync(
   path.resolve(__dirname, "../src/styles.css"),
   "utf8",
 );
+const checkAppFiles = fs.readFileSync(
+  path.resolve(__dirname, "../scripts/check-app-files.js"),
+  "utf8",
+);
 
 test("renderer keeps the demo-aligned workbench shell", () => {
+  assert.match(html, /<script type="module" src="\.\/renderer\.js"><\/script>/);
   [
     "suitePicker",
     "suiteTrigger",
@@ -66,6 +93,14 @@ test("renderer keeps the demo-aligned workbench shell", () => {
   assert.doesNotMatch(html, /ACP Agent/);
   assert.doesNotMatch(html, /class="agent-chatbox"/);
   assert.doesNotMatch(html, /class="agent-chip"/);
+});
+
+test("app file check validates the split renderer module graph", () => {
+  assert.match(checkAppFiles, /require\("esbuild"\)/);
+  assert.match(checkAppFiles, /entryPoints:\s*\[path\.join\(root,\s*"src",\s*"renderer\.js"\)\]/);
+  assert.match(checkAppFiles, /bundle:\s*true/);
+  assert.match(checkAppFiles, /platform:\s*"browser"/);
+  assert.match(checkAppFiles, /write:\s*false/);
 });
 
 test("suite runner uses multi-select suite controls", () => {
@@ -231,6 +266,16 @@ test("build downloads are available after a completed build", () => {
   assert.match(renderer, /const hasCompletedBuild = Boolean\(state\.snapshot && state\.currentBuildId && state\.currentBuildStatus && state\.currentBuildStatus !== "running"\)/);
   assert.match(renderer, /buildDownloadReportBtn\.disabled = !hasCompletedBuild \|\| isAnyTaskRunning \|\| !state\.currentBuildResultsDir/);
   assert.match(renderer, /buildDownloadLogsBtn\.disabled = !hasCompletedBuild \|\| isAnyTaskRunning/);
+});
+
+test("build can run without Allure but report actions explain the missing runtime", () => {
+  assert.match(renderer, /function isAllureRuntimeAvailable/);
+  assert.match(renderer, /allureRuntimeUnavailableMessage/);
+  assert.match(renderer, /未检测到 Allure 3，构建会继续运行 pytest，但不会展示或下载 Allure 报告/);
+  assert.match(renderer, /未生成 Allure 报告/);
+  assert.match(renderer, /安装 Allure 3 后再下载报告/);
+  assert.match(renderer, /buildOpenReportBtn\.disabled = !hasCompletedBuild && !state\.currentBuildReportUrl/);
+  assert.match(renderer, /buildDownloadReportBtn\.disabled = !hasCompletedBuild \|\| isAnyTaskRunning \|\| !state\.currentBuildResultsDir/);
 });
 
 test("build report iframe reloads even when consecutive builds reuse the same Allure URL", () => {
@@ -897,7 +942,7 @@ test("runtime config section exposes Python and Allure controls", () => {
     "runtimeConfig",
     "runtimePythonStatus",
     "runtimePythonPath",
-    "runtimePythonSelectBtn",
+    "runtimePythonSelectDirBtn",
     "runtimePythonAutoBtn",
     "runtimeAllureStatus",
     "runtimeAllurePath",
@@ -910,6 +955,9 @@ test("runtime config section exposes Python and Allure controls", () => {
   assert.match(html, /运行环境/);
   assert.match(html, /Python/);
   assert.match(html, /Allure 3/);
+  assert.match(html, /选择项目目录、\.venv\/venv 目录，或虚拟环境里的 Python 解释器/);
+  assert.doesNotMatch(html, /id="runtimePythonSelectBtn"/);
+  assert.doesNotMatch(html, />\s*文件\s*<\/button>/);
 
   assert.match(main, /runtime:status/);
   assert.match(main, /runtime:select/);
@@ -917,8 +965,45 @@ test("runtime config section exposes Python and Allure controls", () => {
   assert.match(main, /getRuntimeStatus/);
   assert.match(main, /saveRuntimeExecutable/);
   assert.match(main, /resetRuntimeExecutable/);
+  assert.match(main, /runtimeDialogProperties/);
+  assert.match(main, /options\.selectionMode/);
+  assert.match(main, /"python-directory"/);
+  assert.doesNotMatch(main, /"python-file"/);
+  assert.match(main, /"openDirectory"/);
+  assert.match(main, /"showHiddenFiles"/);
+  assert.match(main, /defaultPath:\s*options\.projectRoot/);
 
   assert.match(preload, /getRuntimeStatus/);
   assert.match(preload, /selectRuntimeExecutable/);
   assert.match(preload, /resetRuntimeExecutable/);
+
+  assert.match(renderer, /function runtimeUnavailableText/);
+  assert.match(renderer, /function runtimeFullText/);
+  assert.match(renderer, /function runtimeCandidateStatusText/);
+  assert.match(renderer, /probeStatus/);
+  assert.doesNotMatch(renderer, /changeRuntime\("python", false, "python-file"\)/);
+  assert.match(renderer, /changeRuntime\("python", false, "python-directory"\)/);
+  assert.match(renderer, /showActionFeedback\(\s*runtimeChangeFeedback\(kind, reset, result\)/);
+  assert.match(renderer, /function runtimeChangeFeedback/);
+  assert.match(renderer, /function showRuntimeRequirementDialog/);
+  assert.match(renderer, /window\.alert/);
+  assert.match(renderer, /showActionFeedback\(`运行环境更新失败: \$\{error\.message\}`,\s*"error"\)/);
+  assert.match(renderer, /命令:/);
+  assert.match(renderer, /处理:/);
+  const runtimePathRule = css.match(/\.runtime-path\s*\{[^}]*\}/)[0];
+  assert.match(runtimePathRule, /white-space:\s*pre-wrap/);
+  assert.match(runtimePathRule, /overflow-wrap:\s*anywhere/);
+  assert.doesNotMatch(runtimePathRule, /text-overflow:\s*ellipsis/);
+});
+
+test("Python runtime availability gates debug suite and build actions", () => {
+  assert.match(renderer, /runtimeStatus:\s*\{/);
+  assert.match(renderer, /function isPythonRuntimeAvailable/);
+  assert.match(renderer, /pythonRuntimeUnavailableMessage/);
+  assert.match(renderer, /runAllBtn\.disabled = !state\.snapshot \|\| isRunning \|\| !pythonReady \|\| !hasDebugSuites/);
+  assert.match(renderer, /syntaxBtn\.disabled = !executable \|\| isRunning \|\| !pythonReady/);
+  assert.match(renderer, /runBtn\.disabled = !canRun \|\| isRunning \|\| !pythonReady/);
+  assert.match(renderer, /debugStepsBtn\.disabled = !canDebug \|\| isRunning \|\| !pythonReady/);
+  assert.match(renderer, /buildRunBtn\.disabled = !hasProject \|\| !hasSuites \|\| isAnyTaskRunning \|\| !pythonReady/);
+  assert.match(renderer, /Python 运行环境不可用，无法调试或构建/);
 });

@@ -48,7 +48,12 @@ function loadPackagedKeywordService(root) {
   const sourceDir = path.resolve(__dirname, "..", "src", "services");
   const serviceDir = path.join(root, "Resources", "app.asar", "src", "services");
   fs.mkdirSync(serviceDir, { recursive: true });
-  for (const name of ["keywordService.js", "metadataStore.js", "pythonEnvService.js"]) {
+  for (const name of [
+    "keywordService.js",
+    "metadataStore.js",
+    "pythonEnvService.js",
+    "runtimePathService.js",
+  ]) {
     fs.copyFileSync(path.join(sourceDir, name), path.join(serviceDir, name));
   }
   return require(path.join(serviceDir, "keywordService.js"));

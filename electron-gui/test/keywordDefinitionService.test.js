@@ -53,6 +53,7 @@ function loadPackagedDefinitionService(root) {
     "keywordDefinitionService.js",
     "metadataStore.js",
     "pythonEnvService.js",
+    "runtimePathService.js",
   ]) {
     fs.copyFileSync(path.join(sourceDir, name), path.join(serviceDir, name));
   }

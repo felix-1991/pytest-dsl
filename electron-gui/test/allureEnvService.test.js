@@ -81,6 +81,9 @@ test("no Allure anywhere returns allure-not-found", async () => {
   const result = await resolveAllureRuntime(root, { PATH: "" }, { skipCommonPaths: true });
   assert.equal(result.available, false);
   assert.equal(result.reason, "allure-not-found");
+  assert.match(result.detail, /Checked Allure locations/);
+  assert.match(result.detail, /node_modules/);
+  assert.match(result.action, /Install Allure 3/);
 });
 
 test("project node_modules Allure 3 is discovered before PATH", async () => {
@@ -95,6 +98,44 @@ test("project node_modules Allure 3 is discovered before PATH", async () => {
   assert.equal(result.available, true);
   assert.equal(result.source, "project-node-modules");
   assert.equal(result.command, projectAllure);
+});
+
+test("Windows project node_modules Allure candidate is selected by requested platform", () => {
+  const root = makeTempProject();
+  const projectAllure = writeAllureFake(
+    root,
+    path.join("node_modules", ".bin", "allure.cmd"),
+    "Allure commandline, version 3.0.5",
+  );
+
+  const candidates = resolveAllureCandidates(root, { PATH: "" }, {
+    platform: "win32",
+    skipCommonPaths: true,
+  });
+
+  assert.equal(candidates[0].command, projectAllure);
+  assert.equal(candidates[0].source, "project-node-modules");
+});
+
+test("POSIX Allure detection can use login shell PATH without fixed install paths", async () => {
+  const root = makeTempProject();
+  const shellBin = path.join(root, "shell-bin");
+  const shellAllure = writeAllureFake(
+    shellBin,
+    "allure",
+    "Allure commandline, version 3.4.0",
+  );
+
+  const result = await resolveAllureRuntime(root, { PATH: "" }, {
+    platform: "linux",
+    skipCommonPaths: true,
+    shellPathProvider: () => shellBin,
+  });
+
+  assert.equal(result.available, true);
+  assert.equal(result.command, shellAllure);
+  assert.equal(result.source, "path");
+  assert.equal(result.version, "3.4.0");
 });
 
 test("non-configured v2 candidate is skipped, allowing v3 fallback", async () => {
@@ -115,7 +156,7 @@ test("non-configured v2 candidate is skipped, allowing v3 fallback", async () =>
   const result = await resolveAllureRuntime(root, { PATH: pathBinDir }, { skipCommonPaths: true });
   assert.equal(result.available, true);
   assert.equal(result.version, "3.2.0");
-  assert.equal(result.command, "allure");
+  assert.equal(result.command, pathAllure);
 });
 
 test("configured Allure with unreadable version returns allure-version-unreadable", async () => {

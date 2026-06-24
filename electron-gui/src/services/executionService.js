@@ -6,7 +6,7 @@ const { randomUUID } = require("node:crypto");
 const {
   isExecutableAvailable,
   mergeEnvironment,
-  resolvePythonTarget,
+  resolvePythonRuntimeTarget,
 } = require("./pythonEnvService");
 const { buildPytestTargets } = require("./suiteService");
 
@@ -474,7 +474,7 @@ function resolveSpawnTarget(plan, options = {}, env = {}) {
     };
   }
 
-  const target = resolvePythonTarget(plan.cwd, env, options);
+  const target = resolvePythonRuntimeTarget(plan.cwd, env, options);
   return {
     command: target.command,
     args: [...target.args, "-m", pythonModuleForMode(plan.mode), ...plan.args],

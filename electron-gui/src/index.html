@@ -125,15 +125,19 @@
                                     >自动发现</code>
                                     <button
                                         class="text-btn"
-                                        id="runtimePythonSelectBtn"
+                                        id="runtimePythonSelectDirBtn"
+                                        title="选择虚拟环境或项目目录"
                                         type="button"
-                                    >选择</button>
+                                    >目录</button>
                                     <button
                                         class="text-btn"
                                         id="runtimePythonAutoBtn"
                                         type="button"
                                     >自动</button>
                                 </div>
+                                <p class="runtime-hint">
+                                    可选择项目目录、.venv/venv 目录，或虚拟环境里的 Python 解释器；调试和构建都会使用检测到的 Python。
+                                </p>
                                 <div class="runtime-row">
                                     <span
                                         class="status-dot unchecked"
@@ -775,6 +779,6 @@
         </div>
 
         <script src="./editor-bundle.js"></script>
-        <script src="./renderer.js"></script>
+        <script type="module" src="./renderer.js"></script>
     </body>
 </html>

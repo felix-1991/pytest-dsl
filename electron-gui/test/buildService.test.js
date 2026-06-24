@@ -26,6 +26,10 @@ function writeFile(root, relativePath, content) {
   fs.writeFileSync(target, content, "utf8");
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function writeNodeCommand(root, name) {
   const target = path.join(root, process.platform === "win32" ? `${name}.exe` : name);
   fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -34,6 +38,53 @@ function writeNodeCommand(root, name) {
     fs.chmodSync(target, 0o755);
   }
   return target;
+}
+
+function writeExecutable(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, "utf8");
+  fs.chmodSync(filePath, 0o755);
+  return filePath;
+}
+
+function writeNodeScript(root, name, content) {
+  const scriptPath = path.join(root, `${name}.js`);
+  writeFile(root, `${name}.js`, content);
+  if (process.platform === "win32") {
+    const commandPath = path.join(root, `${name}.cmd`);
+    fs.writeFileSync(
+      commandPath,
+      `@"${process.execPath}" "${scriptPath}" %*\r\n`,
+      "utf8",
+    );
+    return commandPath;
+  }
+  const commandPath = path.join(root, name);
+  fs.writeFileSync(
+    commandPath,
+    `#!/bin/sh\nexec "${process.execPath}" "${scriptPath}" "$@"\n`,
+    "utf8",
+  );
+  fs.chmodSync(commandPath, 0o755);
+  return commandPath;
+}
+
+function writeEnvNodeAllure(root, name, extraScript = "") {
+  const commandPath = path.join(root, name);
+  fs.writeFileSync(commandPath, [
+    "#!/usr/bin/env node",
+    "const fs = require('node:fs');",
+    "const path = require('node:path');",
+    "const args = process.argv.slice(2);",
+    "if (args.includes('--version')) { console.log('3.10.0'); process.exit(0); }",
+    extraScript,
+    "if (args[0] === 'watch') { console.log('Allure report: http://127.0.0.1:4332'); setInterval(() => {}, 1000); }",
+    "else if (args[0] === 'awesome') { const output = args[args.indexOf('--output') + 1]; fs.mkdirSync(output, { recursive: true }); fs.writeFileSync(path.join(output, 'index.html'), '<!doctype html><title>Env Node Allure</title>'); }",
+    "else { console.error('unsupported args: ' + args.join(' ')); process.exit(2); }",
+    "",
+  ].join("\n"), "utf8");
+  fs.chmodSync(commandPath, 0o755);
+  return commandPath;
 }
 
 function prepareBuildPythonRuntime(root) {
@@ -88,6 +139,7 @@ function loadPackagedBuildService(root) {
     "buildService.js",
     "metadataStore.js",
     "pythonEnvService.js",
+    "runtimePathService.js",
     "suiteService.js",
   ]) {
     fs.copyFileSync(path.join(sourceDir, name), path.join(serviceDir, name));
@@ -274,6 +326,229 @@ test("build completion waits briefly for delayed Allure report readiness", async
   } finally {
     stopBuildTask(buildId);
   }
+});
+
+test("build start and manifest show the resolved Python pytest command", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  const runtimeOptions = prepareBuildPythonRuntime(root);
+  const events = [];
+  const buildId = "resolved-python-command";
+
+  const result = await startBuildTask(
+    {
+      buildId,
+      projectRoot: root,
+      selectedSuiteIds: ["api"],
+      enableAllureWatch: false,
+      ...runtimeOptions,
+      env: {
+        PATH: "",
+        PYTHON: "",
+        PYTEST_DSL_PYTHON: "",
+      },
+    },
+    {
+      onEvent(event) {
+        events.push(event);
+      },
+    },
+  );
+
+  assert.equal(result.status, "passed");
+  const started = events.find((event) => event.type === "build-started");
+  assert.ok(started);
+  assert.match(started.command, new RegExp(escapeRegExp(runtimeOptions.pythonExecutable)));
+  assert.match(started.command, / -m pytest tests\/api --alluredir /);
+  assert.doesNotMatch(started.command, /^pytest tests\/api /);
+
+  const manifestPath = path.join(root, ".pytest-dsl-gui", "builds", buildId, "build.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  assert.equal(manifest.command, started.command);
+});
+
+test("Allure watch writes the live report into the build report directory", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  const calledArgsPath = path.join(root, "allure-watch-args.json");
+  const fakeAllure = writeNodeScript(root, "fake-allure", `
+const fs = require("node:fs");
+fs.writeFileSync(${JSON.stringify(calledArgsPath)}, JSON.stringify(process.argv.slice(2)));
+console.log("Allure report: http://127.0.0.1:4331");
+setInterval(() => {}, 1000);
+`);
+  const buildId = "watch-output-build";
+
+  try {
+    await startBuildTask(
+      {
+        buildId,
+        projectRoot: root,
+        selectedSuiteIds: ["api"],
+        pytestCommandOverride: {
+          command: process.execPath,
+          args: ["-e", "console.log('pytest ok')"],
+        },
+        allureExecutable: fakeAllure,
+        allureVersionDetector: async () => "3.10.0",
+        allureReportReadyProbe: async (url) => `${url.replace(/\/$/, "")}/awesome/`,
+      },
+    );
+
+    await waitFor(() => fs.existsSync(calledArgsPath));
+    const calledArgs = JSON.parse(fs.readFileSync(calledArgsPath, "utf8"));
+    assert.deepEqual(calledArgs, [
+      "watch",
+      "--output",
+      path.join(root, ".pytest-dsl-gui", "builds", buildId, "allure-report"),
+      path.join(root, ".pytest-dsl-gui", "builds", buildId, "allure-results"),
+    ]);
+  } finally {
+    stopBuildTask(buildId);
+  }
+});
+
+test("Allure watch inherits the runtime PATH needed by env node launchers", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  const calledPath = path.join(root, "env-node-watch.json");
+  const fakeAllure = writeEnvNodeAllure(root, "env-node-allure", `
+fs.writeFileSync(${JSON.stringify(calledPath)}, JSON.stringify({ args, PATH: process.env.PATH || '' }));
+`);
+  const events = [];
+  const buildId = "env-node-watch-build";
+
+  try {
+    const result = await startBuildTask(
+      {
+        buildId,
+        projectRoot: root,
+        selectedSuiteIds: ["api"],
+        env: { PATH: "" },
+        shellPathProvider: () => path.dirname(process.execPath),
+        allureExecutable: fakeAllure,
+        pytestCommandOverride: {
+          command: process.execPath,
+          args: ["-e", "console.log('pytest ok')"],
+        },
+      },
+      {
+        onEvent(event) {
+          events.push(event);
+        },
+      },
+    );
+
+    assert.equal(result.status, "passed");
+    await waitFor(() => events.some((event) => event.type === "report-ready"));
+    assert.equal(events.find((event) => event.type === "report-ready").url, "http://127.0.0.1:4332/awesome/");
+    const called = JSON.parse(fs.readFileSync(calledPath, "utf8"));
+    assert.equal(called.args[0], "watch");
+    assert.ok(called.PATH.split(path.delimiter).includes(path.dirname(process.execPath)));
+  } finally {
+    stopBuildTask(buildId);
+  }
+});
+
+test("build completion publishes a static Allure report when watch exits without a URL", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  const buildId = "static-report-fallback";
+  const fakeAllureExport = path.join(root, "fake-allure-export.js");
+  fs.writeFileSync(fakeAllureExport, `
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(2);
+const output = args[args.indexOf("--output") + 1];
+fs.mkdirSync(output, { recursive: true });
+fs.writeFileSync(path.join(output, "index.html"), "<!doctype html><title>Static Allure</title>");
+`, "utf8");
+  const events = [];
+
+  const result = await startBuildTask(
+    {
+      buildId,
+      projectRoot: root,
+      selectedSuiteIds: ["api"],
+      pytestCommandOverride: {
+        command: process.execPath,
+        args: ["-e", [
+          "const fs = require('node:fs');",
+          "const path = require('node:path');",
+          `const alluredir = ${JSON.stringify(path.join(root, ".pytest-dsl-gui", "builds", buildId, "allure-results"))};`,
+          "fs.mkdirSync(alluredir, { recursive: true });",
+          "fs.writeFileSync(path.join(alluredir, 'result.json'), '{\"status\":\"passed\"}\\n');",
+          "console.log('pytest ok');",
+        ].join(" ")],
+      },
+      allureCommandOverride: {
+        command: process.execPath,
+        args: ["-e", "process.exit(0)"],
+      },
+      allureExportCommandOverride: {
+        command: process.execPath,
+        args: [fakeAllureExport],
+      },
+    },
+    {
+      onEvent(event) {
+        events.push(event);
+      },
+    },
+  );
+
+  assert.equal(result.status, "passed");
+  assert.match(result.reportUrl, /^file:\/\//);
+  assert.match(result.reportUrl, /allure-report\/index\.html$/);
+  assert.ok(events.some((event) => event.type === "report-ready" && event.url === result.reportUrl));
+  assert.ok(events.some((event) => event.type === "build-completed" && event.reportUrl === result.reportUrl));
+  assert.equal(
+    fs.readFileSync(path.join(root, ".pytest-dsl-gui", "builds", buildId, "allure-report", "index.html"), "utf8"),
+    "<!doctype html><title>Static Allure</title>",
+  );
+
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, ".pytest-dsl-gui", "builds", buildId, "build.json"), "utf8"));
+  assert.equal(manifest.reportUrl, result.reportUrl);
+});
+
+test("completed Allure report export inherits the runtime PATH needed by env node launchers", async () => {
+  const root = makeTempProject();
+  const buildId = "env-node-download-report";
+  const buildDir = path.join(root, ".pytest-dsl-gui", "builds", buildId);
+  const resultsDir = path.join(buildDir, "allure-results");
+  const destinationPath = path.join(root, "exports", "env-node-download-report.html");
+  const calledPath = path.join(root, "env-node-export.json");
+  const fakeAllure = writeEnvNodeAllure(root, "env-node-allure-export", `
+fs.writeFileSync(${JSON.stringify(calledPath)}, JSON.stringify({ args, PATH: process.env.PATH || '' }));
+`);
+
+  fs.mkdirSync(resultsDir, { recursive: true });
+  fs.writeFileSync(path.join(resultsDir, "result.json"), "{\"status\":\"passed\"}\n", "utf8");
+  fs.writeFileSync(path.join(buildDir, "stdout.log"), "done\n", "utf8");
+  fs.writeFileSync(path.join(buildDir, "stderr.log"), "", "utf8");
+  fs.writeFileSync(path.join(buildDir, "build.json"), `${JSON.stringify({
+    buildId,
+    status: "passed",
+    command: "pytest tests --alluredir .pytest-dsl-gui/builds/env-node-download-report/allure-results",
+    allureResultsDir: resultsDir,
+    allureReportDir: path.join(buildDir, "allure-report"),
+  }, null, 2)}\n`, "utf8");
+
+  const result = await exportAllureReportFile({
+    projectRoot: root,
+    buildId,
+    destinationPath,
+    env: { PATH: "" },
+    shellPathProvider: () => path.dirname(process.execPath),
+    allureExecutable: fakeAllure,
+    allureVersionDetector: async () => "3.10.0",
+  });
+
+  assert.equal(result.path, destinationPath);
+  assert.equal(fs.readFileSync(destinationPath, "utf8"), "<!doctype html><title>Env Node Allure</title>");
+  const called = JSON.parse(fs.readFileSync(calledPath, "utf8"));
+  assert.equal(called.args[0], "awesome");
+  assert.ok(called.PATH.split(path.delimiter).includes(path.dirname(process.execPath)));
 });
 
 test("build tasks are removed when pytest and the report process both exit", async () => {
@@ -573,6 +848,78 @@ test("Python preflight failure does not start Allure or register a running build
   } finally {
     stopBuildTask(buildId);
   }
+});
+
+test("Python runtime preflight failure rejects build before artifacts are created", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  const buildId = "missing-python-deps-build";
+  const python = writeExecutable(path.join(root, ".venv", "bin", "python"), [
+    "#!/bin/sh",
+    "echo \"ModuleNotFoundError: No module named 'pytest_dsl'\" >&2",
+    "exit 1",
+    "",
+  ].join("\n"));
+
+  await assert.rejects(
+    startBuildTask({
+      buildId,
+      projectRoot: root,
+      selectedSuiteIds: ["all"],
+      pythonExecutable: python,
+      env: { PATH: "" },
+      enableAllureWatch: false,
+    }),
+    /Python 3\.9.*pip install pytest-dsl/,
+  );
+
+  assert.equal(hasRunningBuild(buildId), false);
+  assert.equal(
+    fs.existsSync(path.join(root, ".pytest-dsl-gui", "builds", buildId)),
+    false,
+  );
+});
+
+test("missing Allure 3 continues pytest build and reports unavailable report", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/api/login.dsl", "[打印], 内容: \"login\"\n");
+  const buildId = "missing-allure-build";
+  const runtimeOptions = prepareBuildPythonRuntime(root);
+  const events = [];
+
+  const result = await startBuildTask(
+    {
+      buildId,
+      projectRoot: root,
+      selectedSuiteIds: ["all"],
+      ...runtimeOptions,
+      allureExecutable: path.join(root, "missing-allure"),
+      env: { PATH: "" },
+    },
+    {
+      onEvent(event) {
+        events.push(event);
+      },
+    },
+  );
+
+  assert.equal(result.status, "passed");
+  assert.equal(result.reportUrl, null);
+  assert.ok(events.some((event) => event.type === "build-started"));
+  assert.ok(events.some((event) => (
+    event.type === "report-unavailable" && event.reason === "allure3-unavailable"
+  )));
+  assert.ok(events.some((event) => (
+    event.type === "stdout" && event.text.includes("-m pytest")
+  )));
+  assert.ok(events.some((event) => (
+    event.type === "build-completed" && event.status === "passed" && event.reportUrl === null
+  )));
+  assert.equal(hasRunningBuild(buildId), false);
+  const manifestPath = path.join(root, ".pytest-dsl-gui", "builds", buildId, "build.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  assert.equal(manifest.status, "passed");
+  assert.equal(manifest.reportUrl, null);
 });
 
 test("packaged builds preserve external PYTHONPATH without adding Resources", async () => {

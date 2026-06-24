@@ -2,23 +2,33 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
 
-const { isExecutableAvailable } = require("./pythonEnvService");
 const { readMetadata } = require("./metadataStore");
+const {
+  findExecutableInPath,
+  isExecutableAvailable,
+  runtimePathEntries,
+  withRuntimePathEnv,
+} = require("./runtimePathService");
 
 const ALLURE_VERSION_TIMEOUT_MS = 3000;
 
-function executableName(name) {
-  return process.platform === "win32" ? `${name}.cmd` : name;
-}
-
 function resolveAllureCandidates(projectRoot, env = process.env, options = {}) {
   const root = assertProjectRoot(projectRoot);
+  const platform = options.platform || process.platform;
   const metadata = readMetadata(root);
   const configured = (options.allureExecutable || env.PYTEST_DSL_ALLURE || metadata.runtime.allureExecutable || "")
     .toString()
     .trim();
-  const guiAllure = path.resolve(__dirname, "..", "..", "node_modules", ".bin", executableName("allure"));
-  const projectAllure = path.join(root, "node_modules", ".bin", executableName("allure"));
+  const guiAllure = firstExistingExecutable(
+    allureExecutableNames(platform).map((name) => path.resolve(__dirname, "..", "..", "node_modules", ".bin", name)),
+    env,
+    platform,
+  );
+  const projectAllure = firstExistingExecutable(
+    allureExecutableNames(platform).map((name) => path.join(root, "node_modules", ".bin", name)),
+    env,
+    platform,
+  );
   const candidates = [];
 
   if (configured) {
@@ -31,7 +41,7 @@ function resolveAllureCandidates(projectRoot, env = process.env, options = {}) {
     return candidates;
   }
 
-  if (fs.existsSync(projectAllure)) {
+  if (projectAllure) {
     candidates.push({
       command: projectAllure,
       args: [],
@@ -39,7 +49,7 @@ function resolveAllureCandidates(projectRoot, env = process.env, options = {}) {
       configured: false,
     });
   }
-  if (fs.existsSync(guiAllure)) {
+  if (guiAllure) {
     candidates.push({
       command: guiAllure,
       args: [],
@@ -47,27 +57,10 @@ function resolveAllureCandidates(projectRoot, env = process.env, options = {}) {
       configured: false,
     });
   }
-  // Check common package manager locations (Electron apps may not inherit full PATH)
-  // This can be disabled via options.skipCommonPaths for testing
-  if (!options.skipCommonPaths) {
-    const commonAllurePaths = getCommonAllurePaths();
-    for (const allurePath of commonAllurePaths) {
-      if (fs.existsSync(allurePath)) {
-        const alreadyAdded = candidates.some((c) => c.command === allurePath);
-        if (!alreadyAdded) {
-          candidates.push({
-            command: allurePath,
-            args: [],
-            source: "common-path",
-            configured: false,
-          });
-        }
-      }
-    }
-  }
-  if (isExecutableAvailable("allure", env)) {
+  const pathAllure = findExecutableInPath("allure", env, options);
+  if (pathAllure) {
     candidates.push({
-      command: "allure",
+      command: pathAllure,
       args: [],
       source: "path",
       configured: false,
@@ -76,41 +69,19 @@ function resolveAllureCandidates(projectRoot, env = process.env, options = {}) {
   return candidates;
 }
 
-// Get common paths where Allure might be installed, based on platform
-function getCommonAllurePaths() {
-  if (process.platform === "win32") {
-    // Windows: Check common installation locations
-    const paths = [];
-    // Chocolatey installation
-    const chocolateyBin = path.join(process.env.ChocolateyInstall || "C:\\ProgramData\\chocolatey", "bin");
-    paths.push(path.join(chocolateyBin, "allure.cmd"));
-    paths.push(path.join(chocolateyBin, "allure.bat"));
-    // Scoop installation (user-local)
-    const scoopShim = path.join(process.env.USERPROFILE || "", "scoop", "shims");
-    paths.push(path.join(scoopShim, "allure.cmd"));
-    paths.push(path.join(scoopShim, "allure.bat"));
-    // Common install directories
-    paths.push("C:\\allure\\bin\\allure.cmd");
-    paths.push("C:\\allure\\bin\\allure.bat");
-    return paths.filter(Boolean);
-  }
-  // macOS/Linux: Check common homebrew and system paths
-  return [
-    "/opt/homebrew/bin/allure",
-    "/usr/local/bin/allure",
-    "/usr/bin/allure",
-  ];
-}
-
 async function resolveAllureRuntime(projectRoot, env = process.env, options = {}) {
   const candidates = resolveAllureCandidates(projectRoot, env, options);
   const configured = candidates.find((candidate) => candidate.configured);
 
-  if (configured && !isExecutableAvailable(configured.command, env)) {
+  if (configured && !isExecutableAvailable(configured.command, env, options)) {
     return unavailable(
       "allure-config-invalid",
       `Configured Allure executable does not exist: ${configured.command}`,
       configured,
+      null,
+      `Command: ${configured.command}\nSource: project configuration`,
+      "Install Allure 3 with npm install -g allure, or choose a valid Allure 3 executable in Configuration > Runtime.",
+      candidates,
     );
   }
 
@@ -119,28 +90,50 @@ async function resolveAllureRuntime(projectRoot, env = process.env, options = {}
     : detectAllureVersion;
 
   for (const candidate of candidates) {
-    if (!isExecutableAvailable(candidate.command, env)) {
+    if (!isExecutableAvailable(candidate.command, env, options)) {
       continue;
     }
-    const version = await versionDetector(candidate, projectRoot, env);
+    const version = await versionDetector(candidate, projectRoot, env, options);
     if (!version) {
       if (candidate.configured) {
         return unavailable(
           "allure-version-unreadable",
           "Unable to read configured Allure version",
           candidate,
+          null,
+          `Command: ${runtimeCommand(candidate)}\nSource: ${runtimeSourceLabel(candidate.source)}`,
+          "Install Allure 3 with npm install -g allure, choose an Allure 3 executable, or verify this command prints a semantic version with --version.",
+          candidates,
         );
       }
       continue;
     }
-    const major = Number(version.split(".")[0]);
+    const versionText = String(version);
+    const major = Number(versionText.split(".")[0]);
+    if (!Number.isFinite(major)) {
+      if (candidate.configured) {
+        return unavailable(
+          "allure-version-unreadable",
+          "Unable to read configured Allure version",
+          candidate,
+          null,
+          `Command: ${runtimeCommand(candidate)}\nSource: ${runtimeSourceLabel(candidate.source)}`,
+          "Install Allure 3 with npm install -g allure, choose an Allure 3 executable, or verify this command prints a semantic version with --version.",
+          candidates,
+        );
+      }
+      continue;
+    }
     if (major < 3) {
       if (candidate.configured) {
         return unavailable(
           "allure-version-unsupported",
-          `Pytest DSL Studio requires Allure 3; configured version is ${version}`,
+          `Pytest DSL Studio requires Allure 3; configured version is ${versionText}`,
           candidate,
-          version,
+          versionText,
+          `Command: ${runtimeCommand(candidate)}\nSource: ${runtimeSourceLabel(candidate.source)}\nDetected version: ${versionText}`,
+          "Install Allure 3 with npm install -g allure or choose an Allure 3 executable in Configuration > Runtime.",
+          candidates,
         );
       }
       continue;
@@ -150,19 +143,34 @@ async function resolveAllureRuntime(projectRoot, env = process.env, options = {}
       command: candidate.command,
       args: candidate.args,
       source: candidate.source,
-      version,
+      version: versionText,
       reason: null,
-      message: `Allure ${version}`,
+      message: `Allure ${versionText}`,
+      detail: `Command: ${runtimeCommand(candidate)}\nSource: ${runtimeSourceLabel(candidate.source)}`,
+      checked: describeAllureCandidates(candidates),
     };
   }
 
   return unavailable(
     "allure-not-found",
     "Allure 3 was not found. Choose it in Configuration > Runtime.",
+    null,
+    null,
+    allureNotFoundDetail(projectRoot, env, options),
+    "Install Allure 3 with npm install -g allure, choose its executable, or restart Studio after making Allure available on PATH.",
+    candidates,
   );
 }
 
-function unavailable(reason, message, candidate = null, version = null) {
+function unavailable(
+  reason,
+  message,
+  candidate = null,
+  version = null,
+  detail = "",
+  action = "",
+  candidates = [],
+) {
   return {
     available: false,
     command: candidate ? candidate.command : null,
@@ -171,15 +179,15 @@ function unavailable(reason, message, candidate = null, version = null) {
     version,
     reason,
     message,
+    detail,
+    action,
+    checked: describeAllureCandidates(candidates),
   };
 }
 
-function detectAllureVersion(candidate, cwd, env) {
+function detectAllureVersion(candidate, cwd, env, options = {}) {
   return new Promise((resolve) => {
-    // Only enhance PATH for absolute-path commands that might have shebangs needing node
-    // For relative commands like "allure" from PATH, use the original env
-    const needsPathEnhancement = path.isAbsolute(candidate.command);
-    const execEnv = needsPathEnhancement ? enhancePathForExecutables(env) : env;
+    const execEnv = withRuntimePathEnv(env, options);
     const child = execFile(
       candidate.command,
       [...candidate.args, "--version"],
@@ -214,63 +222,76 @@ function assertProjectRoot(projectRoot) {
   return root;
 }
 
-// Enhance PATH with common locations where Node.js and other tools may be installed
-// This is needed because Electron apps launched from Finder/Start Menu don't inherit the shell's PATH
-function enhancePathForExecutables(env) {
-  if (!env || typeof env !== "object") {
-    env = {};
+function allureExecutableNames(platform = process.platform) {
+  if (platform === "win32") {
+    return ["allure.cmd", "allure.bat", "allure.exe", "allure"];
   }
-  const commonPaths = getCommonExecutablePaths();
-  const separator = process.platform === "win32" ? ";" : ":";
-  // Handle Windows case-insensitive PATH key
-  const pathKey = Object.keys(env).find((k) => k.toLowerCase() === "path") || "PATH";
-  const currentPath = env[pathKey] || "";
-  const pathParts = currentPath.split(separator).filter(Boolean);
-  const newPathParts = [...pathParts];
-  const pathSet = new Set(pathParts.map((p) => p.toLowerCase()));
-  for (const p of commonPaths) {
-    if (!pathSet.has(p.toLowerCase()) && fs.existsSync(p)) {
-      newPathParts.unshift(p);
-      pathSet.add(p.toLowerCase());
-    }
-  }
-  return {
-    ...env,
-    [pathKey]: newPathParts.join(separator),
-  };
+  return ["allure"];
 }
 
-// Get common paths where executables (like Node.js) might be installed, based on platform
-function getCommonExecutablePaths() {
-  if (process.platform === "win32") {
-    // Windows: Check common Node.js and tool installation locations
-    const paths = [];
-    // Node.js default installation
-    paths.push("C:\\Program Files\\nodejs");
-    paths.push("C:\\Program Files (x86)\\nodejs");
-    // User-local npm global
-    const appData = process.env.APPDATA || "";
-    if (appData) {
-      paths.push(path.join(appData, "npm"));
-      paths.push(path.join(appData, "Roaming", "npm"));
-    }
-    // Chocolatey
-    const chocolateyBin = path.join(process.env.ChocolateyInstall || "C:\\ProgramData\\chocolatey", "bin");
-    paths.push(chocolateyBin);
-    // Scoop
-    const scoopShim = path.join(process.env.USERPROFILE || "", "scoop", "shims");
-    paths.push(scoopShim);
-    return paths.filter(Boolean);
-  }
-  // macOS/Linux: Check common homebrew and system paths
-  return [
-    "/opt/homebrew/bin",
-    "/opt/homebrew/sbin",
-    "/usr/local/bin",
-    "/usr/local/sbin",
-    "/usr/bin",
-    "/bin",
+function firstExistingExecutable(candidates, env, platform) {
+  return candidates.find((candidate) => isExecutableAvailable(candidate, env, { platform })) || null;
+}
+
+function allureNotFoundDetail(projectRoot, env, options) {
+  const locations = searchedAllureLocations(projectRoot, env, options);
+  const shown = locations.slice(0, 12);
+  const lines = [
+    "Checked Allure locations:",
+    ...shown.map((location) => `- ${location}`),
   ];
+  if (locations.length > shown.length) {
+    lines.push(`- ... ${locations.length - shown.length} more`);
+  }
+  return lines.join("\n");
+}
+
+function searchedAllureLocations(projectRoot, env, options) {
+  const root = assertProjectRoot(projectRoot);
+  const platform = options.platform || process.platform;
+  const names = allureExecutableNames(platform);
+  const locations = [];
+  names.forEach((name) => locations.push(path.join(root, "node_modules", ".bin", name)));
+  names.forEach((name) => locations.push(path.resolve(__dirname, "..", "..", "node_modules", ".bin", name)));
+  for (const directory of runtimePathEntries(env, options)) {
+    names.forEach((name) => locations.push(path.join(directory, name)));
+  }
+  return dedupeStrings(locations, platform);
+}
+
+function describeAllureCandidates(candidates) {
+  return candidates.map((candidate) => ({
+    command: candidate.command,
+    args: [...candidate.args],
+    source: candidate.source,
+    configured: candidate.configured,
+  }));
+}
+
+function runtimeCommand(candidate) {
+  return [candidate.command, ...(candidate.args || [])].filter(Boolean).join(" ");
+}
+
+function runtimeSourceLabel(source) {
+  const labels = {
+    "project-config": "project configuration",
+    "project-node-modules": "project node_modules",
+    "studio-node-modules": "Studio bundled node_modules",
+    path: "PATH",
+  };
+  return labels[source] || source || "unknown";
+}
+
+function dedupeStrings(values, platform) {
+  const seen = new Set();
+  return values.filter((value) => {
+    const key = platform === "win32" ? value.toLowerCase() : value;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 module.exports = {

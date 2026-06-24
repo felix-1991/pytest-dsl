@@ -24,6 +24,7 @@ function targetArchs(config, targetName) {
 test("electron gui package metadata exposes local packaging commands and builder targets", () => {
   assert.equal(packageJson.private, true);
   assert.equal(packageJson.main, "main.js");
+  assert.equal(packageJson.scripts.test, "node --test --test-concurrency=1");
   assert.equal(packageJson.scripts.package, "npm run build:editor && rimraf dist && electron-builder --publish never");
   assert.equal(
     packageJson.scripts["package:mac"],

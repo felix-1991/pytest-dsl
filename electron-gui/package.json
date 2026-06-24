@@ -12,7 +12,7 @@
     "package:win:x64": "npm run build:editor && rimraf dist && electron-builder --win nsis zip --x64 --publish never",
     "package:win:arm64": "npm run build:editor && rimraf dist && electron-builder --win nsis zip --arm64 --publish never",
     "package:linux": "npm run build:editor && rimraf dist && electron-builder --linux AppImage deb --x64 --publish never",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "check": "npm test && node scripts/check-app-files.js"
   },
   "build": {

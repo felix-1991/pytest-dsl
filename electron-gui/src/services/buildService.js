@@ -4,13 +4,15 @@ const https = require("node:https");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
+const { pathToFileURL } = require("node:url");
 
 const {
   isExecutableAvailable,
   mergeEnvironment,
-  resolvePythonTarget,
+  resolvePythonRuntimeTarget,
 } = require("./pythonEnvService");
 const { resolveAllureRuntime } = require("./allureEnvService");
+const { withRuntimePathEnv } = require("./runtimePathService");
 const { buildPytestTargets } = require("./suiteService");
 
 const runningBuilds = new Map();
@@ -82,13 +84,14 @@ async function startBuildTask(options = {}, callbacks = {}) {
   const spawnTarget = options.pytestCommandOverride
     ? options.pytestCommandOverride
     : resolvePytestSpawnTarget(plan, options, env);
+  const executionCommand = displaySpawnCommand(spawnTarget);
 
   prepareBuildDirectories(plan);
   writeManifest(plan, {
     buildId: plan.buildId,
     status: "running",
     startedAt: new Date(startedAt).toISOString(),
-    command: plan.displayCommand,
+    command: executionCommand,
     source: plan.source,
     allureResultsDir: plan.allureResultsDir,
     allureReportDir: plan.allureReportDir,
@@ -115,6 +118,8 @@ async function startBuildTask(options = {}, callbacks = {}) {
     buildExitCode: null,
     buildSignal: null,
     completionSettled: false,
+    finalizingBuild: false,
+    executionCommand,
     resolveCompletion,
     startedAt,
     callbacks,
@@ -126,7 +131,7 @@ async function startBuildTask(options = {}, callbacks = {}) {
     taskId: plan.buildId,
     buildId: plan.buildId,
     mode: "build",
-    command: plan.displayCommand,
+    command: executionCommand,
     source: plan.source,
     allureResultsDir: plan.allureResultsDir,
     allureReportDir: plan.allureReportDir,
@@ -220,7 +225,13 @@ async function startBuildTask(options = {}, callbacks = {}) {
     task.buildSignal = signal;
 
     if (!task.stopped) {
-      await waitForReportReadyBeforeCompletion(task);
+      task.finalizingBuild = true;
+      try {
+        await waitForReportReadyBeforeCompletion(task);
+        await maybePublishStaticAllureReport(task, options, env, callbacks);
+      } finally {
+        task.finalizingBuild = false;
+      }
     }
     settleBuildCompletion(task);
   });
@@ -229,7 +240,7 @@ async function startBuildTask(options = {}, callbacks = {}) {
 }
 
 function settleBuildCompletion(task) {
-  if (task.completionSettled || !task.buildFinished) {
+  if (task.completionSettled || !task.buildFinished || task.finalizingBuild) {
     return;
   }
   if (task.stopped && (task.buildChild || task.reportChild)) {
@@ -260,7 +271,7 @@ function settleBuildCompletion(task) {
     startedAt: new Date(task.startedAt).toISOString(),
     completedAt: new Date(completedAt).toISOString(),
     durationMs: result.durationMs,
-    command: task.plan.displayCommand,
+    command: task.executionCommand || task.plan.displayCommand,
     source: task.plan.source,
     exitCode: task.buildExitCode,
     signal: task.buildSignal,
@@ -356,16 +367,15 @@ async function exportAllureReportFile(options = {}) {
   assertCompletedBuildManifest(plan);
   assertDirectoryHasEntries(plan.allureResultsDir, "Allure results directory");
 
-  const env = executionEnv(options.env);
+  const env = executionEnv(options.env, options.platform);
   const spawnTarget = options.allureExportCommandOverride ||
     await resolveAllureExportSpawnTarget(plan, options, env);
   if (!spawnTarget) {
     throw new Error("Allure 3 executable is not available for report export");
   }
 
-  fs.rmSync(plan.allureReportDir, { recursive: true, force: true });
-  fs.mkdirSync(plan.allureReportDir, { recursive: true });
-  await runAllureReportExport(spawnTarget, plan, env);
+  resetAllureReportDirectory(plan);
+  await runAllureReportExport(spawnTarget, plan, env, options);
 
   const generatedHtml = findGeneratedReportHtml(plan.allureReportDir);
   fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
@@ -420,7 +430,7 @@ async function maybeStartAllureWatch(task, options, env, callbacks) {
 
   const child = spawn(spawnTarget.command, spawnTarget.args, {
     cwd: task.plan.cwd,
-    env,
+    env: allureProcessEnv(env, options),
     windowsHide: true,
   });
   task.reportChild = child;
@@ -458,7 +468,110 @@ async function maybeStartAllureWatch(task, options, env, callbacks) {
     type: "report-started",
     taskId: task.plan.buildId,
     buildId: task.plan.buildId,
-    command: [spawnTarget.command, ...spawnTarget.args].join(" "),
+    command: displaySpawnCommand(spawnTarget),
+  });
+}
+
+async function maybePublishStaticAllureReport(task, options, env, callbacks) {
+  if (task.stopped || task.reportUrl || !directoryHasEntries(task.plan.allureResultsDir)) {
+    return;
+  }
+
+  const existingHtml = findGeneratedReportHtmlIfAvailable(task.plan.allureReportDir);
+  if (existingHtml) {
+    publishStaticAllureReportReady(task, existingHtml, callbacks);
+    return;
+  }
+
+  if (task.reportChild && isChildAlive(task.reportChild)) {
+    await stopReportChildForStaticFallback(task);
+  }
+  if (task.stopped || task.reportUrl) {
+    return;
+  }
+
+  try {
+    const spawnTarget = options.allureExportCommandOverride ||
+      await resolveAllureExportSpawnTarget(task.plan, options, env);
+    if (!spawnTarget) {
+      emit(callbacks, {
+        type: "report-unavailable",
+        taskId: task.plan.buildId,
+        buildId: task.plan.buildId,
+        reason: "allure3-unavailable",
+      });
+      return;
+    }
+    resetAllureReportDirectory(task.plan);
+    await runAllureReportExport(spawnTarget, task.plan, env, options);
+    const generatedHtml = findGeneratedReportHtml(task.plan.allureReportDir);
+    publishStaticAllureReportReady(task, generatedHtml, callbacks);
+  } catch (error) {
+    const text = `Allure static report generation failed: ${error.message}\n`;
+    fs.appendFileSync(task.plan.stderrPath, text);
+    emit(callbacks, {
+      type: "stderr",
+      taskId: task.plan.buildId,
+      buildId: task.plan.buildId,
+      text,
+    });
+    emit(callbacks, {
+      type: "report-unavailable",
+      taskId: task.plan.buildId,
+      buildId: task.plan.buildId,
+      reason: error.message,
+    });
+  }
+}
+
+function publishStaticAllureReportReady(task, generatedHtml, callbacks) {
+  if (task.stopped || task.reportUrl) {
+    return;
+  }
+  task.reportUrl = pathToFileURL(generatedHtml).toString();
+  patchManifest(task.plan, {
+    allureReportDir: task.plan.allureReportDir,
+    reportUrl: task.reportUrl,
+  });
+  emit(callbacks, {
+    type: "report-ready",
+    taskId: task.plan.buildId,
+    buildId: task.plan.buildId,
+    url: task.reportUrl,
+  });
+  markReportReadyResolved(task);
+}
+
+function stopReportChildForStaticFallback(task) {
+  const child = task.reportChild;
+  if (!isChildAlive(child)) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let killTimer = null;
+    let resolveTimer = null;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (killTimer) clearTimeout(killTimer);
+      if (resolveTimer) clearTimeout(resolveTimer);
+      resolve();
+    };
+    killTimer = setTimeout(() => {
+      if (isChildAlive(child)) {
+        child.kill("SIGKILL");
+      }
+    }, 750);
+    resolveTimer = setTimeout(finish, 1500);
+    if (typeof killTimer.unref === "function") killTimer.unref();
+    if (typeof resolveTimer.unref === "function") resolveTimer.unref();
+    child.once("close", finish);
+    child.once("error", finish);
+    child.kill("SIGTERM");
   });
 }
 
@@ -473,7 +586,7 @@ async function resolveAllureExportSpawnTarget(plan, options = {}, env = process.
   };
 }
 
-function runAllureReportExport(spawnTarget, plan, env) {
+function runAllureReportExport(spawnTarget, plan, env, options = {}) {
   const args = [
     ...spawnTarget.args,
     "awesome",
@@ -487,7 +600,7 @@ function runAllureReportExport(spawnTarget, plan, env) {
     let stderr = "";
     const child = spawn(spawnTarget.command, args, {
       cwd: plan.cwd,
-      env,
+      env: allureProcessEnv(env, options),
       windowsHide: true,
     });
     const timer = setTimeout(() => {
@@ -518,6 +631,10 @@ function runAllureReportExport(spawnTarget, plan, env) {
       reject(new Error(`Allure report export failed with exit code ${exitCode}${signal ? ` (${signal})` : ""}${details ? `: ${details}` : ""}`));
     });
   });
+}
+
+function allureProcessEnv(env, options = {}) {
+  return withRuntimePathEnv(env, options);
 }
 
 async function publishAllureReportReady(task, rawUrl, options, callbacks) {
@@ -660,6 +777,8 @@ async function resolveAllureWatchSpawnTarget(
     args: [
       ...runtime.args,
       "watch",
+      "--output",
+      plan.allureReportDir,
       plan.allureResultsDir,
     ],
   };
@@ -673,7 +792,7 @@ function resolvePytestSpawnTarget(plan, options = {}, env = {}) {
       args: plan.args,
     };
   }
-  const target = resolvePythonTarget(plan.cwd, env, options);
+  const target = resolvePythonRuntimeTarget(plan.cwd, env, options);
   return {
     command: target.command,
     args: [...target.args, "-m", "pytest", ...plan.args],
@@ -811,6 +930,29 @@ function assertDirectoryHasEntries(directory, label) {
   }
 }
 
+function directoryHasEntries(directory) {
+  try {
+    return fs.existsSync(directory) &&
+      fs.statSync(directory).isDirectory() &&
+      fs.readdirSync(directory).length > 0;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function resetAllureReportDirectory(plan) {
+  fs.rmSync(plan.allureReportDir, { recursive: true, force: true });
+  fs.mkdirSync(plan.allureReportDir, { recursive: true });
+}
+
+function findGeneratedReportHtmlIfAvailable(reportDir) {
+  try {
+    return findGeneratedReportHtml(reportDir);
+  } catch (_error) {
+    return null;
+  }
+}
+
 function findGeneratedReportHtml(reportDir) {
   const preferred = path.join(reportDir, "index.html");
   if (fs.existsSync(preferred) && fs.statSync(preferred).isFile()) {
@@ -911,6 +1053,23 @@ function sanitizeExportFilePart(value) {
 
 function normalizePath(filePath) {
   return String(filePath || "").replace(/\\/g, "/");
+}
+
+function displaySpawnCommand(spawnTarget) {
+  return [spawnTarget.command, ...(spawnTarget.args || [])]
+    .map(displayCommandPart)
+    .join(" ");
+}
+
+function displayCommandPart(value) {
+  const text = String(value || "");
+  if (!text) {
+    return "\"\"";
+  }
+  if (!/[\s"'\\]/.test(text)) {
+    return text;
+  }
+  return JSON.stringify(text);
 }
 
 function emit(callbacks, event) {
