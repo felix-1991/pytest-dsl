@@ -5,6 +5,7 @@ from pytest_dsl.remote.keyword_server import RemoteKeywordServer
 
 
 LARGE_VERSION = 20260518160022
+LONG_STRING_LENGTH = 11704
 
 
 class _FakeServerProxy:
@@ -174,6 +175,19 @@ def test_safe_xmlrpc_call_preserves_complete_response_body_string():
         return_data["side_effects"]["variables"]["resp_body"] ==
         '{"createTime":1717654567890}'
     )
+
+
+def test_convert_to_serializable_preserves_large_strings_within_payload_limit():
+    long_text = "x" * LONG_STRING_LENGTH
+
+    converted = XMLRPCSerializer.convert_to_serializable({
+        "json_cmt": long_text,
+    })
+
+    assert converted["json_cmt"] == long_text
+    assert len(converted["json_cmt"]) == LONG_STRING_LENGTH
+    valid, error = XMLRPCSerializer.validate_xmlrpc_data(converted)
+    assert valid, error
 
 
 def test_server_variable_sync_restores_large_int_markers():

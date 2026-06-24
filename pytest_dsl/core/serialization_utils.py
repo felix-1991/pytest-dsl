@@ -25,7 +25,8 @@ class XMLRPCSerializer:
     ]
 
     # XML-RPC限制
-    MAX_STRING_LENGTH = 10000  # 最大字符串长度
+    # 兼容旧调用方保留该常量；正常字符串不应因长度被替换成占位符。
+    MAX_STRING_LENGTH = 10000
     MAX_INT_VALUE = 2**31 - 1  # XML-RPC int最大值
     MIN_INT_VALUE = -2**31     # XML-RPC int最小值
     BIGINT_PREFIX = "__bigint__:"
@@ -109,10 +110,6 @@ class XMLRPCSerializer:
 
         # 处理字符串
         if isinstance(value, str):
-            # 检查字符串长度
-            if len(value) > XMLRPCSerializer.MAX_STRING_LENGTH:
-                return f"<字符串过长: {len(value)} 字符，已截断>"
-
             # 检查是否包含非法XML字符
             try:
                 # 尝试编码为UTF-8

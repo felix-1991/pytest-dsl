@@ -15,6 +15,9 @@ from pytest_dsl.remote.keyword_server import (
 )
 
 
+LONG_REMOTE_TEXT = "x" * 11704
+
+
 @keyword_manager.register("远程诊断失败测试", [
     {"name": "标签", "mapping": "label", "description": "日志隔离标签"},
 ])
@@ -23,6 +26,11 @@ def remote_diagnostics_failure_keyword(**kwargs):
     print(f"stdout-{label}-before")
     logging.warning("log-%s-before", label)
     raise RuntimeError(f"boom-{label}")
+
+
+@keyword_manager.register("远程长字符串返回测试", [])
+def remote_large_string_keyword(**kwargs):
+    return LONG_REMOTE_TEXT
 
 
 def make_server():
@@ -204,6 +212,34 @@ xmlrpc_diag|[打印], 内容: "hello remote service"
             enable_hooks=False,
             enable_tracking=False,
         ).execute_from_content(content)
+    finally:
+        remote_keyword_manager.clients.clear()
+        stop_xmlrpc_server(xmlrpc_server, thread)
+
+
+def test_dsl_remote_assignment_preserves_large_string_through_xmlrpc(monkeypatch):
+    monkeypatch.setenv("PYTEST_DSL_KEEP_VARIABLES", "1")
+    remote_keyword_manager.clients.clear()
+    server = make_server()
+    port = get_available_local_port()
+    xmlrpc_server, thread = start_minimal_xmlrpc_keyword_server(server, port)
+
+    try:
+        content = f"""
+@name: "真实远程长字符串赋值"
+@remote: "http://127.0.0.1:{port}/" as xmlrpc_long
+
+json_cmt = xmlrpc_long|[远程长字符串返回测试]
+"""
+
+        executor = DSLExecutor(
+            enable_hooks=False,
+            enable_tracking=False,
+        )
+        executor.execute_from_content(content)
+
+        assert executor.variables["json_cmt"] == LONG_REMOTE_TEXT
+        assert "字符串过长" not in executor.variables["json_cmt"]
     finally:
         remote_keyword_manager.clients.clear()
         stop_xmlrpc_server(xmlrpc_server, thread)

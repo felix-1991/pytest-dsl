@@ -437,7 +437,7 @@ wheels = [
 
 [[package]]
 name = "pytest-dsl"
-version = "0.31.0"
+version = "0.31.1"
 source = { editable = "." }
 dependencies = [
     { name = "allure-pytest" },
