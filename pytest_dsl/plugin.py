@@ -43,7 +43,7 @@ def pytest_collect_file(file_path, parent):
     from pytest_dsl.core.dsl_collector import DslFile, is_dsl_case_file
 
     path = Path(file_path)
-    if is_dsl_case_file(path):
+    if is_dsl_case_file(path) and _should_collect_dsl_file(path, parent.config):
         return DslFile.from_parent(parent, path=path)
     return None
 
@@ -211,3 +211,37 @@ def _get_dsl_case_metadata(item):
         return marker.kwargs
 
     return None
+
+
+def _should_collect_dsl_file(path: Path, config) -> bool:
+    """Return True when a DSL file should become a pytest item."""
+    resolved = path.resolve()
+    if _is_under_tests_directory(resolved, config):
+        return True
+    return _is_explicit_dsl_file_argument(resolved, config)
+
+
+def _is_under_tests_directory(path: Path, config) -> bool:
+    root = Path(getattr(config, "rootpath", config.rootdir)).resolve()
+    try:
+        relative_parts = path.relative_to(root).parts
+    except ValueError:
+        relative_parts = path.parts
+    return "tests" in relative_parts[:-1]
+
+
+def _is_explicit_dsl_file_argument(path: Path, config) -> bool:
+    invocation_dir = Path(getattr(config.invocation_params, "dir", Path.cwd())).resolve()
+    for arg in config.args:
+        arg_path_text = str(arg).split("::", 1)[0]
+        if not arg_path_text:
+            continue
+        arg_path = Path(arg_path_text)
+        if not arg_path.is_absolute():
+            arg_path = invocation_dir / arg_path
+        try:
+            if arg_path.resolve() == path:
+                return True
+        except OSError:
+            continue
+    return False

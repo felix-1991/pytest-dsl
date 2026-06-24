@@ -126,6 +126,30 @@ class DslItem(pytest.Item):
             "hook_root": str(self.tests_root),
             "suite_id": suite_id_for(self.tests_root, self.case_path),
         }
+        self._obj = self._make_function_proxy()
+
+    @property
+    def obj(self):
+        return self._obj
+
+    @property
+    def function(self):
+        """Compatibility alias used by pytest plugins for Function items."""
+        return self.obj
+
+    def _make_function_proxy(self):
+        def pytest_dsl_case_function():
+            return self.runtest()
+
+        pytest_dsl_case_function.__name__ = self.name
+        pytest_dsl_case_function.__qualname__ = self.name
+        pytest_dsl_case_function.__doc__ = f"pytest-dsl case: {self.case_path}"
+        pytest_dsl_case_function.case_path = str(self.case_path)
+        pytest_dsl_case_function.dsl_id = str(self.case_path)
+        pytest_dsl_case_function.pytest_dsl_case = dict(self._pytest_dsl_case)
+        if self.data_index is not None:
+            pytest_dsl_case_function.data_index = self.data_index
+        return pytest_dsl_case_function
 
     def runtest(self):
         apply_allure_labels(self.tests_root, self.case_path)

@@ -85,3 +85,47 @@ def test_data_driven_dsl_collects_one_item_per_data_row(pytester):
 
     result = run_pytest_dsl(pytester, "tests/api/login.dsl", "-q")
     result.assert_outcomes(passed=2)
+
+
+def test_native_dsl_item_exposes_function_for_pytest_plugin_compatibility(pytester):
+    pytester.makeconftest(
+        """
+import pytest
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    outcome.get_result()
+    getattr(item.function, "case_id", None)
+"""
+    )
+    write_file(pytester.path, "tests/case.dsl", '[打印], 内容: "native"\n')
+
+    result = run_pytest_dsl(pytester, "tests/case.dsl", "-q")
+
+    result.assert_outcomes(passed=1)
+    assert "INTERNALERROR" not in result.stdout.str()
+
+
+def test_directory_scan_ignores_dsl_files_outside_tests_directory(pytester):
+    write_file(pytester.path, "framework/dsl/templates/example.dsl", '[打印], 内容: "template"\n')
+    write_file(
+        pytester.path,
+        "framework/test_plain.py",
+        "def test_plain_pytest_item():\n    assert True\n",
+    )
+
+    result = run_pytest_dsl(pytester, "framework", "--collect-only", "-q")
+
+    output = result.stdout.str()
+    assert "framework/test_plain.py::test_plain_pytest_item" in output
+    assert "framework/dsl/templates/example.dsl::example" not in output
+
+
+def test_explicit_dsl_file_outside_tests_directory_still_runs(pytester):
+    write_file(pytester.path, "examples/example.dsl", '[打印], 内容: "explicit"\n')
+
+    result = run_pytest_dsl(pytester, "examples/example.dsl", "-q")
+
+    result.assert_outcomes(passed=1)
