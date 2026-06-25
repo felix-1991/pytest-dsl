@@ -35,6 +35,20 @@ function writeScript(filePath, content) {
   return filePath;
 }
 
+function writeNodeCommand(root, name, source) {
+  const scriptPath = path.join(root, `${name}.js`);
+  fs.writeFileSync(scriptPath, source, "utf8");
+  if (process.platform === "win32") {
+    const commandPath = path.join(root, `${name}.cmd`);
+    fs.writeFileSync(commandPath, `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`, "utf8");
+    return commandPath;
+  }
+  const commandPath = path.join(root, name);
+  fs.writeFileSync(commandPath, `#!/bin/sh\nexec "${process.execPath}" "${scriptPath}" "$@"\n`, "utf8");
+  fs.chmodSync(commandPath, 0o755);
+  return commandPath;
+}
+
 function projectPython(root, environment = ".venv", platform = "linux") {
   return platform === "win32"
     ? path.join(root, environment, "Scripts", "python.exe")
@@ -267,6 +281,21 @@ test("runtime preflight retries a later candidate when the first lacks pytest-ds
   }, { platform: "linux", skipCommonPaths: true, skipShellPathDiscovery: true });
 
   assert.equal(target.command, goodPython);
+});
+
+test("runtime preflight allows slow Python dependency probes", (t) => {
+  const root = makeTempProject(t);
+  const slowPython = writeNodeCommand(root, "slow-python", [
+    "setTimeout(() => {",
+    "  console.log(process.argv[1]);",
+    "}, 6000);",
+    "",
+  ].join("\n"));
+  updateRuntimeMetadata(root, { pythonExecutable: slowPython });
+
+  const target = resolvePythonRuntimeTarget(root, { PATH: "" });
+
+  assert.equal(target.command, slowPython);
 });
 
 test("POSIX runtime detection can use login shell PATH without fixed install paths", (t) => {

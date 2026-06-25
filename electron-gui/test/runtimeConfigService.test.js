@@ -26,6 +26,20 @@ function writeExecutable(filePath, content) {
   return filePath;
 }
 
+function writeNodeCommand(root, name, source) {
+  const scriptPath = path.join(root, `${name}.js`);
+  fs.writeFileSync(scriptPath, source, "utf8");
+  if (process.platform === "win32") {
+    const commandPath = path.join(root, `${name}.cmd`);
+    fs.writeFileSync(commandPath, `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`, "utf8");
+    return commandPath;
+  }
+  const commandPath = path.join(root, name);
+  fs.writeFileSync(commandPath, `#!/bin/sh\nexec "${process.execPath}" "${scriptPath}" "$@"\n`, "utf8");
+  fs.chmodSync(commandPath, 0o755);
+  return commandPath;
+}
+
 function projectPython(root, platform = "linux") {
   return platform === "win32"
     ? path.join(root, ".venv", "Scripts", "python.exe")
@@ -119,6 +133,34 @@ test("getRuntimeStatus reports missing configured python as python-not-found", a
   assert.match(result.python.message, /does not exist/);
 });
 
+test("getRuntimeStatus allows slow Python dependency probes", async () => {
+  const root = makeTempProject();
+  const slowPython = writeNodeCommand(root, "slow-python", [
+    "setTimeout(() => {",
+    "  console.log(process.argv[1]);",
+    "}, 6000);",
+    "",
+  ].join("\n"));
+  updateRuntimeMetadata(root, { pythonExecutable: slowPython });
+
+  const result = await getRuntimeStatus({
+    projectRoot: root,
+    env: { PATH: "" },
+    allureRuntimeProbe: () => ({
+      available: false,
+      command: null,
+      args: [],
+      source: null,
+      version: null,
+      reason: "allure-not-found",
+      message: "Allure 3 was not found",
+    }),
+  });
+
+  assert.equal(result.python.available, true);
+  assert.equal(result.python.command, slowPython);
+});
+
 test("getRuntimeStatus reports missing dependencies as python-dependency-missing", async () => {
   const root = makeTempProject();
   const python = writeExecutable(
@@ -177,6 +219,54 @@ test("getRuntimeStatus includes actionable Python probe failure details", async 
   assert.match(result.python.detail, /project virtualenv/);
   assert.match(result.python.action, /Rebuild the project virtualenv/);
   assert.equal(result.python.checked[0].command, python);
+});
+
+test("getRuntimeStatus reports Python probe spawn errors without rejecting", async () => {
+  const root = makeTempProject();
+  const python = writeExecutable(projectPython(root));
+
+  const result = await getRuntimeStatus({
+    projectRoot: root,
+    env: { PATH: "" },
+    platform: "linux",
+    pythonDependencyProbe: () => {
+      throw new Error("spawn EINVAL");
+    },
+    allureRuntimeProbe: () => ({
+      available: false,
+      command: null,
+      args: [],
+      source: null,
+      version: null,
+      reason: "allure-not-found",
+      message: "Allure 3 was not found",
+    }),
+  });
+
+  assert.equal(result.python.available, false);
+  assert.equal(result.python.reason, "python-probe-failed");
+  assert.equal(result.python.command, python);
+  assert.match(result.python.detail, /spawn EINVAL/);
+});
+
+test("getRuntimeStatus reports Allure probe spawn errors without rejecting", async () => {
+  const root = makeTempProject();
+  writeExecutable(projectPython(root));
+
+  const result = await getRuntimeStatus({
+    projectRoot: root,
+    env: { PATH: "" },
+    platform: "linux",
+    pythonDependencyProbe: (target) => ({ status: "ok", executable: target.command }),
+    allureRuntimeProbe: () => {
+      throw new Error("spawn EINVAL");
+    },
+  });
+
+  assert.equal(result.python.available, true);
+  assert.equal(result.allure.available, false);
+  assert.equal(result.allure.reason, "allure-probe-failed");
+  assert.match(result.allure.message, /spawn EINVAL/);
 });
 
 test("getRuntimeStatus reports available python when probe succeeds", async () => {

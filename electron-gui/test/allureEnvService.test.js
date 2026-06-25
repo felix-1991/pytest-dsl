@@ -22,6 +22,20 @@ function writeExecutable(filePath, content = "#!/bin/sh\necho fixture\n") {
   return filePath;
 }
 
+function writeNodeCommand(root, name, source) {
+  const scriptPath = path.join(root, `${name}.js`);
+  fs.writeFileSync(scriptPath, source, "utf8");
+  if (process.platform === "win32") {
+    const commandPath = path.join(root, `${name}.cmd`);
+    fs.writeFileSync(commandPath, `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`, "utf8");
+    return commandPath;
+  }
+  const commandPath = path.join(root, name);
+  fs.writeFileSync(commandPath, `#!/bin/sh\nexec "${process.execPath}" "${scriptPath}" "$@"\n`, "utf8");
+  fs.chmodSync(commandPath, 0o755);
+  return commandPath;
+}
+
 function writeAllureFake(root, name, versionOutput) {
   const target = path.join(root, name);
   const script = process.platform === "win32"
@@ -117,6 +131,23 @@ test("Windows project node_modules Allure candidate is selected by requested pla
   assert.equal(candidates[0].source, "project-node-modules");
 });
 
+test("Windows Allure cmd and bat candidates are marked for shell execution", () => {
+  const root = makeTempProject();
+  const projectAllure = writeAllureFake(
+    root,
+    path.join("node_modules", ".bin", "allure.cmd"),
+    "Allure commandline, version 3.0.5",
+  );
+
+  const candidates = resolveAllureCandidates(root, { PATH: "" }, {
+    platform: "win32",
+    skipCommonPaths: true,
+  });
+
+  assert.equal(candidates[0].command, projectAllure);
+  assert.equal(candidates[0].shell, true);
+});
+
 test("POSIX Allure detection can use login shell PATH without fixed install paths", async () => {
   const root = makeTempProject();
   const shellBin = path.join(root, "shell-bin");
@@ -167,4 +198,36 @@ test("configured Allure with unreadable version returns allure-version-unreadabl
   const result = await resolveAllureRuntime(root, { PATH: "" });
   assert.equal(result.available, false);
   assert.equal(result.reason, "allure-version-unreadable");
+});
+
+test("configured Allure version detector errors return allure-version-unreadable", async () => {
+  const root = makeTempProject();
+  const configured = writeAllureFake(root, "bad-allure-spawn", "Allure commandline, version 3.1.0");
+  updateRuntimeMetadata(root, { allureExecutable: configured });
+
+  const result = await resolveAllureRuntime(root, { PATH: "" }, {
+    allureVersionDetector: () => {
+      throw new Error("spawn EINVAL");
+    },
+  });
+
+  assert.equal(result.available, false);
+  assert.equal(result.reason, "allure-version-unreadable");
+  assert.match(result.detail, /spawn EINVAL/);
+});
+
+test("configured Allure allows slow version probes", async () => {
+  const root = makeTempProject();
+  const configured = writeNodeCommand(root, "slow-allure", [
+    "setTimeout(() => {",
+    "  console.log('Allure commandline, version 3.4.5');",
+    "}, 6000);",
+    "",
+  ].join("\n"));
+  updateRuntimeMetadata(root, { allureExecutable: configured });
+
+  const result = await resolveAllureRuntime(root, { PATH: "" });
+
+  assert.equal(result.available, true);
+  assert.equal(result.version, "3.4.5");
 });

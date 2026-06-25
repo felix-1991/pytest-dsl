@@ -10,6 +10,7 @@ const {
   isExecutableAvailable,
   mergeEnvironment,
   resolvePythonRuntimeTarget,
+  withPythonProcessEnv,
 } = require("./pythonEnvService");
 const { resolveAllureRuntime } = require("./allureEnvService");
 const { withRuntimePathEnv } = require("./runtimePathService");
@@ -432,6 +433,7 @@ async function maybeStartAllureWatch(task, options, env, callbacks) {
     cwd: task.plan.cwd,
     env: allureProcessEnv(env, options),
     windowsHide: true,
+    shell: spawnTarget.shell || false,
   });
   task.reportChild = child;
 
@@ -583,6 +585,7 @@ async function resolveAllureExportSpawnTarget(plan, options = {}, env = process.
   return {
     command: runtime.command,
     args: runtime.args,
+    shell: runtime.shell || false,
   };
 }
 
@@ -602,6 +605,7 @@ function runAllureReportExport(spawnTarget, plan, env, options = {}) {
       cwd: plan.cwd,
       env: allureProcessEnv(env, options),
       windowsHide: true,
+      shell: spawnTarget.shell || false,
     });
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
@@ -781,6 +785,7 @@ async function resolveAllureWatchSpawnTarget(
       plan.allureReportDir,
       plan.allureResultsDir,
     ],
+    shell: runtime.shell || false,
   };
 }
 
@@ -1016,15 +1021,13 @@ function assertProjectRoot(projectRoot) {
 function executionEnv(extraEnv, platform = process.platform) {
   const packageRoot = path.resolve(__dirname, "..", "..", "..");
   const env = mergeEnvironment(process.env, extraEnv, platform);
-  const bufferedEnv = mergeEnvironment(env, {
-    PYTHONUNBUFFERED: "1",
-  }, platform);
+  const pythonEnv = withPythonProcessEnv(env, platform);
   if (!isDirectory(path.join(packageRoot, "pytest_dsl"))) {
-    return bufferedEnv;
+    return pythonEnv;
   }
-  const existingPythonPath = bufferedEnv.PYTHONPATH || "";
+  const existingPythonPath = pythonEnv.PYTHONPATH || "";
   const delimiter = platform === "win32" ? ";" : path.delimiter;
-  return mergeEnvironment(bufferedEnv, {
+  return mergeEnvironment(pythonEnv, {
     PYTHONPATH: existingPythonPath
       ? `${packageRoot}${delimiter}${existingPythonPath}`
       : packageRoot,

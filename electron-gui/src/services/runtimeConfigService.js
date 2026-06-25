@@ -7,10 +7,11 @@ const {
   isExecutableAvailable,
   mergeEnvironment,
   resolvePythonTargets,
+  withPythonProcessEnv,
 } = require("./pythonEnvService");
 const { readMetadata, updateRuntimeMetadata } = require("./metadataStore");
 
-const PYTHON_PROBE_TIMEOUT_MS = 5000;
+const PYTHON_PROBE_TIMEOUT_MS = 15000;
 const PYTHON_PROBE_SCRIPT = [
   "import sys",
   "if sys.version_info < (3, 9):",
@@ -103,7 +104,19 @@ async function probePythonStatus(projectRoot, env, options) {
     : availableTargets;
   const failedProbes = [];
   for (const target of probeTargets) {
-    const probeResult = await runPythonDependencyProbe(target, projectRoot, env, options);
+    let probeResult;
+    try {
+      probeResult = await runPythonDependencyProbe(target, projectRoot, env, options);
+    } catch (error) {
+      probeResult = {
+        status: "error",
+        detail: error.message || String(error),
+        signal: error.signal || null,
+        code: error.code,
+        stdout: "",
+        stderr: "",
+      };
+    }
     annotateProbeResult(target, probeResult);
     if (probeResult.status === "ok") {
       return {
@@ -189,50 +202,63 @@ function runPythonDependencyProbe(target, projectRoot, env, options) {
 
 function runPythonProbeAsync(target, projectRoot, env, options) {
   return new Promise((resolve) => {
-    const child = execFile(
-      target.command,
-      [...target.args, "-c", PYTHON_PROBE_SCRIPT],
-      {
-        cwd: projectRoot,
-        env,
-        timeout: PYTHON_PROBE_TIMEOUT_MS,
-        windowsHide: true,
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          const combined = `${stdout || ""}\n${stderr || ""}`;
-          if (/Python 3\.9 or newer is required/i.test(combined)) {
-            resolve({ status: "version-unsupported", detail: singleLine(combined) });
-            return;
-          }
-          if (/ModuleNotFoundError|ImportError|No module named/i.test(combined)) {
-            resolve({ status: "missing", detail: "pytest-dsl" });
-            return;
-          }
-          if (error.signal) {
+    let child;
+    try {
+      child = execFile(
+        target.command,
+        [...target.args, "-c", PYTHON_PROBE_SCRIPT],
+        {
+          cwd: projectRoot,
+          env,
+          timeout: PYTHON_PROBE_TIMEOUT_MS,
+          windowsHide: true,
+        },
+        (error, stdout, stderr) => {
+          if (error) {
+            const combined = `${stdout || ""}\n${stderr || ""}`;
+            if (/Python 3\.9 or newer is required/i.test(combined)) {
+              resolve({ status: "version-unsupported", detail: singleLine(combined) });
+              return;
+            }
+            if (/ModuleNotFoundError|ImportError|No module named/i.test(combined)) {
+              resolve({ status: "missing", detail: "pytest-dsl" });
+              return;
+            }
+            if (error.signal) {
+              resolve({
+                status: "error",
+                detail: `Python was terminated by signal ${error.signal}.`,
+                signal: error.signal,
+                code: error.code,
+                stdout: stdout || "",
+                stderr: stderr || "",
+              });
+              return;
+            }
             resolve({
               status: "error",
-              detail: `Python was terminated by signal ${error.signal}.`,
-              signal: error.signal,
+              detail: error.message,
               code: error.code,
               stdout: stdout || "",
               stderr: stderr || "",
             });
             return;
           }
-          resolve({
-            status: "error",
-            detail: error.message,
-            code: error.code,
-            stdout: stdout || "",
-            stderr: stderr || "",
-          });
-          return;
-        }
-        const executable = (stdout || "").trim().split("\n").pop();
-        resolve({ status: "ok", executable });
-      },
-    );
+          const executable = (stdout || "").trim().split("\n").pop();
+          resolve({ status: "ok", executable });
+        },
+      );
+    } catch (error) {
+      resolve({
+        status: "error",
+        detail: error.message || String(error),
+        signal: error.signal || null,
+        code: error.code,
+        stdout: "",
+        stderr: "",
+      });
+      return;
+    }
     child.on("error", (error) => {
       resolve({ status: "error", detail: error.message });
     });
@@ -240,10 +266,25 @@ function runPythonProbeAsync(target, projectRoot, env, options) {
 }
 
 async function probeAllureStatus(projectRoot, env, options) {
-  if (typeof options.allureRuntimeProbe === "function") {
-    return options.allureRuntimeProbe(projectRoot, env, options);
+  try {
+    if (typeof options.allureRuntimeProbe === "function") {
+      return await options.allureRuntimeProbe(projectRoot, env, options);
+    }
+    return await resolveAllureRuntime(projectRoot, env, options);
+  } catch (error) {
+    return {
+      available: false,
+      command: null,
+      args: [],
+      source: null,
+      version: null,
+      reason: "allure-probe-failed",
+      message: `Allure probe failed: ${singleLine(error.message || error)}`,
+      detail: error.stack || singleLine(error.message || error),
+      action: "Install Allure 3 with npm install -g allure, choose its executable, or restart Studio after making Allure available on PATH.",
+      checked: [],
+    };
   }
-  return resolveAllureRuntime(projectRoot, env, options);
 }
 
 function saveRuntimeExecutable(projectRoot, kind, executablePath) {
@@ -330,7 +371,10 @@ function assertProjectRoot(projectRoot) {
 }
 
 function runtimeEnv(extraEnv, platform = process.platform) {
-  return mergeEnvironment(process.env, extraEnv, platform);
+  return withPythonProcessEnv(
+    mergeEnvironment(process.env, extraEnv, platform),
+    platform,
+  );
 }
 
 function describePythonTarget(target, env, options) {

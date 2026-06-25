@@ -10,7 +10,7 @@ const {
   withRuntimePathEnv,
 } = require("./runtimePathService");
 
-const ALLURE_VERSION_TIMEOUT_MS = 3000;
+const ALLURE_VERSION_TIMEOUT_MS = 15000;
 
 function resolveAllureCandidates(projectRoot, env = process.env, options = {}) {
   const root = assertProjectRoot(projectRoot);
@@ -32,39 +32,19 @@ function resolveAllureCandidates(projectRoot, env = process.env, options = {}) {
   const candidates = [];
 
   if (configured) {
-    candidates.push({
-      command: configured,
-      args: [],
-      source: "project-config",
-      configured: true,
-    });
+    candidates.push(allureTarget(configured, [], "project-config", true, platform));
     return candidates;
   }
 
   if (projectAllure) {
-    candidates.push({
-      command: projectAllure,
-      args: [],
-      source: "project-node-modules",
-      configured: false,
-    });
+    candidates.push(allureTarget(projectAllure, [], "project-node-modules", false, platform));
   }
   if (guiAllure) {
-    candidates.push({
-      command: guiAllure,
-      args: [],
-      source: "studio-node-modules",
-      configured: false,
-    });
+    candidates.push(allureTarget(guiAllure, [], "studio-node-modules", false, platform));
   }
   const pathAllure = findExecutableInPath("allure", env, options);
   if (pathAllure) {
-    candidates.push({
-      command: pathAllure,
-      args: [],
-      source: "path",
-      configured: false,
-    });
+    candidates.push(allureTarget(pathAllure, [], "path", false, platform));
   }
   return candidates;
 }
@@ -93,7 +73,13 @@ async function resolveAllureRuntime(projectRoot, env = process.env, options = {}
     if (!isExecutableAvailable(candidate.command, env, options)) {
       continue;
     }
-    const version = await versionDetector(candidate, projectRoot, env, options);
+    let version = null;
+    let versionError = null;
+    try {
+      version = await versionDetector(candidate, projectRoot, env, options);
+    } catch (error) {
+      versionError = error;
+    }
     if (!version) {
       if (candidate.configured) {
         return unavailable(
@@ -101,7 +87,7 @@ async function resolveAllureRuntime(projectRoot, env = process.env, options = {}
           "Unable to read configured Allure version",
           candidate,
           null,
-          `Command: ${runtimeCommand(candidate)}\nSource: ${runtimeSourceLabel(candidate.source)}`,
+          allureProbeDetail(candidate, versionError),
           "Install Allure 3 with npm install -g allure, choose an Allure 3 executable, or verify this command prints a semantic version with --version.",
           candidates,
         );
@@ -117,7 +103,7 @@ async function resolveAllureRuntime(projectRoot, env = process.env, options = {}
           "Unable to read configured Allure version",
           candidate,
           null,
-          `Command: ${runtimeCommand(candidate)}\nSource: ${runtimeSourceLabel(candidate.source)}`,
+          allureProbeDetail(candidate),
           "Install Allure 3 with npm install -g allure, choose an Allure 3 executable, or verify this command prints a semantic version with --version.",
           candidates,
         );
@@ -142,6 +128,7 @@ async function resolveAllureRuntime(projectRoot, env = process.env, options = {}
       available: true,
       command: candidate.command,
       args: candidate.args,
+      shell: candidate.shell,
       source: candidate.source,
       version: versionText,
       reason: null,
@@ -188,27 +175,56 @@ function unavailable(
 function detectAllureVersion(candidate, cwd, env, options = {}) {
   return new Promise((resolve) => {
     const execEnv = withRuntimePathEnv(env, options);
-    const child = execFile(
-      candidate.command,
-      [...candidate.args, "--version"],
-      {
-        cwd,
-        env: execEnv,
-        timeout: ALLURE_VERSION_TIMEOUT_MS,
-        windowsHide: true,
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          resolve(null);
-          return;
-        }
-        const text = `${stdout || ""}\n${stderr || ""}`;
-        const match = text.match(/(\d+)\.(\d+)\.(\d+)/);
-        resolve(match ? `${match[1]}.${match[2]}.${match[3]}` : null);
-      },
-    );
+    let child;
+    try {
+      child = execFile(
+        candidate.command,
+        [...candidate.args, "--version"],
+        {
+          cwd,
+          env: execEnv,
+          timeout: ALLURE_VERSION_TIMEOUT_MS,
+          windowsHide: true,
+          shell: candidate.shell || false,
+        },
+        (error, stdout, stderr) => {
+          if (error) {
+            resolve(null);
+            return;
+          }
+          const text = `${stdout || ""}\n${stderr || ""}`;
+          const match = text.match(/(\d+)\.(\d+)\.(\d+)/);
+          resolve(match ? `${match[1]}.${match[2]}.${match[3]}` : null);
+        },
+      );
+    } catch (_error) {
+      resolve(null);
+      return;
+    }
     child.on("error", () => resolve(null));
   });
+}
+
+function allureTarget(command, args, source, configured, platform = process.platform) {
+  return {
+    command,
+    args: [...args],
+    source,
+    configured,
+    shell: shouldRunAllureThroughShell(command, platform),
+  };
+}
+
+function shouldRunAllureThroughShell(command, platform = process.platform) {
+  return platform === "win32" && /\.(?:cmd|bat)$/i.test(String(command || ""));
+}
+
+function allureProbeDetail(candidate, error = null) {
+  return [
+    `Command: ${runtimeCommand(candidate)}`,
+    `Source: ${runtimeSourceLabel(candidate.source)}`,
+    error ? `Detail: ${singleLine(error.message || error)}` : "",
+  ].filter(Boolean).join("\n");
 }
 
 function assertProjectRoot(projectRoot) {
@@ -263,6 +279,7 @@ function describeAllureCandidates(candidates) {
   return candidates.map((candidate) => ({
     command: candidate.command,
     args: [...candidate.args],
+    shell: candidate.shell || false,
     source: candidate.source,
     configured: candidate.configured,
   }));
@@ -280,6 +297,10 @@ function runtimeSourceLabel(source) {
     path: "PATH",
   };
   return labels[source] || source || "unknown";
+}
+
+function singleLine(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
 }
 
 function dedupeStrings(values, platform) {

@@ -466,6 +466,9 @@ test("execution child environment applies Windows key replacement semantics", as
       PATHEXT: ".EXE;.CMD",
       PythonPath: "stale-pythonpath",
       PYTHONPATH: externalPythonPath,
+      PYTHONIOENCODING: "gbk",
+      PYTHONUTF8: "0",
+      PYTHONUNBUFFERED: "0",
     },
     commandOverride: {
       command: process.execPath,
@@ -473,7 +476,10 @@ test("execution child environment applies Windows key replacement semantics", as
         "const keys = Object.keys(process.env).filter(key =>",
         "  ['path', 'pathext', 'pythonpath'].includes(key.toLowerCase()));",
         "console.log(JSON.stringify({ keys, PATH: process.env.PATH,",
-        "  PATHEXT: process.env.PATHEXT, PYTHONPATH: process.env.PYTHONPATH }));",
+        "  PATHEXT: process.env.PATHEXT, PYTHONPATH: process.env.PYTHONPATH,",
+        "  PYTHONIOENCODING: process.env.PYTHONIOENCODING,",
+        "  PYTHONUTF8: process.env.PYTHONUTF8,",
+        "  PYTHONUNBUFFERED: process.env.PYTHONUNBUFFERED }));",
       ].join(" ")],
     },
   }, {
@@ -489,6 +495,9 @@ test("execution child environment applies Windows key replacement semantics", as
   assert.equal(payload.PATHEXT, ".EXE;.CMD");
   assert.deepEqual(payload.keys.sort(), ["PATH", "PATHEXT", "PYTHONPATH"]);
   assert.equal(payload.PYTHONPATH.split(";").at(-1), externalPythonPath);
+  assert.equal(payload.PYTHONIOENCODING, "utf-8");
+  assert.equal(payload.PYTHONUTF8, "1");
+  assert.equal(payload.PYTHONUNBUFFERED, "1");
 });
 
 test("normal run uses configured absolute Python when PATH is empty", async () => {

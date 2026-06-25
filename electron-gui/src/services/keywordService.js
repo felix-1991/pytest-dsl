@@ -1,7 +1,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
-const { resolvePythonTargets } = require("./pythonEnvService");
+const {
+  mergeEnvironment,
+  resolvePythonTargets,
+  withPythonProcessEnv,
+} = require("./pythonEnvService");
 
 const DEFAULT_LIMIT = 80;
 const PYTHON_TIMEOUT_MS = 15000;
@@ -107,7 +111,8 @@ function sourceName(sourceInfo) {
 
 function runKeywordQuery(projectRoot, query, includeRemote) {
   return new Promise((resolve, reject) => {
-    const targets = resolvePythonTargets(projectRoot, process.env);
+    const baseEnv = withPythonProcessEnv(process.env);
+    const targets = resolvePythonTargets(projectRoot, baseEnv);
     const envs = keywordQueryEnvs();
 
     const tryTarget = (targetIndex, envIndex = 0) => {
@@ -158,7 +163,7 @@ function runKeywordQuery(projectRoot, query, includeRemote) {
 }
 
 function keywordQueryEnvs() {
-  const envs = [process.env];
+  const envs = [withPythonProcessEnv(process.env)];
   if (isDirectory(path.join(REPO_ROOT, "pytest_dsl"))) {
     envs.push(devPythonPathEnv());
   }
@@ -166,11 +171,11 @@ function keywordQueryEnvs() {
 }
 
 function devPythonPathEnv() {
-  const existing = process.env.PYTHONPATH || "";
-  return {
-    ...process.env,
+  const baseEnv = withPythonProcessEnv(process.env);
+  const existing = baseEnv.PYTHONPATH || "";
+  return mergeEnvironment(baseEnv, {
     PYTHONPATH: existing ? `${REPO_ROOT}${path.delimiter}${existing}` : REPO_ROOT,
-  };
+  });
 }
 
 function isDirectory(directory) {

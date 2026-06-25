@@ -7,6 +7,7 @@ const {
   isExecutableAvailable,
   mergeEnvironment,
   resolvePythonRuntimeTarget,
+  withPythonProcessEnv,
 } = require("./pythonEnvService");
 const { buildPytestTargets } = require("./suiteService");
 
@@ -494,15 +495,13 @@ function pythonModuleForMode(mode) {
 function executionEnv(extraEnv, platform = process.platform) {
   const packageRoot = path.resolve(__dirname, "..", "..", "..");
   const env = mergeEnvironment(process.env, extraEnv, platform);
-  const bufferedEnv = mergeEnvironment(env, {
-    PYTHONUNBUFFERED: "1",
-  }, platform);
+  const pythonEnv = withPythonProcessEnv(env, platform);
   if (!isDirectory(path.join(packageRoot, "pytest_dsl"))) {
-    return bufferedEnv;
+    return pythonEnv;
   }
-  const existingPythonPath = bufferedEnv.PYTHONPATH || "";
+  const existingPythonPath = pythonEnv.PYTHONPATH || "";
   const delimiter = platform === "win32" ? ";" : path.delimiter;
-  return mergeEnvironment(bufferedEnv, {
+  return mergeEnvironment(pythonEnv, {
     PYTHONPATH: existingPythonPath
       ? `${packageRoot}${delimiter}${existingPythonPath}`
       : packageRoot,

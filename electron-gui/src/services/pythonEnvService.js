@@ -14,7 +14,7 @@ const WINDOWS_CANONICAL_ENV_KEYS = new Map([
   ["pythonpath", "PYTHONPATH"],
 ]);
 
-const PYTHON_RUNTIME_PROBE_TIMEOUT_MS = 5000;
+const PYTHON_RUNTIME_PROBE_TIMEOUT_MS = 15000;
 const PYTHON_RUNTIME_PROBE_SCRIPT = [
   "import sys",
   "if sys.version_info < (3, 9):",
@@ -22,6 +22,11 @@ const PYTHON_RUNTIME_PROBE_SCRIPT = [
   "import pytest, pytest_dsl",
   "print(sys.executable)",
 ].join("\n");
+const PYTHON_PROCESS_ENV = {
+  PYTHONUNBUFFERED: "1",
+  PYTHONIOENCODING: "utf-8",
+  PYTHONUTF8: "1",
+};
 
 function mergeEnvironment(base = {}, overrides = {}, platform = process.platform) {
   const normalizedBase = base && typeof base === "object" ? base : {};
@@ -44,6 +49,10 @@ function mergeEnvironment(base = {}, overrides = {}, platform = process.platform
     merged[WINDOWS_CANONICAL_ENV_KEYS.get(normalizedKey) || key] = value;
   }
   return merged;
+}
+
+function withPythonProcessEnv(env = {}, platform = process.platform) {
+  return mergeEnvironment(env, PYTHON_PROCESS_ENV, platform);
 }
 
 function resolvePythonCommand(projectRoot, env = process.env, options = {}) {
@@ -216,13 +225,17 @@ function isExecutableAvailable(command, env = process.env, platformOrOptions = p
 }
 
 function runPythonRuntimeProbeSync(target, projectRoot, env = process.env, options = {}) {
+  const probeEnv = withPythonProcessEnv(
+    env,
+    normalizeOptions(options).platform || process.platform,
+  );
   try {
     const stdout = execFileSync(
       target.command,
       [...target.args, "-c", PYTHON_RUNTIME_PROBE_SCRIPT],
       {
         cwd: projectRoot || process.cwd(),
-        env,
+        env: probeEnv,
         encoding: "utf8",
         timeout: options.pythonRuntimeProbeTimeoutMs || PYTHON_RUNTIME_PROBE_TIMEOUT_MS,
         stdio: ["ignore", "pipe", "pipe"],
@@ -312,4 +325,5 @@ module.exports = {
   resolvePythonRuntimeTarget,
   resolvePythonTarget,
   resolvePythonTargets,
+  withPythonProcessEnv,
 };
