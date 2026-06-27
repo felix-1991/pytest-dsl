@@ -28,7 +28,9 @@ const { checkRemoteServers } = require("./src/services/remoteStatusService");
 const { listKeywords } = require("./src/services/keywordService");
 const {
   findKeywordDefinitions,
-  readSourceFile
+  invalidateDefinitionCache,
+  prefetchDefinitionCache,
+  readSourceFile,
 } = require("./src/services/keywordDefinitionService");
 const {
   getRuntimeStatus,
@@ -69,28 +71,64 @@ function registerIpc() {
       return null;
     }
 
-    return getProjectSnapshot(result.filePaths[0]);
+    const snapshot = getProjectSnapshot(result.filePaths[0]);
+    prefetchDefinitionCache(snapshot.project.rootPath);
+    return snapshot;
   });
 
-  ipcMain.handle("project:default", () => getProjectSnapshot(DEFAULT_PROJECT_ROOT));
-  ipcMain.handle("project:scan", (_event, projectRoot) => getProjectSnapshot(projectRoot));
+  ipcMain.handle("project:default", () => {
+    const snapshot = getProjectSnapshot(DEFAULT_PROJECT_ROOT);
+    prefetchDefinitionCache(DEFAULT_PROJECT_ROOT);
+    return snapshot;
+  });
+  ipcMain.handle("project:scan", (_event, projectRoot) => {
+    const snapshot = getProjectSnapshot(projectRoot);
+    prefetchDefinitionCache(projectRoot);
+    return snapshot;
+  });
   ipcMain.handle("project:config", (_event, projectRoot) => getProjectConfigSnapshot(projectRoot));
   ipcMain.handle("file:read", (_event, projectRoot, relativePath) => readProjectFile(projectRoot, relativePath));
-  ipcMain.handle("file:save", (_event, projectRoot, relativePath, content) => (
-    saveProjectFile(projectRoot, relativePath, content)
-  ));
-  ipcMain.handle("file:create", (_event, projectRoot, options) => (
-    createProjectEntry(projectRoot, options)
-  ));
-  ipcMain.handle("file:rename", (_event, projectRoot, options) => (
-    renameProjectEntry(projectRoot, options)
-  ));
-  ipcMain.handle("file:move", (_event, projectRoot, options) => (
-    moveProjectEntry(projectRoot, options)
-  ));
-  ipcMain.handle("file:delete", (_event, projectRoot, options) => (
-    deleteProjectEntry(projectRoot, options)
-  ));
+  ipcMain.handle("file:save", (_event, projectRoot, relativePath, content) => {
+    const result = saveProjectFile(projectRoot, relativePath, content);
+    if (shouldInvalidateDefinitionCache(relativePath)) {
+      invalidateDefinitionCache(projectRoot);
+    }
+    return result;
+  });
+  ipcMain.handle("file:create", (_event, projectRoot, options) => {
+    const result = createProjectEntry(projectRoot, options);
+    if (shouldInvalidateDefinitionCache(options && options.relativePath)) {
+      invalidateDefinitionCache(projectRoot);
+    }
+    return result;
+  });
+  ipcMain.handle("file:rename", (_event, projectRoot, options) => {
+    const oldPath = options && options.relativePath;
+    const newName = options && options.newName;
+    const newPath = oldPath ? path.posix.join(path.posix.dirname(String(oldPath).replace(/\\/g, "/")), String(newName || "")) : null;
+    const result = renameProjectEntry(projectRoot, options);
+    if (shouldInvalidateDefinitionCache(oldPath) || shouldInvalidateDefinitionCache(newPath)) {
+      invalidateDefinitionCache(projectRoot);
+    }
+    return result;
+  });
+  ipcMain.handle("file:move", (_event, projectRoot, options) => {
+    const oldPath = options && options.relativePath;
+    const newDir = options && options.targetDirectory;
+    const result = moveProjectEntry(projectRoot, options);
+    if (shouldInvalidateDefinitionCache(oldPath) || shouldInvalidateDefinitionCache(newDir)) {
+      invalidateDefinitionCache(projectRoot);
+    }
+    return result;
+  });
+  ipcMain.handle("file:delete", (_event, projectRoot, options) => {
+    const relativePath = options && options.relativePath;
+    const result = deleteProjectEntry(projectRoot, options);
+    if (shouldInvalidateDefinitionCache(relativePath)) {
+      invalidateDefinitionCache(projectRoot);
+    }
+    return result;
+  });
   ipcMain.handle("remote:check", (_event, servers) => checkRemoteServers(servers));
   ipcMain.handle("keyword:list", (_event, options = {}) => listKeywords({
     ...options,
@@ -100,6 +138,10 @@ function registerIpc() {
     ...options,
     projectRoot: options.projectRoot || DEFAULT_PROJECT_ROOT
   }));
+  ipcMain.handle("keyword:definition:invalidate", (_event, projectRoot) => {
+    invalidateDefinitionCache(projectRoot || null);
+    return { invalidated: true };
+  });
   ipcMain.handle("source:read", (_event, options = {}) => readSourceFile(
     options.projectRoot || DEFAULT_PROJECT_ROOT,
     options.path
@@ -176,6 +218,12 @@ function registerIpc() {
     resetRuntimeExecutable(options.projectRoot, options.kind);
     return getRuntimeStatus({ projectRoot: options.projectRoot });
   });
+}
+
+function shouldInvalidateDefinitionCache(relativePath) {
+  if (!relativePath) return false;
+  const normalized = String(relativePath).replace(/\\/g, "/");
+  return normalized.endsWith(".resource") || normalized.startsWith("keywords/");
 }
 
 function runtimeDialogProperties(kind, selectionMode) {

@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("pytestDslGui", {
   checkRemoteServers: (servers) => ipcRenderer.invoke("remote:check", servers),
   listKeywords: (options) => ipcRenderer.invoke("keyword:list", options),
   findKeywordDefinitions: (options) => ipcRenderer.invoke("keyword:definition", options),
+  invalidateDefinitionCache: (projectRoot) => ipcRenderer.invoke("keyword:definition:invalidate", projectRoot),
   readSourceFile: (options) => ipcRenderer.invoke("source:read", options),
   copyText: (text) => ipcRenderer.invoke("clipboard:write", text),
   startExecution: (options) => ipcRenderer.invoke("execution:start", options),

@@ -1779,6 +1779,24 @@ body.is-resizing-console .panel-resizer {
   white-space: nowrap;
 }
 
+.keyword-refresh-btn {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.keyword-refresh-btn:hover {
+  color: var(--text);
+  background: var(--panel-soft);
+}
+
 .keyword-list {
   display: grid;
   gap: 4px;

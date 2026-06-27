@@ -133,7 +133,7 @@ test("project snapshots include a recursive editable tree with empty directories
   assert.equal(findTreeNode(snapshot.tree, "assets/blob.bin"), null);
 });
 
-test("config discovery includes extra YAML candidates but defaults to project config", () => {
+test("config discovery only includes YAML files under the config directory", () => {
   const root = makeTempProject();
   writeFile(root, "case.dsl", "@name: \"Config candidates\"\n");
   writeFile(root, "config/dev.yaml", "environment: dev\n");
@@ -142,8 +142,7 @@ test("config discovery includes extra YAML candidates but defaults to project co
   const snapshot = getProjectSnapshot(root);
 
   assert.deepEqual(snapshot.config.sources.map((item) => item.relativePath), [
-    "config/dev.yaml",
-    "tests/auth_config.yaml"
+    "config/dev.yaml"
   ]);
   assert.deepEqual(snapshot.config.selectedPaths, ["config/dev.yaml"]);
   assert.equal(snapshot.config.merged.environment, "dev");

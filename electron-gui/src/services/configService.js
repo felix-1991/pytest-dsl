@@ -87,7 +87,7 @@ function buildConfigSignature(sources) {
 
 function listConfigFiles(projectRoot) {
   const files = [];
-  walkConfigFiles(projectRoot, projectRoot, files);
+  walkConfigFiles(projectRoot, path.join(projectRoot, "config"), files);
   return files.sort((left, right) => {
     const leftRelative = path.relative(projectRoot, left).replace(/\\/g, "/");
     const rightRelative = path.relative(projectRoot, right).replace(/\\/g, "/");

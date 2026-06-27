@@ -82,6 +82,11 @@ export function createProjectController({
     if (projectChanged) {
       resetKeywordBrowser();
       resetEditorCompletionKeywords();
+
+      // Invalidate cached definition data for the changed project
+      if (previousRoot && typeof api.invalidateDefinitionCache === "function") {
+        api.invalidateDefinitionCache(previousRoot);
+      }
       state.currentBuildId = null;
       state.currentBuildStatus = "";
       state.currentBuildResultsDir = "";

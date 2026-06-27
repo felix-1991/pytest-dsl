@@ -10,7 +10,11 @@ const {
 
 const PYTHON_TIMEOUT_MS = 15000;
 const PYTHON_MAX_BUFFER = 10 * 1024 * 1024;
+const DEFINITION_CACHE_TTL_MS = 60000;
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
+
+const definitionFullCache = new Map();
+const resourceDefinitionCache = new Map();
 const IGNORED_DIRS = new Set([
   ".git",
   ".pytest-dsl-gui",
@@ -32,7 +36,6 @@ import os
 import sys
 
 project_root = sys.argv[1]
-keyword_filter = sys.argv[2] or None
 
 os.chdir(project_root)
 captured = io.StringIO()
@@ -53,8 +56,6 @@ with contextlib.redirect_stdout(captured):
     project_custom_keywords = load_all_keywords(include_remote=False) or {}
 
     for name, info in keyword_manager._keywords.items():
-        if keyword_filter and name != keyword_filter:
-            continue
         if name in project_custom_keywords:
             continue
 
@@ -65,18 +66,24 @@ with contextlib.redirect_stdout(captured):
         try:
             unwrapped = inspect.unwrap(func)
             source_file = inspect.getsourcefile(unwrapped) or inspect.getfile(unwrapped)
-            source_lines, start_line = inspect.getsourcelines(unwrapped)
+            source_lines = None
+            start_line = None
+            try:
+                source_lines, start_line = inspect.getsourcelines(unwrapped)
+            except Exception:
+                pass
         except Exception:
             continue
 
         if not source_file:
             continue
 
-        definition_line = int(start_line)
-        for offset, line_text in enumerate(source_lines):
-            if line_text.lstrip().startswith("def "):
-                definition_line = int(start_line + offset)
-                break
+        definition_line = int(start_line or 1)
+        if source_lines is not None:
+            for offset, line_text in enumerate(source_lines):
+                if line_text.lstrip().startswith("def "):
+                    definition_line = int(start_line + offset)
+                    break
 
         definitions.append({
             "name": name,
@@ -98,16 +105,30 @@ print(json.dumps({"definitions": definitions}, ensure_ascii=False))
 async function listKeywordDefinitions(options = {}) {
   const projectRoot = assertProjectRoot(options.projectRoot || REPO_ROOT);
   const keywordName = String(options.keywordName || "").trim();
+
+  const cached = getCachedDefinitions(projectRoot);
+  if (cached) {
+    return keywordName
+      ? { definitions: cached.definitions.filter((d) => d.name === keywordName) }
+      : cached;
+  }
+
   const [resourcePayload, pythonPayload] = await Promise.all([
-    Promise.resolve(scanResourceDefinitions(projectRoot, keywordName)),
-    runPythonDefinitionQuery(projectRoot, keywordName),
+    Promise.resolve(scanResourceDefinitions(projectRoot)),
+    runPythonDefinitionQuery(projectRoot),
   ]);
-  return normalizeDefinitionPayload(projectRoot, {
+  const payload = normalizeDefinitionPayload(projectRoot, {
     definitions: [
       ...resourcePayload.definitions,
       ...pythonPayload.definitions,
     ],
   });
+
+  setCachedDefinitions(projectRoot, payload);
+
+  return keywordName
+    ? { definitions: payload.definitions.filter((d) => d.name === keywordName) }
+    : payload;
 }
 
 async function findKeywordDefinitions(options = {}) {
@@ -119,11 +140,7 @@ async function findKeywordDefinitions(options = {}) {
     ...options,
     keywordName,
   });
-  return {
-    definitions: result.definitions.filter((definition) => (
-      definition.name === keywordName
-    )),
-  };
+  return result;
 }
 
 function normalizeDefinitionPayload(projectRoot, payload = {}) {
@@ -256,7 +273,12 @@ function compareDefinitions(left, right) {
     left.line - right.line;
 }
 
-function scanResourceDefinitions(projectRoot, keywordFilter = "") {
+function scanResourceDefinitions(projectRoot) {
+  const cached = resourceDefinitionCache.get(projectRoot);
+  if (cached && Date.now() - cached.timestamp < DEFINITION_CACHE_TTL_MS) {
+    return cached.payload;
+  }
+
   const definitions = [];
   walk(projectRoot, (filePath) => {
     if (!filePath.endsWith(".resource")) {
@@ -270,9 +292,6 @@ function scanResourceDefinitions(projectRoot, keywordFilter = "") {
         return;
       }
       const name = match[1].trim();
-      if (keywordFilter && name !== keywordFilter) {
-        return;
-      }
       definitions.push({
         name,
         sourceType: "resource",
@@ -285,7 +304,12 @@ function scanResourceDefinitions(projectRoot, keywordFilter = "") {
     });
   });
 
-  return { definitions };
+  const payload = { definitions };
+  resourceDefinitionCache.set(projectRoot, {
+    timestamp: Date.now(),
+    payload,
+  });
+  return payload;
 }
 
 function parseResourceParameters(rawParameters) {
@@ -307,7 +331,7 @@ function parseResourceParameters(rawParameters) {
     });
 }
 
-function runPythonDefinitionQuery(projectRoot, keywordName) {
+function runPythonDefinitionQuery(projectRoot) {
   return new Promise((resolve, reject) => {
     const baseEnv = withPythonProcessEnv(process.env);
     const targets = resolvePythonTargets(projectRoot, baseEnv);
@@ -322,7 +346,6 @@ function runPythonDefinitionQuery(projectRoot, keywordName) {
           "-c",
           PYTHON_DEFINITION_SCRIPT,
           projectRoot,
-          keywordName,
         ],
         {
           cwd: projectRoot,
@@ -421,10 +444,46 @@ function walk(directory, onFile) {
   }
 }
 
+function prefetchDefinitionCache(projectRoot) {
+  if (!projectRoot) return;
+  const cached = getCachedDefinitions(projectRoot);
+  if (cached) return;
+  listKeywordDefinitions({ projectRoot }).catch(() => {
+    // Silently ignore prefetch failures — cache will populate on first user request
+  });
+}
+
+function getCachedDefinitions(projectRoot) {
+  const entry = definitionFullCache.get(projectRoot);
+  if (entry && Date.now() - entry.timestamp < DEFINITION_CACHE_TTL_MS) {
+    return entry.payload;
+  }
+  return null;
+}
+
+function setCachedDefinitions(projectRoot, payload) {
+  definitionFullCache.set(projectRoot, {
+    timestamp: Date.now(),
+    payload,
+  });
+}
+
+function invalidateDefinitionCache(projectRoot) {
+  if (projectRoot) {
+    definitionFullCache.delete(projectRoot);
+    resourceDefinitionCache.delete(projectRoot);
+  } else {
+    definitionFullCache.clear();
+    resourceDefinitionCache.clear();
+  }
+}
+
 module.exports = {
   findKeywordDefinitions,
   listKeywordDefinitions,
   normalizeDefinitionPayload,
+  prefetchDefinitionCache,
   readSourceFile,
   scanResourceDefinitions,
+  invalidateDefinitionCache,
 };

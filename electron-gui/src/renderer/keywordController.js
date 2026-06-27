@@ -123,6 +123,25 @@ export function createKeywordController({
     }
   }
 
+  async function handleRefreshDefinitions() {
+    if (!state.snapshot) {
+      appendLog("warn", "请先打开一个项目");
+      return;
+    }
+    const projectRoot = state.snapshot.project.rootPath;
+    try {
+      if (typeof api.invalidateDefinitionCache === "function") {
+        await api.invalidateDefinitionCache(projectRoot);
+      }
+      if (state.keywordPanelOpen) {
+        loadKeywords(el.keywordSearch ? el.keywordSearch.value.trim() : "");
+      }
+      appendLog("info", "定义缓存已刷新，关键字索引已更新");
+    } catch (error) {
+      appendLog("error", `刷新定义缓存失败: ${errorMessage(error)}`);
+    }
+  }
+
   function closeKeywordPanel() {
     state.keywordPanelOpen = false;
     if (el.keywordPanel) {
@@ -282,6 +301,7 @@ export function createKeywordController({
     handleDefinitionRequest,
     handleKeywordListClick,
     handleKeywordSearchInput,
+    handleRefreshDefinitions,
     resetKeywordBrowser,
     toggleKeywordPanel,
   };

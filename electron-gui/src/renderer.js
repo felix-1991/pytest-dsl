@@ -208,6 +208,7 @@ const {
   handleDefinitionRequest,
   handleKeywordListClick,
   handleKeywordSearchInput,
+  handleRefreshDefinitions,
   resetKeywordBrowser,
   toggleKeywordPanel,
 } = keywordController;
@@ -509,6 +510,7 @@ function cacheElements() {
     "stopBtn",
     "keywordBtn",
     "commandBtn",
+    "keywordRefreshBtn",
     "commandBar",
     "generatedCommandStatus",
     "generatedCommandText",
@@ -652,6 +654,9 @@ function bindEvents() {
   );
   el.keywordBtn.addEventListener("click", () =>
     toggleKeywordPanel(),
+  );
+  el.keywordRefreshBtn.addEventListener("click", () =>
+    handleRefreshDefinitions(),
   );
   el.commandBtn.addEventListener("click", () =>
     generateCurrentCommand(),
