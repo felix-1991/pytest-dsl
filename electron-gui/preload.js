@@ -5,6 +5,9 @@ contextBridge.exposeInMainWorld("pytestDslGui", {
   getDefaultProject: () => ipcRenderer.invoke("project:default"),
   scanProject: (projectRoot) => ipcRenderer.invoke("project:scan", projectRoot),
   scanProjectConfig: (projectRoot) => ipcRenderer.invoke("project:config", projectRoot),
+  saveConfigSelection: (projectRoot, selectedPaths) => (
+    ipcRenderer.invoke("project:config-selection", projectRoot, selectedPaths)
+  ),
   readFile: (projectRoot, relativePath) => ipcRenderer.invoke("file:read", projectRoot, relativePath),
   saveFile: (projectRoot, relativePath, content) => (
     ipcRenderer.invoke("file:save", projectRoot, relativePath, content)

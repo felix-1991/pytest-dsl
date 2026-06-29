@@ -15,6 +15,12 @@ function defaultRuntimeMetadata() {
   };
 }
 
+function defaultConfigMetadata() {
+  return {
+    selectedPaths: null
+  };
+}
+
 function normalizeRuntimeMetadata(value) {
   const normalizeExecutable = (executable) => {
     if (typeof executable !== "string") {
@@ -29,6 +35,35 @@ function normalizeRuntimeMetadata(value) {
   };
 }
 
+function normalizeConfigMetadata(value) {
+  const selectedPaths = value && Array.isArray(value.selectedPaths)
+    ? normalizeConfigSelectedPaths(value.selectedPaths)
+    : null;
+
+  return { selectedPaths };
+}
+
+function normalizeConfigSelectedPaths(value) {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const seen = new Set();
+  const selectedPaths = [];
+  value.forEach((item) => {
+    if (typeof item !== "string") {
+      return;
+    }
+    const normalized = item.trim().replace(/\\/g, "/").replace(/^\.\//, "");
+    if (!normalized || seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+    selectedPaths.push(normalized);
+  });
+  return selectedPaths;
+}
+
 function defaultMetadata() {
   return {
     version: 1,
@@ -39,6 +74,7 @@ function defaultMetadata() {
       rightWidth: 392
     },
     runtime: defaultRuntimeMetadata(),
+    config: defaultConfigMetadata(),
     updatedAt: null
   };
 }
@@ -99,6 +135,19 @@ function updateRuntimeMetadata(projectRoot, updates) {
   });
 }
 
+function updateConfigSelectionMetadata(projectRoot, selectedPaths) {
+  const current = readMetadata(projectRoot);
+  const normalized = normalizeConfigSelectedPaths(selectedPaths);
+
+  return writeMetadata(projectRoot, {
+    ...current,
+    config: {
+      ...current.config,
+      selectedPaths: normalized || []
+    }
+  });
+}
+
 function normalizeMetadata(value) {
   const base = defaultMetadata();
   const layout = value && typeof value.layout === "object" ? value.layout : {};
@@ -111,7 +160,8 @@ function normalizeMetadata(value) {
       ...base.layout,
       ...layout
     },
-    runtime: normalizeRuntimeMetadata(value && value.runtime)
+    runtime: normalizeRuntimeMetadata(value && value.runtime),
+    config: normalizeConfigMetadata(value && value.config)
   };
 }
 
@@ -121,5 +171,6 @@ module.exports = {
   readMetadata,
   writeMetadata,
   recordOpenedFile,
-  updateRuntimeMetadata
+  updateRuntimeMetadata,
+  updateConfigSelectionMetadata
 };

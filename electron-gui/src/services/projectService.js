@@ -4,7 +4,11 @@ const { execFileSync } = require("node:child_process");
 const { TextDecoder } = require("node:util");
 
 const { loadProjectConfig } = require("./configService");
-const { readMetadata, recordOpenedFile } = require("./metadataStore");
+const {
+  readMetadata,
+  recordOpenedFile,
+  updateConfigSelectionMetadata
+} = require("./metadataStore");
 const {
   buildSuiteTree,
   discoverConventionSuites
@@ -26,11 +30,13 @@ const IGNORED_DIRS = new Set([
 
 function getProjectSnapshot(projectRoot) {
   const root = assertProjectRoot(projectRoot);
-  const config = loadProjectConfig(root);
+  const metadata = readMetadata(root);
+  const config = loadProjectConfig(root, {
+    selectedPaths: metadata.config.selectedPaths
+  });
   const tree = buildProjectTree(root);
   const editableFiles = flattenProjectTreeFiles(tree);
   const dslFiles = editableFiles.filter((file) => file.language === "dsl");
-  const metadata = readMetadata(root);
   const git = detectGit(root);
   const suites = discoverConventionSuites(root);
   const suiteTree = buildSuiteTree(suites);
@@ -55,7 +61,10 @@ function getProjectSnapshot(projectRoot) {
 
 function getProjectConfigSnapshot(projectRoot) {
   const root = assertProjectRoot(projectRoot);
-  const config = loadProjectConfig(root);
+  const metadata = readMetadata(root);
+  const config = loadProjectConfig(root, {
+    selectedPaths: metadata.config.selectedPaths
+  });
 
   return {
     project: {
@@ -65,6 +74,14 @@ function getProjectConfigSnapshot(projectRoot) {
     },
     config
   };
+}
+
+function saveProjectConfigSelection(projectRoot, selectedPaths) {
+  const root = assertProjectRoot(projectRoot);
+  const config = loadProjectConfig(root, { selectedPaths });
+  const metadata = updateConfigSelectionMetadata(root, config.selectedPaths);
+
+  return { config, metadata };
 }
 
 function readProjectFile(projectRoot, relativePath) {
@@ -477,6 +494,7 @@ module.exports = {
   moveProjectEntry,
   readProjectFile,
   renameProjectEntry,
+  saveProjectConfigSelection,
   saveProjectFile,
   buildProjectTree,
   listEditableFiles,

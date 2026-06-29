@@ -477,6 +477,9 @@ test("config picker supports multi-select and remote status UI", () => {
   assert.match(renderer, /type="checkbox"/);
   assert.match(renderer, /selectedConfigPaths/);
   assert.match(renderer, /handleConfigSelectionChange/);
+  assert.match(renderer, /saveConfigSelection/);
+  assert.match(preload, /saveConfigSelection/);
+  assert.match(main, /project:config-selection/);
   assert.match(renderer, /checkRemoteServers/);
   assert.match(renderer, /extractRemoteServers/);
   assert.match(css, /\.config-option/);

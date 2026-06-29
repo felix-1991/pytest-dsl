@@ -85,10 +85,40 @@ export function createConfigController({
     renderConfig();
     renderProject();
     refreshRemoteStatuses();
+    persistConfigSelection();
     if (state.currentFile) {
       renderActiveFile();
     } else {
       previewCommand(currentCommand(), { force: true });
+    }
+  }
+
+  async function persistConfigSelection() {
+    if (!state.snapshot || typeof api.saveConfigSelection !== "function") {
+      return;
+    }
+
+    const projectRoot = state.snapshot.project.rootPath;
+    const selectedPaths = [...state.selectedConfigPaths];
+    try {
+      const result = await api.saveConfigSelection(projectRoot, selectedPaths);
+      if (!state.snapshot || state.snapshot.project.rootPath !== projectRoot) {
+        return;
+      }
+      if (!sameStringArray(selectedPaths, state.selectedConfigPaths)) {
+        return;
+      }
+      if (result && result.metadata) {
+        state.snapshot.metadata = result.metadata;
+      }
+      if (result && result.config && Array.isArray(result.config.selectedPaths)) {
+        state.snapshot.config = {
+          ...state.snapshot.config,
+          selectedPaths: result.config.selectedPaths,
+        };
+      }
+    } catch (error) {
+      appendLog("warn", `配置选择保存失败: ${errorMessage(error)}`);
     }
   }
 
@@ -216,6 +246,13 @@ export function createConfigController({
       result.push(prefix);
     }
     return Array.from(new Set(result));
+  }
+
+  function sameStringArray(left, right) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false;
+    }
+    return left.every((item, index) => item === right[index]);
   }
 
   return {

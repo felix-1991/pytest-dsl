@@ -13,6 +13,7 @@ const {
   moveProjectEntry,
   readProjectFile,
   renameProjectEntry,
+  saveProjectConfigSelection,
   saveProjectFile
 } = require("../src/services/projectService");
 
@@ -198,6 +199,52 @@ test("config snapshots include a signature that changes when YAML changes", () =
     "gui_server",
     "i18n_server"
   ]);
+});
+
+test("project snapshots restore persisted config selection", () => {
+  const root = makeTempProject();
+  writeFile(root, "config/app.yaml", "name: gui\n");
+  writeFile(root, "config/i18n.yaml", "locale: zh-CN\n");
+  writeFile(root, "config/remote_servers.yaml", [
+    "remote_servers:",
+    "  gui_server:",
+    "    url: http://localhost:8278/",
+    ""
+  ].join("\n"));
+
+  saveProjectConfigSelection(root, ["config/remote_servers.yaml"]);
+
+  const snapshot = getProjectSnapshot(root);
+  const configSnapshot = getProjectConfigSnapshot(root);
+
+  assert.deepEqual(snapshot.metadata.config.selectedPaths, ["config/remote_servers.yaml"]);
+  assert.deepEqual(snapshot.config.selectedPaths, ["config/remote_servers.yaml"]);
+  assert.equal(snapshot.config.merged.name, undefined);
+  assert.equal(snapshot.config.merged.locale, undefined);
+  assert.deepEqual(Object.keys(snapshot.config.merged.remote_servers), ["gui_server"]);
+  assert.deepEqual(configSnapshot.config.selectedPaths, ["config/remote_servers.yaml"]);
+});
+
+test("saving config selection drops missing paths and keeps empty selections explicit", () => {
+  const root = makeTempProject();
+  writeFile(root, "config/app.yaml", "name: gui\n");
+  writeFile(root, "config/remote_servers.yaml", "remote_servers: {}\n");
+
+  const saved = saveProjectConfigSelection(root, [
+    "config/missing.yaml",
+    "config/remote_servers.yaml",
+    "config/remote_servers.yaml"
+  ]);
+
+  assert.deepEqual(saved.metadata.config.selectedPaths, ["config/remote_servers.yaml"]);
+  assert.deepEqual(saved.config.selectedPaths, ["config/remote_servers.yaml"]);
+
+  const empty = saveProjectConfigSelection(root, []);
+  const snapshot = getProjectSnapshot(root);
+
+  assert.deepEqual(empty.metadata.config.selectedPaths, []);
+  assert.deepEqual(snapshot.config.selectedPaths, []);
+  assert.deepEqual(snapshot.config.merged, {});
 });
 
 test("saving a DSL file writes content and updates project metadata", () => {

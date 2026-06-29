@@ -7,6 +7,7 @@ const test = require("node:test");
 const {
   metadataPath,
   readMetadata,
+  updateConfigSelectionMetadata,
   updateRuntimeMetadata,
   writeMetadata
 } = require("../src/services/metadataStore");
@@ -45,6 +46,9 @@ test("legacy metadata gains null runtime defaults without losing existing values
     pythonExecutable: null,
     allureExecutable: null
   });
+  assert.deepEqual(metadata.config, {
+    selectedPaths: null
+  });
   assert.equal(metadata.lastOpenedFile, "tests/existing.dsl");
   assert.deepEqual(metadata.layout, {
     leftWidth: 420,
@@ -73,6 +77,9 @@ test("legacy metadata gains null runtime defaults without losing existing values
     allureExecutable: null
   });
   assert.deepEqual(onDisk.runtime, updated.runtime);
+  assert.deepEqual(onDisk.config, {
+    selectedPaths: null
+  });
   assert.equal(
     Object.prototype.hasOwnProperty.call(onDisk.runtime, "unsupportedExecutable"),
     false
@@ -144,5 +151,30 @@ test("runtime metadata converts blank and non-string overrides to null", (t) => 
   assert.deepEqual(metadata.runtime, {
     pythonExecutable: null,
     allureExecutable: null
+  });
+});
+
+test("config selection metadata preserves explicit empty selections", (t) => {
+  const root = makeTempProject();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  updateConfigSelectionMetadata(root, [
+    " config/app.yaml ",
+    "config\\remote_servers.yaml",
+    "",
+    null,
+    "config/app.yaml"
+  ]);
+  const selected = readMetadata(root);
+
+  assert.deepEqual(selected.config, {
+    selectedPaths: ["config/app.yaml", "config/remote_servers.yaml"]
+  });
+
+  updateConfigSelectionMetadata(root, []);
+  const empty = readMetadata(root);
+
+  assert.deepEqual(empty.config, {
+    selectedPaths: []
   });
 });

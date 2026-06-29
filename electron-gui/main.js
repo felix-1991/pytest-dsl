@@ -9,6 +9,7 @@ const {
   moveProjectEntry,
   readProjectFile,
   renameProjectEntry,
+  saveProjectConfigSelection,
   saveProjectFile
 } = require("./src/services/projectService");
 const {
@@ -186,6 +187,9 @@ function registerIpc() {
     return snapshot;
   });
   ipcMain.handle("project:config", (_event, projectRoot) => getProjectConfigSnapshot(projectRoot));
+  ipcMain.handle("project:config-selection", (_event, projectRoot, selectedPaths) => (
+    saveProjectConfigSelection(projectRoot, selectedPaths)
+  ));
   ipcMain.handle("file:read", (_event, projectRoot, relativePath) => readProjectFile(projectRoot, relativePath));
   ipcMain.handle("file:save", (_event, projectRoot, relativePath, content) => {
     const result = saveProjectFile(projectRoot, relativePath, content);

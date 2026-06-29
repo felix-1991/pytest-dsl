@@ -20,7 +20,7 @@ try {
   yaml = null;
 }
 
-function loadProjectConfig(projectRoot) {
+function loadProjectConfig(projectRoot, options = {}) {
   const root = path.resolve(projectRoot);
   const configDir = path.join(root, "config");
   const sources = [];
@@ -58,13 +58,36 @@ function loadProjectConfig(projectRoot) {
     }
   }
 
-  const selectedPaths = sources
+  const defaultSelectedPaths = sources
     .filter((source) => source.ok && source.defaultSelected)
     .map((source) => source.relativePath);
+  const selectedPaths = resolveSelectedPaths(
+    sources,
+    Object.prototype.hasOwnProperty.call(options, "selectedPaths")
+      ? options.selectedPaths
+      : null,
+    defaultSelectedPaths
+  );
   const merged = mergeConfigSources(sources, selectedPaths);
   const signature = buildConfigSignature(sources);
 
   return { configDir, sources, selectedPaths, errors, merged, signature };
+}
+
+function resolveSelectedPaths(sources, requestedPaths, defaultSelectedPaths) {
+  if (!Array.isArray(requestedPaths)) {
+    return Array.from(new Set(defaultSelectedPaths || []));
+  }
+
+  const requested = new Set(
+    requestedPaths
+      .filter((item) => typeof item === "string")
+      .map((item) => normalizeRelative(item).trim())
+      .filter(Boolean)
+  );
+  return sources
+    .map((source) => source.relativePath)
+    .filter((relativePath) => requested.has(relativePath));
 }
 
 function buildConfigSignature(sources) {
@@ -282,6 +305,7 @@ module.exports = {
   loadProjectConfig,
   listConfigFiles,
   mergeConfigSources,
+  resolveSelectedPaths,
   buildConfigSignature,
   parseYaml,
   parseSimpleYaml
