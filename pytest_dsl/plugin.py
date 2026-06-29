@@ -15,6 +15,7 @@ from pytest_dsl.core.plugin_discovery import (
 )
 from pytest_dsl.core.global_context import global_context
 from pytest_dsl.core import auto_directory
+from pytest_dsl.core.reporting import print_verbose
 
 
 class DslLifecycleState:
@@ -71,7 +72,7 @@ def pytest_configure(config):
     # 首先导入内置关键字模块，确保内置关键字被注册
     try:
         import pytest_dsl.keywords  # noqa: F401
-        print("pytest环境：内置关键字模块加载完成")
+        print_verbose("pytest环境：内置关键字模块加载完成")
     except ImportError as e:
         print(f"pytest环境：加载内置关键字模块失败: {e}")
 
@@ -107,7 +108,7 @@ def pytest_configure(config):
         if os.path.exists(resources_dir) and os.path.isdir(resources_dir):
             custom_keyword_manager.auto_import_resources_directory(
                 project_root)
-            print(f"pytest环境：已自动导入resources目录 {resources_dir}")
+            print_verbose(f"pytest环境：已自动导入resources目录 {resources_dir}")
 
     except Exception as e:
         print(f"pytest环境：自动导入resources目录时出现警告: {str(e)}")

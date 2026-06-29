@@ -11,6 +11,10 @@ import socketserver
 import platform
 
 from pytest_dsl.core.keyword_manager import keyword_manager
+from pytest_dsl.core.reporting import (
+    print_verbose,
+    run_with_suppressed_success_output,
+)
 from pytest_dsl.core.serialization_utils import XMLRPCSerializer
 from pytest_dsl.remote.diagnostics import RemoteExecutionCapture
 from pytest_dsl.remote.hook_manager import hook_manager, HookType
@@ -55,22 +59,23 @@ class RemoteKeywordServer:
         )
 
         # 0. 首先加载内置关键字模块（确保内置关键字被注册）
-        print("正在加载内置关键字...")
+        print_verbose("正在加载内置关键字...")
         try:
-            import pytest_dsl.keywords
-            print("内置关键字模块加载完成")
+            run_with_suppressed_success_output(
+                lambda: __import__("pytest_dsl.keywords")
+            )
+            print_verbose("内置关键字模块加载完成")
         except ImportError as e:
             print(f"加载内置关键字模块失败: {e}")
 
         # 1. 加载所有已安装的关键字插件（与本地模式一致）
-        print("正在加载第三方关键字插件...")
+        print_verbose("正在加载第三方关键字插件...")
         load_all_plugins()
 
         # 2. 扫描本地keywords目录中的关键字（与本地模式一致）
-        print("正在扫描本地关键字...")
+        print_verbose("正在扫描本地关键字...")
         scan_local_keywords()
-
-        print(f"关键字加载完成，可用关键字数量: {len(keyword_manager._keywords)}")
+        print_verbose(f"关键字加载完成，可用关键字数量: {len(keyword_manager._keywords)}")
 
     def _register_shutdown_handlers(self):
         """注册关闭信号处理器"""
@@ -737,11 +742,11 @@ def main():
 
     # 在创建服务器之前加载额外的扩展模块（如果指定）
     if args.extensions:
-        print("正在加载额外的扩展模块...")
+        print_verbose("正在加载额外的扩展模块...")
         _load_extensions(args.extensions)
 
     # 自动加载当前目录下的扩展
-    print("正在自动加载当前目录下的扩展...")
+    print_verbose("正在自动加载当前目录下的扩展...")
     _auto_load_extensions()
 
     # 创建并启动服务器（服务器初始化时会自动加载标准关键字）
@@ -769,8 +774,10 @@ def _load_extensions(extensions_arg):
                 spec = importlib.util.spec_from_file_location(
                     module_name, ext_path)
                 module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                print(f"已加载扩展模块: {ext_path}")
+                run_with_suppressed_success_output(
+                    lambda: spec.loader.exec_module(module)
+                )
+                print_verbose(f"已加载扩展模块: {ext_path}")
             elif os.path.isdir(ext_path):
                 # 加载目录下的所有Python文件
                 for filename in os.listdir(ext_path):
@@ -780,12 +787,16 @@ def _load_extensions(extensions_arg):
                         spec = importlib.util.spec_from_file_location(
                             module_name, file_path)
                         module = importlib.util.module_from_spec(spec)
-                        spec.loader.exec_module(module)
-                        print(f"已加载扩展模块: {file_path}")
+                        run_with_suppressed_success_output(
+                            lambda: spec.loader.exec_module(module)
+                        )
+                        print_verbose(f"已加载扩展模块: {file_path}")
             else:
                 # 尝试作为模块名导入
-                importlib.import_module(ext_path)
-                print(f"已导入扩展模块: {ext_path}")
+                run_with_suppressed_success_output(
+                    lambda: importlib.import_module(ext_path)
+                )
+                print_verbose(f"已导入扩展模块: {ext_path}")
 
         except Exception as e:
             print(f"加载扩展模块失败 {ext_path}: {str(e)}")
@@ -799,13 +810,13 @@ def _auto_load_extensions():
     # 查找当前目录下的extensions目录
     extensions_dir = os.path.join(os.getcwd(), 'extensions')
     if os.path.isdir(extensions_dir):
-        print(f"发现扩展目录: {extensions_dir}")
+        print_verbose(f"发现扩展目录: {extensions_dir}")
         _load_extensions(extensions_dir)
 
     # 查找当前目录下的remote_extensions.py文件
     remote_ext_file = os.path.join(os.getcwd(), 'remote_extensions.py')
     if os.path.isfile(remote_ext_file):
-        print(f"发现扩展文件: {remote_ext_file}")
+        print_verbose(f"发现扩展文件: {remote_ext_file}")
         _load_extensions(remote_ext_file)
 
 

@@ -1,8 +1,10 @@
 """Small helpers for concise default reports and verbose diagnostics."""
 
+import contextlib
+import io
 import json
 import os
-from typing import Any, Dict, Iterable
+from typing import Any, Callable, Dict, Iterable, TypeVar
 
 import allure
 
@@ -25,11 +27,39 @@ SENSITIVE_KEY_PARTS = (
     "set-cookie",
 )
 
+T = TypeVar("T")
+
 
 def is_verbose() -> bool:
     """Return whether detailed DSL diagnostics should be emitted."""
     value = os.getenv("PYTEST_DSL_VERBOSE", "").strip().lower()
     return value in {"1", "true", "yes", "y", "on"}
+
+
+def print_verbose(message: str) -> None:
+    """Print detailed console diagnostics only when verbose mode is enabled."""
+    if is_verbose():
+        print(message)
+
+
+def run_with_suppressed_success_output(callback: Callable[[], T]) -> T:
+    """Suppress callback stdout on success unless verbose mode is enabled.
+
+    Captured stdout is replayed before re-raising failures so diagnostics are
+    not lost when a registration or import fails.
+    """
+    if is_verbose():
+        return callback()
+
+    captured_stdout = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(captured_stdout):
+            return callback()
+    except Exception:
+        output = captured_stdout.getvalue()
+        if output:
+            print(output, end="")
+        raise
 
 
 def is_sensitive_key(key: Any) -> bool:

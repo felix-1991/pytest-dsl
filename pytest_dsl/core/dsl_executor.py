@@ -20,6 +20,7 @@ from pytest_dsl.core.execution import (
 from pytest_dsl.core.execution_tracker import (
     ExecutionTracker
 )
+from pytest_dsl.core.reporting import print_verbose
 
 
 class DSLExecutor:
@@ -357,7 +358,7 @@ class DSLExecutor:
                     case_id = case.get('id') or case.get('file_path', '')
                     if case_id and case_id not in self.imported_files:
                         try:
-                            print(f"通过hook自动导入资源: {case_id}")
+                            print_verbose(f"通过hook自动导入资源: {case_id}")
                             self._handle_import(case_id)
                         except Exception as e:
                             print(f"通过hook自动导入资源失败: {case_id}, 错误: {str(e)}")

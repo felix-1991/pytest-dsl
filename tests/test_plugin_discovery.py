@@ -1,8 +1,9 @@
 import importlib
 import sys
+import types
 
 from pytest_dsl.core.keyword_manager import keyword_manager
-from pytest_dsl.core.plugin_discovery import scan_local_keywords
+from pytest_dsl.core.plugin_discovery import load_plugin_keywords, scan_local_keywords
 
 
 def test_scan_local_keywords_continues_after_subpackage_import_error(
@@ -59,3 +60,71 @@ def test_scan_local_keywords_continues_after_subpackage_import_error(
             if name == "keywords" or name.startswith("keywords."):
                 sys.modules.pop(name)
         sys.modules.update(original_modules)
+
+
+def test_load_plugin_keywords_suppresses_success_stdout(capsys):
+    plugin_name = "pytest_dsl_noisy_success_plugin"
+    keyword_name = "插件成功静默关键字"
+    plugin = types.ModuleType(plugin_name)
+
+    def register_keywords(manager):
+        print("插件成功注册输出")
+
+        @manager.register(keyword_name, [])
+        def plugin_keyword():
+            return "ok"
+
+    plugin.register_keywords = register_keywords
+    original_module = sys.modules.get(plugin_name)
+    original_keywords = keyword_manager._keywords.copy()
+
+    try:
+        sys.modules[plugin_name] = plugin
+
+        load_plugin_keywords(plugin_name)
+
+        assert keyword_name in keyword_manager._keywords
+        assert capsys.readouterr().out == ""
+    finally:
+        if original_module is None:
+            sys.modules.pop(plugin_name, None)
+        else:
+            sys.modules[plugin_name] = original_module
+        keyword_manager._keywords.clear()
+        keyword_manager._keywords.update(original_keywords)
+
+
+def test_load_plugin_keywords_keeps_success_stdout_when_verbose(
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.setenv("PYTEST_DSL_VERBOSE", "1")
+    plugin_name = "pytest_dsl_verbose_success_plugin"
+    keyword_name = "插件详细注册关键字"
+    plugin = types.ModuleType(plugin_name)
+
+    def register_keywords(manager):
+        print("插件详细注册输出")
+
+        @manager.register(keyword_name, [])
+        def plugin_keyword():
+            return "ok"
+
+    plugin.register_keywords = register_keywords
+    original_module = sys.modules.get(plugin_name)
+    original_keywords = keyword_manager._keywords.copy()
+
+    try:
+        sys.modules[plugin_name] = plugin
+
+        load_plugin_keywords(plugin_name)
+
+        assert keyword_name in keyword_manager._keywords
+        assert "插件详细注册输出" in capsys.readouterr().out
+    finally:
+        if original_module is None:
+            sys.modules.pop(plugin_name, None)
+        else:
+            sys.modules[plugin_name] = original_module
+        keyword_manager._keywords.clear()
+        keyword_manager._keywords.update(original_keywords)

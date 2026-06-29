@@ -6,6 +6,7 @@ pytest-dsl hook管理器
 import pluggy
 from typing import Optional, List, Any
 from .hookspecs import DSLHookSpecs
+from .reporting import print_verbose
 
 
 class DSLHookManager:
@@ -80,7 +81,7 @@ class DSLHookManager:
         try:
             loaded = self.load_setuptools_entrypoints()
             if loaded > 0:
-                print(f"加载了 {loaded} 个插件")
+                print_verbose(f"加载了 {loaded} 个插件")
         except Exception as e:
             print(f"加载插件时出现错误: {e}")
 
@@ -91,18 +92,17 @@ class DSLHookManager:
 
         这个方法专门用于pytest环境下，在新插件加载后重新初始化hook系统
         """
-        print("检测到新插件加载，重新初始化Hook管理器...")
+        print_verbose("检测到新插件加载，重新初始化Hook管理器...")
 
         # 重新加载setuptools入口点插件
         try:
             loaded = self.load_setuptools_entrypoints()
             if loaded > 0:
-                print(f"重新加载了 {loaded} 个插件")
-
+                print_verbose(f"重新加载了 {loaded} 个插件")
                 # 重新调用hook注册自定义关键字
                 try:
                     self.pm.hook.dsl_register_custom_keywords()
-                    print("重新执行了hook关键字注册")
+                    print_verbose("重新执行了hook关键字注册")
                 except Exception as e:
                     print(f"重新执行hook关键字注册失败: {e}")
         except Exception as e:
@@ -110,4 +110,4 @@ class DSLHookManager:
 
 
 # 全局hook管理器实例
-hook_manager = DSLHookManager.get_instance() 
+hook_manager = DSLHookManager.get_instance()

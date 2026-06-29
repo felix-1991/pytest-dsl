@@ -19,6 +19,7 @@ from pytest_dsl.core.plugin_discovery import load_all_plugins, scan_local_keywor
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.core.lexer import get_lexer
 from pytest_dsl.core.parser import get_parser
+from pytest_dsl.core.reporting import print_verbose
 
 
 class KeywordLoader:
@@ -39,7 +40,7 @@ class KeywordLoader:
         # 首先导入内置关键字模块，确保内置关键字被注册
         try:
             import pytest_dsl.keywords  # noqa: F401
-            print("内置关键字模块加载完成")
+            print_verbose("内置关键字模块加载完成")
         except ImportError as e:
             print(f"加载内置关键字模块失败: {e}")
 
@@ -55,16 +56,16 @@ class KeywordLoader:
         # 扫描项目中的自定义关键字（.resource文件中定义的）
         project_custom_keywords = self.scan_project_custom_keywords()
         if project_custom_keywords:
-            print(f"发现 {len(project_custom_keywords)} 个项目自定义关键字")
+            print_verbose(f"发现 {len(project_custom_keywords)} 个项目自定义关键字")
             self._load_resource_files(project_custom_keywords)
 
         # 根据参数决定是否加载远程关键字
         if include_remote:
-            print("正在扫描远程关键字...")
+            print_verbose("正在扫描远程关键字...")
             # 这里可以添加远程关键字的扫描逻辑
             # 目前远程关键字是通过DSL文件中的@remote导入指令动态加载的
         else:
-            print("跳过远程关键字扫描")
+            print_verbose("跳过远程关键字扫描")
 
         self._project_custom_keywords = project_custom_keywords
         return project_custom_keywords
@@ -102,7 +103,7 @@ class KeywordLoader:
         for resource_file in resource_files:
             try:
                 custom_keyword_manager.load_resource_file(str(resource_file))
-                print(f"已加载资源文件: {resource_file}")
+                print_verbose(f"已加载资源文件: {resource_file}")
             except Exception as e:
                 print(f"加载资源文件失败 {resource_file}: {e}")
 
@@ -506,4 +507,4 @@ def scan_project_custom_keywords(project_root: Optional[str] = None) -> Dict[str
     Returns:
         自定义关键字信息字典
     """
-    return keyword_loader.scan_project_custom_keywords(project_root) 
+    return keyword_loader.scan_project_custom_keywords(project_root)

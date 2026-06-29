@@ -28,6 +28,10 @@ from pathlib import Path
 from typing import List
 
 from pytest_dsl.core.keyword_manager import keyword_manager
+from pytest_dsl.core.reporting import (
+    print_verbose,
+    run_with_suppressed_success_output,
+)
 
 
 def discover_installed_plugins() -> List[str]:
@@ -65,7 +69,9 @@ def load_plugin_keywords(plugin_name: str) -> None:
     """
     try:
         # 导入插件包
-        plugin = importlib.import_module(plugin_name)
+        plugin = run_with_suppressed_success_output(
+            lambda: importlib.import_module(plugin_name)
+        )
         
         # 如果插件有register_keywords函数，调用它
         if hasattr(plugin, 'register_keywords') and callable(plugin.register_keywords):
@@ -89,8 +95,10 @@ def load_plugin_keywords(plugin_name: str) -> None:
                     return getattr(self.original_manager, name)
             
             plugin_manager = PluginKeywordManager(keyword_manager, plugin_name)
-            plugin.register_keywords(plugin_manager)
-            print(f"通过register_keywords加载插件: {plugin_name}")
+            run_with_suppressed_success_output(
+                lambda: plugin.register_keywords(plugin_manager)
+            )
+            print_verbose(f"通过register_keywords加载插件: {plugin_name}")
             return
         
         # 否则，遍历包中的所有模块
@@ -98,8 +106,10 @@ def load_plugin_keywords(plugin_name: str) -> None:
             for _, name, is_pkg in pkgutil.iter_modules(plugin.__path__, plugin.__name__ + '.'):
                 if not is_pkg:
                     try:
-                        module = importlib.import_module(name)
-                        print(f"加载插件模块: {name}")
+                        run_with_suppressed_success_output(
+                            lambda: importlib.import_module(name)
+                        )
+                        print_verbose(f"加载插件模块: {name}")
                         # 模块已导入，关键字装饰器会自动注册
                         # 但我们需要在导入后更新来源信息
                         _update_keywords_source_info(plugin_name, name)
@@ -145,9 +155,13 @@ def _load_module_from_file(file_path):
         module_name = file_path.stem
         spec = importlib.util.spec_from_file_location(module_name, file_path)
         if spec:
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            print(f"已加载项目关键字模块: {module_name}")
+            def load_module():
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                return module
+
+            run_with_suppressed_success_output(load_module)
+            print_verbose(f"已加载项目关键字模块: {module_name}")
             return True
     except Exception as e:
         print(f"加载项目关键字模块 {file_path.name} 时出错: {e}")
@@ -167,8 +181,8 @@ def scan_local_keywords() -> None:
         keywords_dir = project_root / 'keywords'
         
         if keywords_dir.exists() and keywords_dir.is_dir():
-            print(f"发现项目关键字目录: {keywords_dir}")
-            
+            print_verbose(f"发现项目关键字目录: {keywords_dir}")
+
             # 将keywords目录添加到Python路径中，以便能够导入
             if str(keywords_dir) not in sys.path:
                 sys.path.insert(0, str(keywords_dir))
@@ -176,8 +190,10 @@ def scan_local_keywords() -> None:
             # 首先尝试作为包导入整个keywords目录
             if (keywords_dir / '__init__.py').exists():
                 try:
-                    importlib.import_module('keywords')
-                    print("已加载项目keywords包")
+                    run_with_suppressed_success_output(
+                        lambda: importlib.import_module('keywords')
+                    )
+                    print_verbose("已加载项目keywords包")
                 except Exception as e:
                     print(
                         f"导入项目keywords包失败: "
@@ -186,7 +202,7 @@ def scan_local_keywords() -> None:
             
             # 遍历keywords目录下的所有Python文件（包括子目录）
             loaded_modules = 0
-            
+
             # 先加载顶层目录中的模块
             for file_path in keywords_dir.glob('*.py'):
                 if file_path.name != '__init__.py':
@@ -201,8 +217,12 @@ def scan_local_keywords() -> None:
                     # 尝试作为包导入
                     subdir_name = subdir.name
                     try:
-                        importlib.import_module(f'keywords.{subdir_name}')
-                        print(f"已加载项目关键字子包: {subdir_name}")
+                        run_with_suppressed_success_output(
+                            lambda: importlib.import_module(
+                                f'keywords.{subdir_name}'
+                            )
+                        )
+                        print_verbose(f"已加载项目关键字子包: {subdir_name}")
                         loaded_modules += 1
                     except Exception as e:
                         print(
@@ -215,13 +235,13 @@ def scan_local_keywords() -> None:
                     if file_path.name != '__init__.py':
                         if _load_module_from_file(file_path):
                             loaded_modules += 1
-            
+
             if loaded_modules > 0:
-                print(f"成功从项目中加载了 {loaded_modules} 个关键字模块")
+                print_verbose(f"成功从项目中加载了 {loaded_modules} 个关键字模块")
             else:
-                print("未从项目中加载到任何关键字模块")
+                print_verbose("未从项目中加载到任何关键字模块")
         else:
-            print("提示: 未在项目中找到keywords目录")
+            print_verbose("提示: 未在项目中找到keywords目录")
     except Exception as e:
         print(f"扫描项目关键字时出错: {e}")
 

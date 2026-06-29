@@ -3,6 +3,7 @@ from pytest_dsl.core.lexer import get_lexer
 from pytest_dsl.core.parser import get_parser, Node
 from pytest_dsl.core.dsl_executor import DSLExecutor
 from pytest_dsl.core.keyword_manager import keyword_manager
+from pytest_dsl.core.reporting import print_verbose
 
 
 class CustomKeywordManager:
@@ -44,7 +45,7 @@ class CustomKeywordManager:
             # 如果没有resources目录，静默返回
             return
 
-        print(f"发现resources目录: {resources_dir}")
+        print_verbose(f"发现resources目录: {resources_dir}")
 
         # 递归查找所有.resource文件
         resource_files = []
@@ -54,10 +55,10 @@ class CustomKeywordManager:
                     resource_files.append(os.path.join(root, file))
 
         if not resource_files:
-            print("resources目录中没有找到.resource文件")
+            print_verbose("resources目录中没有找到.resource文件")
             return
 
-        print(f"在resources目录中发现 {len(resource_files)} 个资源文件")
+        print_verbose(f"在resources目录中发现 {len(resource_files)} 个资源文件")
 
         # 按照依赖关系排序并加载资源文件
         sorted_files = self._sort_resources_by_dependencies(resource_files)
@@ -69,7 +70,7 @@ class CustomKeywordManager:
                 if absolute_path not in self.auto_imported_resources:
                     self.load_resource_file(resource_file)
                     self.auto_imported_resources.add(absolute_path)
-                    print(f"自动导入资源文件: {resource_file}")
+                    print_verbose(f"自动导入资源文件: {resource_file}")
             except Exception as e:
                 print(f"自动导入资源文件失败 {resource_file}: {e}")
 
@@ -391,7 +392,7 @@ class CustomKeywordManager:
 
             return result
 
-        print(f"已注册自定义关键字: {keyword_name} 来自文件: {file_path}")
+        print_verbose(f"已注册自定义关键字: {keyword_name} 来自文件: {file_path}")
 
     def register_keyword_from_dsl_content(self, dsl_content: str,
                                           source_name: str = "DSL内容") -> list:
