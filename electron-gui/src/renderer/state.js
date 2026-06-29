@@ -125,6 +125,9 @@ export function createInitialState() {
     treeDropTargetPath: null,
     entryDialogResolve: null,
     entryDialogPreviousFocus: null,
+    // Multi-tab open files model
+    openFiles: [],
+    activeFileKey: null,
   };
 }
 
@@ -205,4 +208,62 @@ export function allureRuntimeUnavailableMessage(state) {
     ? ` ${info.action}`
     : " 请执行 npm install -g allure 安装 Allure 3。";
   return `未检测到 Allure 3，构建会继续运行 pytest，但不会展示或下载 Allure 报告。${action}`.trim();
+}
+
+/**
+ * Create a new OpenFileEntry (immutable-style record).
+ */
+export function createOpenFileEntry(fields = {}) {
+  return {
+    key: fields.key || "",
+    relativePath: fields.relativePath || "",
+    label: fields.label || "",
+    language: fields.language || "plain",
+    dirty: Boolean(fields.dirty),
+    readonlySource: fields.readonlySource || null,
+    debugStartLine: fields.debugStartLine || null,
+    currentDebugLine: fields.currentDebugLine || null,
+    debugSelection: fields.debugSelection || null,
+    debugPaused: Boolean(fields.debugPaused),
+  };
+}
+
+/**
+ * Sync per-file state between the root state and the active OpenFileEntry.
+ *
+ * Call BEFORE switching away: syncActiveFileState(state, 'out')
+ * Call AFTER switching to a new tab: syncActiveFileState(state, 'in')
+ */
+export function syncActiveFileState(state, direction) {
+  if (!state) return;
+  const entry = state.activeFileKey
+    ? state.openFiles.find((f) => f.key === state.activeFileKey)
+    : null;
+
+  if (direction === "out" && entry) {
+    // Save root state into the outgoing tab entry
+    entry.relativePath = state.currentFile || "";
+    entry.dirty = state.dirty;
+    entry.readonlySource = state.readonlySource || null;
+    entry.debugStartLine = state.debugStartLine;
+    entry.currentDebugLine = state.currentDebugLine;
+    entry.debugSelection = state.debugSelection;
+    entry.debugPaused = state.debugPaused;
+  } else if (direction === "in" && entry) {
+    // Load incoming tab entry into root state
+    state.currentFile = entry.relativePath || null;
+    state.dirty = entry.dirty;
+    state.readonlySource = entry.readonlySource;
+    state.debugStartLine = entry.debugStartLine;
+    state.currentDebugLine = entry.currentDebugLine;
+    state.debugSelection = entry.debugSelection;
+    state.debugPaused = entry.debugPaused;
+
+    // Also sync the editor debug state
+    CM6.setDebugState({
+      debugStartLine: state.debugStartLine,
+      currentDebugLine: state.currentDebugLine,
+      debugSelection: state.debugSelection,
+    });
+  }
 }

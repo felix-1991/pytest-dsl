@@ -63,6 +63,7 @@ test("electron gui package metadata exposes local packaging commands and builder
   });
   assert.ok(build.files.includes("main.js"));
   assert.ok(build.files.includes("preload.js"));
+  assert.ok(build.files.includes("preload-definition.js"));
   assert.ok(build.files.includes("src/**/*"));
   assert.ok(build.files.includes("package.json"));
   assert.ok(build.files.includes("!test{,/**}"));

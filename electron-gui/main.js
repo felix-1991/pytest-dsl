@@ -58,6 +58,99 @@ function createWindow() {
   });
 
   window.loadFile(path.join(__dirname, "src", "index.html"));
+  return window;
+}
+
+// ---- Definition Child Windows ----
+
+const definitionWindows = new Map();   // key: file path → BrowserWindow
+const DEFINITION_WINDOW_LRU = [];
+const MAX_DEFINITION_WINDOWS = 5;
+
+function openDefinitionWindow(event, options) {
+  const { projectRoot, definition } = options || {};
+  if (!definition || !definition.path) {
+    throw new Error("Invalid definition data");
+  }
+
+  const fileKey = definition.path;
+
+  // Reuse existing window for the same source file
+  let defWindow = definitionWindows.get(fileKey);
+  if (defWindow && !defWindow.isDestroyed()) {
+    defWindow.focus();
+    defWindow.webContents.send("definition:data", {
+      projectRoot,
+      path: definition.path,
+      line: definition.line,
+      name: definition.name,
+    });
+    return { windowId: defWindow.id };
+  }
+
+  // Evict LRU window if at capacity
+  if (definitionWindows.size >= MAX_DEFINITION_WINDOWS) {
+    const oldest = DEFINITION_WINDOW_LRU.shift();
+    if (oldest) {
+      const oldestWindow = definitionWindows.get(oldest);
+      if (oldestWindow && !oldestWindow.isDestroyed()) {
+        oldestWindow.close();
+      }
+      definitionWindows.delete(oldest);
+    }
+  }
+
+  // Create new definition window
+  defWindow = new BrowserWindow({
+    width: 900,
+    height: 700,
+    minWidth: 600,
+    minHeight: 400,
+    title: `定义: ${definition.name}`,
+    parent: BrowserWindow.fromWebContents(event.sender),
+    backgroundColor: "#0f172a",
+    webPreferences: {
+      preload: path.join(__dirname, "preload-definition.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
+  defWindow.loadFile(path.join(__dirname, "src", "definition-window.html"));
+
+  defWindow.webContents.once("did-finish-load", () => {
+    defWindow.webContents.send("definition:data", {
+      projectRoot,
+      path: definition.path,
+      line: definition.line,
+      name: definition.name,
+    });
+  });
+
+  defWindow.on("closed", () => {
+    definitionWindows.delete(fileKey);
+    const idx = DEFINITION_WINDOW_LRU.indexOf(fileKey);
+    if (idx >= 0) DEFINITION_WINDOW_LRU.splice(idx, 1);
+  });
+
+  definitionWindows.set(fileKey, defWindow);
+  DEFINITION_WINDOW_LRU.push(fileKey);
+
+  return { windowId: defWindow.id };
+}
+
+function closeAllDefinitionWindows() {
+  definitionWindows.forEach((win) => {
+    if (!win.isDestroyed()) win.close();
+  });
+  definitionWindows.clear();
+  DEFINITION_WINDOW_LRU.length = 0;
+}
+
+function closeDefinitionWindow(event) {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) win.close();
 }
 
 function registerIpc() {
@@ -218,6 +311,14 @@ function registerIpc() {
     resetRuntimeExecutable(options.projectRoot, options.kind);
     return getRuntimeStatus({ projectRoot: options.projectRoot });
   });
+
+  // Definition child window IPC
+  ipcMain.handle("window:open-definition", (event, options) => openDefinitionWindow(event, options));
+  ipcMain.handle("window:close-all-definitions", () => {
+    closeAllDefinitionWindows();
+    return { closed: true };
+  });
+  ipcMain.handle("definition:close", (event) => closeDefinitionWindow(event));
 }
 
 function shouldInvalidateDefinitionCache(relativePath) {

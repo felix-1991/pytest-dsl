@@ -2,6 +2,8 @@ import { errorMessage, fileNameFromPath } from "./utils.js";
 import {
   isPythonRuntimeAvailable,
   pythonRuntimeUnavailableMessage,
+  createOpenFileEntry,
+  syncActiveFileState,
 } from "./state.js";
 
 export function createFileController({
@@ -24,13 +26,216 @@ export function createFileController({
   updateBuildActionState,
   currentSelectedSuiteIds = () => [],
   closeKeywordPanel,
+  debugFromLine,
+  handleDefinitionRequest,
 }) {
+  // ---- Multi-tab helpers ----
+
+  function ensureEditorContainer() {
+    // Ensure #codeEditor exists as a container for cm-instance divs
+    if (!el.codeEditor) return;
+    // Remove the placeholder class if it was previously an empty target div
+    if (!el.codeEditor._initialized) {
+      el.codeEditor._initialized = true;
+      // Clear any stale content; let CM6.create() append its child divs
+    }
+  }
+
+  function activeFileEntry() {
+    return state.activeFileKey
+      ? (state.openFiles.find((f) => f.key === state.activeFileKey) || null)
+      : null;
+  }
+
+  function findTabByPath(relativePath) {
+    return state.openFiles.find(
+      (f) => f.relativePath === relativePath && !f.readonlySource,
+    );
+  }
+
+  function switchToTab(key) {
+    if (!key) return;
+    if (key === state.activeFileKey) {
+      syncActiveFileState(state, "in");
+      renderActiveFile();
+      syncEditorCompletionContext();
+      loadEditorCompletionKeywords();
+      updateFileActionState();
+      return;
+    }
+    syncActiveFileState(state, "out");
+    state.activeFileKey = key;
+    CM6.show(key);
+    // syncActiveFileState("in") must happen AFTER show() so CM6.setDebugState delegates to the right instance
+    syncActiveFileState(state, "in");
+    const entry = activeFileEntry();
+    if (entry) {
+      state.currentFile = entry.relativePath || null;
+      state.readonlySource = entry.readonlySource || null;
+      state.dirty = entry.dirty;
+    }
+    renderActiveFile();
+    syncEditorCompletionContext();
+    loadEditorCompletionKeywords();
+    updateFileActionState();
+  }
+
+  function closeTab(key, opts = {}) {
+    const entry = state.openFiles.find((f) => f.key === key);
+    if (!entry) return;
+
+    if (entry.dirty && !opts.skipDirtyCheck) {
+      showDirtyConfirm(key, {
+        onSave: async () => {
+          if (state.activeFileKey !== key) {
+            switchToTab(key);
+          }
+          const saved = await saveCurrentFile({ force: true });
+          if (saved) {
+            closeTab(key, { skipDirtyCheck: true });
+          }
+        },
+        onDiscard: () => {
+          closeTab(key, { skipDirtyCheck: true });
+        },
+        onCancel: () => {},
+      });
+      return;
+    }
+
+    const wasActive = state.activeFileKey === key;
+    const idx = state.openFiles.indexOf(entry);
+    if (idx >= 0) state.openFiles.splice(idx, 1);
+
+    CM6.destroy(key);
+
+    if (wasActive) {
+      // Find next tab to activate
+      const remaining = state.openFiles;
+      if (remaining.length === 0) {
+        state.activeFileKey = null;
+        clearEditor("从左侧打开文件");
+        return;
+      }
+      const nextEntry = remaining[Math.min(idx, remaining.length - 1)];
+      state.activeFileKey = nextEntry.key;
+      CM6.show(nextEntry.key);
+      syncActiveFileState(state, "in");
+    }
+
+    renderActiveFile();
+    if (wasActive) {
+      syncEditorCompletionContext();
+      loadEditorCompletionKeywords();
+      updateFileActionState();
+    }
+  }
+
+  function showDirtyConfirm(key, { onSave, onDiscard, onCancel }) {
+    // Use a simple confirm + custom dialog approach
+    const entry = state.openFiles.find((f) => f.key === key);
+    const label = entry ? entry.label : "文件";
+    const result = window.confirm(
+      `"${label}" 有未保存的修改。是否保存？\n\n确定 = 保存\n取消 = 不保存`,
+    );
+    if (result) {
+      onSave();
+    } else if (result === false) {
+      onDiscard();
+    }
+    // if result is null (user closed dialog), treat as cancel
+  }
+
+  // ---- Tab bar rendering ----
+
+  function renderTabBar() {
+    if (!el.editorTabs) return;
+    el.editorTabs.innerHTML = state.openFiles
+      .map((entry) => renderTab(entry))
+      .join("");
+  }
+
+  function renderTab(entry) {
+    const isActive = entry.key === state.activeFileKey;
+    const dirtyClass = entry.dirty ? "is-dirty" : "is-clean";
+    return `
+      <button class="editor-tab${isActive ? " is-active" : ""}" role="tab" type="button" data-tab-key="${entry.key}" title="${entry.relativePath || entry.label}">
+        <span class="dot ${dirtyClass}"></span>
+        <span class="tab-label">${escapeTabLabel(entry.label)}</span>
+        <span class="tab-close" data-tab-close="${entry.key}" title="关闭标签">×</span>
+      </button>
+    `;
+  }
+
+  function escapeTabLabel(text) {
+    return String(text || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  // ---- Core file operations (multi-tab) ----
+
   async function selectFile(relativePath) {
+    ensureEditorContainer();
+
+    // Already open in a tab? Just switch.
+    const existing = findTabByPath(relativePath);
+    if (existing) {
+      switchToTab(existing.key);
+      return;
+    }
+
     try {
       const result = await api.readFile(
         state.snapshot.project.rootPath,
         relativePath,
       );
+      const language = detectLanguage(result.relativePath);
+      const label = relativePath.split("/").pop();
+
+      // Save current tab state before creating a new one
+      syncActiveFileState(state, "out");
+
+      // Create editor instance — pass #codeEditor as parent so CM6 creates
+      // its own .cm-instance container inside it
+      const key = relativePath;
+
+      CM6.create(key, el.codeEditor, {
+        onContentChange() {
+          state.debugSelection = null;
+          state.currentDebugLine = null;
+          if (state.debugStartLine && state.debugStartLine > CM6.lineCount()) {
+            state.debugStartLine = null;
+          }
+          setDirty(true);
+          updateFileActionState();
+        },
+        onSelectionChange() {
+          if (state.currentFile) updateFileActionState();
+        },
+        onGutterClick(line) {
+          debugFromLine(line);
+        },
+        onDefinitionRequest(request) {
+          handleDefinitionRequest(request);
+        },
+      });
+
+      // Create and add the entry
+      const entry = createOpenFileEntry({
+        key,
+        relativePath: result.relativePath,
+        label,
+        language,
+        dirty: false,
+      });
+      state.openFiles.push(entry);
+
+      // Keep activeFileKey + root state in sync before setContent triggers
+      // CodeMirror change listeners.
+      state.activeFileKey = key;
       state.currentFile = result.relativePath;
       state.readonlySource = null;
       state.currentDebugLine = null;
@@ -38,9 +243,12 @@ export function createFileController({
       state.debugSelection = null;
       state.debugPaused = false;
       state.snapshot.metadata = result.metadata || state.snapshot.metadata;
+
+      CM6.show(key);
       CM6.setContent(result.content);
-      CM6.setLanguage(detectLanguage(result.relativePath));
+      CM6.setLanguage(language);
       CM6.setEnabled(true);
+
       syncEditorCompletionContext();
       loadEditorCompletionKeywords();
       setDirty(false);
@@ -54,9 +262,75 @@ export function createFileController({
     }
   }
 
+  async function openExternalReadonlySource(definition) {
+    ensureEditorContainer();
+
+    try {
+      const result = await api.readSourceFile({
+        projectRoot: state.snapshot.project.rootPath,
+        path: definition.path,
+      });
+      const language = result.language || detectLanguage(result.path);
+      const label = fileNameFromPath(result.path);
+      const roKey = `readonly-${Date.now()}`;
+
+      // Save current tab state
+      syncActiveFileState(state, "out");
+
+      // Create editor instance — pass #codeEditor as parent
+
+      CM6.create(roKey, el.codeEditor, {
+        onContentChange() {},
+        onSelectionChange() {},
+        onGutterClick() {},
+        onDefinitionRequest() {},
+      });
+
+      // Activate first so setContent/setLanguage delegate to the new instance
+      CM6.show(roKey);
+
+      CM6.setContent(result.content);
+      CM6.setLanguage(language);
+      CM6.setEnabled(false);
+
+      const entry = createOpenFileEntry({
+        key: roKey,
+        relativePath: "",
+        label,
+        language,
+        dirty: false,
+        readonlySource: { ...definition, path: result.path },
+      });
+      state.openFiles.push(entry);
+
+      // Activate (show already called above)
+      state.activeFileKey = roKey;
+
+      state.currentFile = result.path;
+      state.readonlySource = { ...definition, path: result.path };
+      state.currentDebugLine = null;
+      state.debugStartLine = null;
+      state.debugSelection = null;
+      state.debugPaused = false;
+
+      syncEditorCompletionContext();
+      setDirty(false);
+      renderActiveFile();
+      renderFileTree();
+      CM6.scrollToLine(definition.line);
+      appendLog("info", `Go to readonlySource: ${definition.name} -> ${result.path}:${definition.line}`);
+    } catch (error) {
+      appendLog("error", errorMessage(error));
+    }
+  }
+
   function renderActiveFile() {
+    renderTabBar();
+
     if (!state.currentFile) {
-      clearEditor("从左侧打开文件");
+      // No active file, but keep tab bar visible if there are tabs
+      updateEmptyStateView("从左侧打开文件");
+      updateFileActionState();
       return;
     }
 
@@ -65,7 +339,6 @@ export function createFileController({
     const fileName = readonlySource
       ? fileNameFromPath(readonlySource.path)
       : state.currentFile.split("/").pop();
-    el.activeTab.textContent = fileName;
     el.fileTitle.textContent = fileName;
     el.filePath.textContent = readonlySource ? readonlySource.path : state.currentFile;
     el.editorMeta.textContent = `${CM6.lineCount()} 行 · ${languageLabel(file)} · UTF-8 · Spaces: 4${readonlySource ? " · Readonly source" : ""}`;
@@ -75,6 +348,14 @@ export function createFileController({
     );
     updateFileActionState();
     previewCommand(currentCommand(), { force: true });
+  }
+
+  function updateEmptyStateView(message) {
+    el.fileTitle.textContent = message;
+    el.filePath.textContent = message;
+    el.editorMeta.textContent = "UTF-8 · Spaces: 4";
+    el.problemCount.textContent = "0";
+    el.variableCount.textContent = "0";
   }
 
   function getEditableFiles(snapshot = state.snapshot) {
@@ -217,18 +498,18 @@ export function createFileController({
       if (options.source === "shortcut") {
         showActionFeedback("没有可保存的文件", "warn");
       }
-      return;
+      return false;
     }
     if (state.readonlySource) {
       appendLog("warn", "只读源码不能保存");
       if (options.source === "shortcut") {
         showActionFeedback("只读源码不能保存", "warn");
       }
-      return;
+      return false;
     }
     if (options.source === "shortcut" && !state.dirty) {
       showActionFeedback("当前文件已是最新", "info");
-      return;
+      return true;
     }
 
     try {
@@ -247,9 +528,11 @@ export function createFileController({
       renderMetadata(state.snapshot.metadata);
       appendLog("pass", `Saved ${result.relativePath} (${result.bytes} bytes)`);
       showActionFeedback(`已保存 ${result.relativePath}`, "pass");
+      return true;
     } catch (error) {
       appendLog("error", errorMessage(error));
       showActionFeedback(`保存失败: ${errorMessage(error)}`, "error");
+      return false;
     }
   }
 
@@ -260,22 +543,24 @@ export function createFileController({
     state.debugStartLine = null;
     state.debugSelection = null;
     state.debugPaused = false;
-    CM6.setContent("");
-    CM6.setEnabled(false);
+    state.activeFileKey = null;
+    // Don't call CM6.setContent or CM6.setEnabled — no active instance
     setDirty(false);
-    el.activeTab.textContent = "未选择文件";
-    el.fileTitle.textContent = message;
-    el.filePath.textContent = "从左侧打开文件";
-    el.editorMeta.textContent = "UTF-8 · Spaces: 4";
+    renderActiveFile();
     resetCommandPreview();
     updateFileActionState();
   }
 
   function setDirty(isDirty) {
     state.dirty = isDirty;
-    el.dirtyDot.classList.toggle("is-dirty", isDirty);
+    // Update the active tab entry
+    const entry = activeFileEntry();
+    if (entry) {
+      entry.dirty = isDirty;
+    }
+    // Re-render tab bar to reflect dirty state
     if (state.currentFile) {
-      renderActiveFile();
+      renderTabBar();
     }
   }
 
@@ -313,8 +598,13 @@ export function createFileController({
   }
 
   return {
+    activeFileEntry,
     selectFile,
+    openExternalReadonlySource,
+    switchToTab,
+    closeTab,
     renderActiveFile,
+    renderTabBar,
     clearEditor,
     setDirty,
     saveCurrentFile,

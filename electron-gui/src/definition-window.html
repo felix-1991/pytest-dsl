@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pytest DSL - 定义查看</title>
+    <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+    <div class="def-window">
+        <header class="def-header">
+            <span class="def-path" id="defPath">加载中...</span>
+            <span class="def-meta" id="defMeta"></span>
+            <button class="text-btn" id="defCloseBtn" type="button" style="color:#e5edf7;border-color:rgba(148,163,184,0.35);">关闭</button>
+        </header>
+        <div class="code-editor def-editor" id="defEditor"></div>
+    </div>
+    <script src="./editor-bundle.js"></script>
+    <script src="./definition-renderer.js"></script>
+</body>
+</html>

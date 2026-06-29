@@ -54,10 +54,15 @@ export function createWorkspaceController({
   }
 
   function confirmDiscardDirtyBeforeBuild() {
-    if (!state.dirty) {
+    // Check ALL open tabs, not just the active one
+    const dirtyFiles = state.openFiles.filter((f) => f.dirty);
+    if (dirtyFiles.length === 0) {
       return true;
     }
-    const confirmed = window.confirm("当前文件有未保存修改，切换到构建页面前请确认。继续切换？");
+    const labels = dirtyFiles.map((f) => `"${f.label}"`).join(", ");
+    const confirmed = window.confirm(
+      `以下文件有未保存修改: ${labels}。切换到构建页面前请确认。继续切换？`,
+    );
     if (!confirmed) {
       showActionFeedback("当前文件有未保存修改，已停留在调试页面", "warn");
     }

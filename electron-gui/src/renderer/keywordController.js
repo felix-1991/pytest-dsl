@@ -16,6 +16,8 @@ export function createKeywordController({
   selectFile,
   setDirty,
   syncEditorCompletionContext,
+  openExternalReadonlySource: _openExternalReadonlySource,
+  openDefinitionWindow,
 }) {
   function handleDefinitionRequest(request) {
     if (!request || !request.keywordName) {
@@ -65,6 +67,7 @@ export function createKeywordController({
   }
 
   async function openDefinitionTarget(definition) {
+    // Project-resident file — open in new tab (preserves current editing context)
     if (definition.relativePath) {
       await selectFile(definition.relativePath);
       CM6.scrollToLine(definition.line);
@@ -72,10 +75,38 @@ export function createKeywordController({
       return;
     }
 
-    await openExternalReadonlySource(definition);
+    // External/python source — try opening in a child window first
+    if (typeof openDefinitionWindow === "function") {
+      try {
+        await openDefinitionWindow({
+          projectRoot: state.snapshot.project.rootPath,
+          definition: {
+            path: definition.path,
+            line: definition.line,
+            name: definition.name,
+            sourceType: definition.sourceType,
+          },
+        });
+        appendLog("info", `在新窗口中打开定义: ${definition.name}`);
+        return;
+      } catch (error) {
+        appendLog("warn", `打开定义窗口失败，在当前标签页中打开: ${errorMessage(error)}`);
+        // Fallback to opening in a new tab
+      }
+    }
+
+    // Fallback: open in a new readonly tab
+    await doOpenExternalReadonlySource(definition);
   }
 
-  async function openExternalReadonlySource(definition) {
+  // ---- Internal readonly-source helper ----
+
+  async function doOpenExternalReadonlySource(definition) {
+    // Delegate to fileController's multi-tab version if available
+    if (typeof _openExternalReadonlySource === "function") {
+      return _openExternalReadonlySource(definition);
+    }
+    // Fallback if called directly
     const result = await api.readSourceFile({
       projectRoot: state.snapshot.project.rootPath,
       path: definition.path,
@@ -304,5 +335,6 @@ export function createKeywordController({
     handleRefreshDefinitions,
     resetKeywordBrowser,
     toggleKeywordPanel,
+    doOpenExternalReadonlySource,
   };
 }

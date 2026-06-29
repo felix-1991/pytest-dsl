@@ -80,6 +80,17 @@ export function createProjectController({
       ? snapshot.config.signature
       : null;
     if (projectChanged) {
+      // Destroy all editor instances and reset multi-tab state
+      CM6.destroyAll();
+      state.openFiles = [];
+      state.activeFileKey = null;
+      state.currentFile = null;
+      state.readonlySource = null;
+      state.currentDebugLine = null;
+      state.debugStartLine = null;
+      state.debugSelection = null;
+      state.debugPaused = false;
+
       resetKeywordBrowser();
       resetEditorCompletionKeywords();
 
@@ -136,8 +147,17 @@ export function createProjectController({
 
   function setEmptyProjectState() {
     stopDynamicRemoteMonitoring();
+    // Destroy all editor instances
+    CM6.destroyAll();
+    state.openFiles = [];
+    state.activeFileKey = null;
     state.snapshot = null;
     state.currentFile = null;
+    state.readonlySource = null;
+    state.currentDebugLine = null;
+    state.debugStartLine = null;
+    state.debugSelection = null;
+    state.debugPaused = false;
     state.dirty = false;
     state.selectedConfigPaths = [];
     state.selectedSuiteIds = [];
@@ -254,7 +274,6 @@ export function createProjectController({
   async function refreshRuntimeStatus() {
     if (!state.snapshot) return;
     const projectRoot = state.snapshot.project.rootPath;
-    if (typeof api.getRuntimeStatus !== "function") return;
     try {
       const result = await api.getRuntimeStatus({ projectRoot });
       if (!state.snapshot || state.snapshot.project.rootPath !== projectRoot) return;

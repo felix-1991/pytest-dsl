@@ -174,6 +174,8 @@ fileController = createFileController({
   updateBuildActionState: (...args) => buildReportController.updateBuildActionState(...args),
   currentSelectedSuiteIds,
   closeKeywordPanel: (...args) => keywordController.closeKeywordPanel(...args),
+  debugFromLine: (...args) => debugFromLine(...args),
+  handleDefinitionRequest: (...args) => handleDefinitionRequest(...args),
 });
 
 const {
@@ -181,9 +183,12 @@ const {
   detectLanguage,
   isExecutableFile,
   isRunnableWholeFile,
+  openExternalReadonlySource,
   saveCurrentFile,
   selectFile,
   setDirty,
+  switchToTab,
+  closeTab,
   updateFileActionState,
   renderActiveFile,
   getEditableFiles,
@@ -201,6 +206,8 @@ const keywordController = createKeywordController({
   selectFile,
   setDirty: (...args) => fileController.setDirty(...args),
   syncEditorCompletionContext: (...args) => configController.syncEditorCompletionContext(...args),
+  openExternalReadonlySource,
+  openDefinitionWindow: (...args) => api.openDefinitionWindow(...args),
 });
 
 const {
@@ -417,27 +424,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initializeLayoutSizing();
   bindEvents();
   applyConsoleViewState();
-  CM6.createEditor(el.codeEditor, {
-    onContentChange() {
-      state.debugSelection = null;
-      state.currentDebugLine = null;
-      if (state.debugStartLine && state.debugStartLine > CM6.lineCount()) {
-        state.debugStartLine = null;
-      }
-      setDirty(true);
-      updateFileActionState();
-    },
-    onSelectionChange() {
-      if (state.currentFile) updateFileActionState();
-    },
-    onGutterClick(line) {
-      debugFromLine(line);
-    },
-    onDefinitionRequest(request) {
-      handleDefinitionRequest(request);
-    },
-  });
-  CM6.setEnabled(false);
+  // Editor instances are now created lazily when files are opened.
+  // No initial empty editor — the user starts with a clean slate.
   syncEditorCompletionContext();
   setEmptyProjectState();
   appendLog("info", "Electron GUI initialized");
@@ -475,6 +463,7 @@ function cacheElements() {
     "buildCaseTree",
     "treeContextMenu",
     "dirtyDot",
+    "editorTabs",
     "activeTab",
     "fileTitle",
     "filePath",
@@ -633,6 +622,67 @@ function bindEvents() {
       closeKeywordPanel();
     }
   });
+
+  // Tab bar click delegation
+  if (el.editorTabs) {
+    el.editorTabs.addEventListener("click", (event) => {
+      const closeBtn = event.target.closest("[data-tab-close]");
+      if (closeBtn && fileController) {
+        event.stopPropagation();
+        fileController.closeTab(closeBtn.dataset.tabClose);
+        return;
+      }
+      const tabBtn = event.target.closest("[data-tab-key]");
+      if (tabBtn && fileController) {
+        event.stopPropagation();
+        fileController.switchToTab(tabBtn.dataset.tabKey);
+      }
+    });
+  }
+
+  // Keyboard shortcuts for tab navigation
+  document.addEventListener("keydown", (event) => {
+    const isMeta = event.ctrlKey || event.metaKey;
+    // Ctrl+W / Cmd+W: close active tab
+    if (isMeta && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "w") {
+      if (fileController && state.activeFileKey) {
+        event.preventDefault();
+        fileController.closeTab(state.activeFileKey);
+      }
+      return;
+    }
+    // Ctrl+Tab: next tab
+    if (isMeta && !event.altKey && !event.shiftKey && event.key === "Tab") {
+      if (fileController && state.openFiles.length > 1) {
+        event.preventDefault();
+        const idx = state.openFiles.findIndex((f) => f.key === state.activeFileKey);
+        const next = state.openFiles[(idx + 1) % state.openFiles.length];
+        fileController.switchToTab(next.key);
+      }
+      return;
+    }
+    // Ctrl+Shift+Tab: previous tab
+    if (isMeta && !event.altKey && event.shiftKey && event.key === "Tab") {
+      if (fileController && state.openFiles.length > 1) {
+        event.preventDefault();
+        const idx = state.openFiles.findIndex((f) => f.key === state.activeFileKey);
+        const prev = state.openFiles[(idx - 1 + state.openFiles.length) % state.openFiles.length];
+        fileController.switchToTab(prev.key);
+      }
+      return;
+    }
+    // Ctrl+1-9: switch to tab by index
+    if (isMeta && !event.altKey && !event.shiftKey) {
+      const digit = event.key.match(/^(\d)$/);
+      if (digit && fileController) {
+        const index = parseInt(digit[1], 10) - 1;
+        if (index >= 0 && index < state.openFiles.length) {
+          event.preventDefault();
+          fileController.switchToTab(state.openFiles[index].key);
+        }
+      }
+    }
+  }, true);
   el.suiteTrigger.addEventListener("click", () => {
     closeConfigPicker();
     closeKeywordPanel();

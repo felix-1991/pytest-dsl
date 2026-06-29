@@ -6,6 +6,9 @@ const root = path.resolve(__dirname, "..");
 const requiredFiles = [
   "main.js",
   "preload.js",
+  "preload-definition.js",
+  "src/definition-renderer.js",
+  "src/definition-window.html",
   "src/index.html",
   "src/styles.css",
   "src/renderer.js",

@@ -40,5 +40,7 @@ contextBridge.exposeInMainWorld("pytestDslGui", {
   },
   getRuntimeStatus: (options) => ipcRenderer.invoke("runtime:status", options),
   selectRuntimeExecutable: (options) => ipcRenderer.invoke("runtime:select", options),
-  resetRuntimeExecutable: (options) => ipcRenderer.invoke("runtime:reset", options)
+  resetRuntimeExecutable: (options) => ipcRenderer.invoke("runtime:reset", options),
+  openDefinitionWindow: (options) => ipcRenderer.invoke("window:open-definition", options),
+  closeAllDefinitionWindows: () => ipcRenderer.invoke("window:close-all-definitions"),
 });

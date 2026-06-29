@@ -34,6 +34,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "preload-definition.js",
       "src/**/*",
       "package.json",
       "!test{,/**}",

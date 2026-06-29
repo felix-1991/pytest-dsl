@@ -33,6 +33,10 @@ const rendererModules = [
   .map((modulePath) => fs.readFileSync(path.resolve(__dirname, modulePath), "utf8"))
   .join("\n");
 const renderer = [rendererEntry, rendererModules].join("\n");
+const fileControllerSource = fs.readFileSync(
+  path.resolve(__dirname, "../src/renderer/fileController.js"),
+  "utf8",
+);
 const main = fs.readFileSync(
   path.resolve(__dirname, "../main.js"),
   "utf8",
@@ -41,8 +45,20 @@ const preload = fs.readFileSync(
   path.resolve(__dirname, "../preload.js"),
   "utf8",
 );
+const preloadDefinition = fs.readFileSync(
+  path.resolve(__dirname, "../preload-definition.js"),
+  "utf8",
+);
 const editorBridge = fs.readFileSync(
   path.resolve(__dirname, "../src/editor-bridge.js"),
+  "utf8",
+);
+const definitionHtml = fs.readFileSync(
+  path.resolve(__dirname, "../src/definition-window.html"),
+  "utf8",
+);
+const definitionRenderer = fs.readFileSync(
+  path.resolve(__dirname, "../src/definition-renderer.js"),
   "utf8",
 );
 const css = fs.readFileSync(
@@ -96,6 +112,9 @@ test("renderer keeps the demo-aligned workbench shell", () => {
 });
 
 test("app file check validates the split renderer module graph", () => {
+  assert.match(checkAppFiles, /"preload-definition\.js"/);
+  assert.match(checkAppFiles, /"src\/definition-window\.html"/);
+  assert.match(checkAppFiles, /"src\/definition-renderer\.js"/);
   assert.match(checkAppFiles, /require\("esbuild"\)/);
   assert.match(checkAppFiles, /entryPoints:\s*\[path\.join\(root,\s*"src",\s*"renderer\.js"\)\]/);
   assert.match(checkAppFiles, /bundle:\s*true/);
@@ -232,8 +251,8 @@ test("debug and build topbars keep project path readable and controls aligned", 
 
 test("switching to build warns before leaving unsaved editor changes", () => {
   assert.match(renderer, /function confirmDiscardDirtyBeforeBuild\(\)/);
-  assert.match(renderer, /state\.dirty/);
-  assert.match(renderer, /window\.confirm\("当前文件有未保存修改，切换到构建页面前请确认。继续切换？"\)/);
+  assert.match(renderer, /const dirtyFiles = state\.openFiles\.filter\(\(f\) => f\.dirty\)/);
+  assert.match(renderer, /以下文件有未保存修改/);
   assert.match(renderer, /if \(isBuildView && !confirmDiscardDirtyBeforeBuild\(\)\) \{\s*return;\s*\}/);
   assert.match(renderer, /showActionFeedback\("当前文件有未保存修改，已停留在调试页面", "warn"\)/);
 });
@@ -451,7 +470,8 @@ test("renderer exposes tree icons and a CodeMirror 6 editor", () => {
   assert.match(html, /placeholder="筛选文件"/);
   assert.doesNotMatch(html, /id="editorHighlight"/);
   assert.doesNotMatch(html, /contenteditable="true"/);
-  assert.match(renderer, /CM6\.createEditor/);
+  assert.match(renderer, /CM6\.create\(key, el\.codeEditor/);
+  assert.match(renderer, /CM6\.show\(key\)/);
   assert.match(renderer, /CM6\.getContent/);
   assert.match(renderer, /CM6\.setLanguage/);
   assert.match(renderer, /onContentChange/);
@@ -464,6 +484,77 @@ test("renderer exposes tree icons and a CodeMirror 6 editor", () => {
   assert.match(css, /\.tok-heading/);
   assert.match(css, /\.tok-link/);
   assert.doesNotMatch(css, /resize:\s*none/);
+});
+
+test("multi-tab editor callbacks are late-bound after controllers initialize", () => {
+  const fileControllerStart = rendererEntry.indexOf("fileController = createFileController({");
+  const keywordControllerStart = rendererEntry.indexOf("const keywordController = createKeywordController");
+  const executionControllerStart = rendererEntry.indexOf("const executionController = createExecutionController");
+  assert.ok(fileControllerStart >= 0, "missing file controller initialization");
+  assert.ok(keywordControllerStart > fileControllerStart, "keyword controller should initialize after file controller");
+  assert.ok(executionControllerStart > fileControllerStart, "execution controller should initialize after file controller");
+
+  const fileControllerBlock = rendererEntry.slice(fileControllerStart, keywordControllerStart);
+  assert.doesNotMatch(fileControllerBlock, /^\s*debugFromLine,\s*$/m);
+  assert.doesNotMatch(fileControllerBlock, /^\s*handleDefinitionRequest,\s*$/m);
+  assert.match(fileControllerBlock, /debugFromLine:\s*\(\.\.\.args\) => debugFromLine\(\.\.\.args\)/);
+  assert.match(fileControllerBlock, /handleDefinitionRequest:\s*\(\.\.\.args\) => handleDefinitionRequest\(\.\.\.args\)/);
+});
+
+test("multi-tab file loading and close-save keep dirty state on the intended tab", () => {
+  const selectStart = fileControllerSource.indexOf("async function selectFile(relativePath)");
+  const readonlyStart = fileControllerSource.indexOf("async function openExternalReadonlySource");
+  assert.ok(selectStart >= 0, "missing selectFile");
+  assert.ok(readonlyStart > selectStart, "missing openExternalReadonlySource after selectFile");
+  const selectBlock = fileControllerSource.slice(selectStart, readonlyStart);
+  assert.ok(
+    selectBlock.indexOf("state.openFiles.push(entry);") < selectBlock.indexOf("CM6.setContent(result.content);"),
+    "new tab entry should exist before setContent triggers change listeners",
+  );
+  assert.ok(
+    selectBlock.indexOf("state.activeFileKey = key;") < selectBlock.indexOf("CM6.setContent(result.content);"),
+    "new tab should be active before setContent triggers change listeners",
+  );
+
+  const closeStart = fileControllerSource.indexOf("function closeTab(key, opts = {})");
+  const dirtyConfirmStart = fileControllerSource.indexOf("function showDirtyConfirm");
+  assert.ok(closeStart >= 0, "missing closeTab");
+  assert.ok(dirtyConfirmStart > closeStart, "missing showDirtyConfirm after closeTab");
+  const closeBlock = fileControllerSource.slice(closeStart, dirtyConfirmStart);
+  assert.match(closeBlock, /if \(state\.activeFileKey !== key\) \{\s*switchToTab\(key\);\s*\}/);
+  assert.ok(
+    closeBlock.indexOf("switchToTab(key);") < closeBlock.indexOf("await saveCurrentFile({ force: true });"),
+    "closing a non-active dirty tab should activate it before saving",
+  );
+  assert.match(closeBlock, /const saved = await saveCurrentFile\(\{ force: true \}\);/);
+  assert.match(closeBlock, /if \(saved\) \{\s*closeTab\(key, \{ skipDirtyCheck: true \}\);\s*\}/);
+
+  const saveStart = fileControllerSource.indexOf("async function saveCurrentFile(options = {})");
+  const clearStart = fileControllerSource.indexOf("function clearEditor(message)");
+  assert.ok(saveStart >= 0, "missing saveCurrentFile");
+  assert.ok(clearStart > saveStart, "missing clearEditor after saveCurrentFile");
+  const saveBlock = fileControllerSource.slice(saveStart, clearStart);
+  assert.match(saveBlock, /return true;/);
+  assert.match(saveBlock, /catch \(error\) \{[\s\S]*return false;/);
+
+  const switchStart = fileControllerSource.indexOf("function switchToTab(key)");
+  assert.ok(switchStart >= 0, "missing switchToTab");
+  const switchBlock = fileControllerSource.slice(switchStart, closeStart);
+  assert.doesNotMatch(switchBlock, /if \(!key \|\| key === state\.activeFileKey\) return;/);
+  assert.match(switchBlock, /if \(key === state\.activeFileKey\) \{[\s\S]*syncActiveFileState\(state, "in"\);/);
+});
+
+test("definition child window keeps live IPC updates and owns its editor layout", () => {
+  assert.match(main, /preload-definition\.js/);
+  assert.match(preloadDefinition, /pytestDslDefinition/);
+  assert.match(preloadDefinition, /definition:data/);
+  assert.match(definitionHtml, /id="defEditor"/);
+  assert.match(definitionHtml, /editor-bundle\.js/);
+  assert.match(definitionHtml, /definition-renderer\.js/);
+  assert.match(definitionRenderer, /api\.onData\(loadDefinition\)/);
+  assert.doesNotMatch(definitionRenderer, /unsubscribe\(\)/);
+  assert.match(css, /\.def-editor\s*\{[\s\S]*grid-row:\s*2/);
+  assert.match(css, /\.def-editor\s*\{[\s\S]*min-height:\s*0/);
 });
 
 test("file tree renders root files inline and uses a single stateful folder icon", () => {

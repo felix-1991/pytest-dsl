@@ -276,11 +276,10 @@ const debugGutterExt = gutter({
 });
 
 // ============================================================
-// Compartments (for dynamic reconfiguration)
+// Compartments for dynamic reconfiguration are now per-instance;
+// buildExtensions() receives them via opts._languageCompartment
+// and opts._readonlyCompartment.
 // ============================================================
-
-const languageCompartment = new Compartment();
-const readonlyCompartment = new Compartment();
 
 // ============================================================
 // DSL / Resource Completions
@@ -299,7 +298,8 @@ function isDslLikeLanguage(language) {
 }
 
 function dslCompletionSource(context) {
-  const completionContext = bridge._completionContext || createCompletionContext();
+  const inst = _activeBridgeInstance;
+  const completionContext = (inst && inst.completionContext) || createCompletionContext();
   if (!isDslLikeLanguage(completionContext.language)) {
     return null;
   }
@@ -753,7 +753,7 @@ function buildExtensions(opts) {
     indentOnInput(),
 
     // Language (compartment for dynamic switching)
-    languageCompartment.of(StreamLanguage.define({ token: (s) => { s.next(); return null; } })),
+    (opts._languageCompartment || new Compartment()).of(StreamLanguage.define({ token: (s) => { s.next(); return null; } })),
     syntaxHighlighting(highlight),
 
     // Features
@@ -781,7 +781,7 @@ function buildExtensions(opts) {
     debugGutterMarkers,
 
     // Read-only compartment
-    readonlyCompartment.of([]),
+    (opts._readonlyCompartment || new Compartment()).of([]),
 
     // Update listener
     EditorView.updateListener.of((update) => {
@@ -862,62 +862,193 @@ function keywordAtPosition(state, pos) {
 }
 
 // ============================================================
-// Bridge — the public API object
+// Bridge — the public API object (multi-instance)
 // ============================================================
 
-const bridge = {
-  _view: null,
-  _opts: {},
-  _extensions: null,
-  _completionContext: createCompletionContext(),
+// Track which instance is active so the completion source can
+// resolve the right per-instance context.
+let _activeBridgeInstance = null;
 
-  createEditor(parent, opts = {}) {
-    if (this._view) {
-      this._view.destroy();
+const bridge = {
+  _instances: Object.create(null),
+  _activeKey: null,
+  _nextId: 0,
+
+  _activeInstance() {
+    return this._activeKey ? this._instances[this._activeKey] || null : null;
+  },
+
+  create(key, parent, opts = {}) {
+    const resolvedKey = key || `cm-${++this._nextId}`;
+    if (this._instances[resolvedKey]) {
+      this.destroy(resolvedKey);
     }
-    this._opts = opts;
-    this._extensions = buildExtensions(opts);
+
+    const langComp = new Compartment();
+    const roComp = new Compartment();
+
+    // Build per-instance extensions with its own compartments.
+    const extensions = buildExtensions({
+      ...opts,
+      _languageCompartment: langComp,
+      _readonlyCompartment: roComp,
+    });
 
     const state = EditorState.create({
       doc: "",
-      extensions: this._extensions,
+      extensions,
     });
 
-    this._view = new EditorView({
+    const container = document.createElement("div");
+    container.className = "cm-instance";
+    container.style.display = "none";
+    container.dataset.key = resolvedKey;
+    parent.appendChild(container);
+
+    const view = new EditorView({
       state,
-      parent,
+      parent: container,
     });
 
-    return this._view;
+    this._instances[resolvedKey] = {
+      view,
+      dom: container,
+      opts,
+      extensions,
+      completionContext: createCompletionContext(),
+      languageCompartment: langComp,
+      readonlyCompartment: roComp,
+    };
+
+    return resolvedKey;
+  },
+
+  createEditor(parent, opts = {}) {
+    const key = this.create("main", parent, opts);
+    this.show(key);
+    return this._instances[key] ? this._instances[key].view : null;
+  },
+
+  show(key) {
+    if (!key || !this._instances[key]) return;
+    // Save current scroll/selection on outgoing instance
+    if (this._activeKey && this._activeKey !== key) {
+      const cur = this._instances[this._activeKey];
+      if (cur && cur.view) {
+        try {
+          const scroll = cur.view.scrollSnapshot();
+          cur._scrollSnapshot = scroll;
+          cur._selection = cur.view.state.selection.main;
+        } catch (_) {
+          // ignore
+        }
+      }
+    }
+    // Hide all instances
+    for (const k of Object.keys(this._instances)) {
+      const inst = this._instances[k];
+      if (inst && inst.dom) {
+        inst.dom.style.display = k === key ? "" : "none";
+      }
+    }
+    this._activeKey = key;
+    _activeBridgeInstance = this._instances[key] || null;
+
+    // Restore scroll/selection on incoming instance
+    const inst = this._instances[key];
+    if (inst && inst.view) {
+      if (inst._scrollSnapshot) {
+        try {
+          inst.view.requestMeasure({
+            read() { return inst._scrollSnapshot; },
+            write(snap) {
+              if (snap) inst.view.scrollSnapshot(snap);
+            },
+          });
+        } catch (_) {
+          // ignore
+        }
+      }
+      if (inst._selection) {
+        try {
+          inst.view.dispatch({ selection: inst._selection, scrollIntoView: false });
+        } catch (_) {
+          // ignore
+        }
+      }
+      // Focus if not readonly
+      if (inst.view.contentDOM.contentEditable !== "false") {
+        inst.view.focus();
+      }
+    }
+  },
+
+  destroy(key) {
+    const inst = this._instances[key];
+    if (!inst) return;
+    if (inst.view) {
+      try { inst.view.destroy(); } catch (_) { /* ignore */ }
+    }
+    if (inst.dom && inst.dom.parentElement) {
+      inst.dom.parentElement.removeChild(inst.dom);
+    }
+    delete this._instances[key];
+    if (this._activeKey === key) {
+      this._activeKey = null;
+      _activeBridgeInstance = null;
+      // Try to find another instance to activate
+      const keys = Object.keys(this._instances);
+      if (keys.length > 0) {
+        this.show(keys[0]);
+      }
+    }
+  },
+
+  getActiveKey() {
+    return this._activeKey;
+  },
+
+  count() {
+    return Object.keys(this._instances).length;
+  },
+
+  destroyAll() {
+    const keys = Object.keys(this._instances);
+    for (const key of keys) {
+      this.destroy(key);
+    }
   },
 
   setLanguage(lang) {
-    if (!this._view) return;
-    this._completionContext = {
-      ...this._completionContext,
+    const inst = this._activeInstance();
+    if (!inst) return;
+    inst.completionContext = {
+      ...inst.completionContext,
       language: lang || "plain",
     };
     const language = LANGUAGES[lang];
     if (language) {
-      this._view.dispatch({
-        effects: languageCompartment.reconfigure(language),
+      inst.view.dispatch({
+        effects: inst.languageCompartment.reconfigure(language),
       });
     }
   },
 
   setCompletionContext(context = {}) {
-    this._completionContext = {
-      language: context.language || this._completionContext.language || "plain",
+    const inst = this._activeInstance();
+    if (!inst) return;
+    inst.completionContext = {
+      language: context.language || inst.completionContext.language || "plain",
       keywords: Array.isArray(context.keywords) ? context.keywords : [],
       variables: Array.isArray(context.variables) ? context.variables : [],
     };
   },
 
   setContent(text) {
-    if (!this._view) return;
-    const { state } = this._view;
-    // Replace entire document content via transaction (preserves extensions)
-    this._view.dispatch({
+    const inst = this._activeInstance();
+    if (!inst) return;
+    const { state } = inst.view;
+    inst.view.dispatch({
       changes: { from: 0, to: state.doc.length, insert: text },
       selection: { anchor: 0 },
       effects: [
@@ -928,18 +1059,21 @@ const bridge = {
   },
 
   getContent() {
-    if (!this._view) return "";
-    return this._view.state.doc.toString();
+    const inst = this._activeInstance();
+    if (!inst) return "";
+    return inst.view.state.doc.toString();
   },
 
   lineCount() {
-    if (!this._view) return 0;
-    return this._view.state.doc.lines;
+    const inst = this._activeInstance();
+    if (!inst) return 0;
+    return inst.view.state.doc.lines;
   },
 
   getSelection() {
-    if (!this._view) return null;
-    const { state } = this._view;
+    const inst = this._activeInstance();
+    if (!inst) return null;
+    const { state } = inst.view;
     const range = state.selection.main;
     if (range.empty) return null;
 
@@ -954,36 +1088,40 @@ const bridge = {
   },
 
   getKeywordUnderCursor() {
-    if (!this._view) return null;
-    return keywordAtSelection(this._view);
+    const inst = this._activeInstance();
+    if (!inst) return null;
+    return keywordAtSelection(inst.view);
   },
 
   insertText(text) {
-    if (!this._view) return;
-    const { state } = this._view;
+    const inst = this._activeInstance();
+    if (!inst) return;
+    const { state } = inst.view;
     const range = state.selection.main;
     const insert = String(text || "");
-    this._view.dispatch({
+    inst.view.dispatch({
       changes: { from: range.from, to: range.to, insert },
       selection: { anchor: range.from + insert.length },
       scrollIntoView: true,
     });
-    this._view.focus();
+    inst.view.focus();
   },
 
   setEnabled(enabled) {
-    if (!this._view) return;
-    this._view.dispatch({
-      effects: readonlyCompartment.reconfigure(
+    const inst = this._activeInstance();
+    if (!inst) return;
+    inst.view.dispatch({
+      effects: inst.readonlyCompartment.reconfigure(
         enabled ? [] : [EditorState.readOnly.of(true)],
       ),
     });
-    this._view.contentDOM.contentEditable = String(enabled);
+    inst.view.contentDOM.contentEditable = String(enabled);
   },
 
   setDebugState(debugState) {
-    if (!this._view) return;
-    this._view.dispatch({
+    const inst = this._activeInstance();
+    if (!inst) return;
+    inst.view.dispatch({
       effects: setDebugStateEffect.of({
         debugStartLine: debugState.debugStartLine || null,
         currentDebugLine: debugState.currentDebugLine || null,
@@ -993,32 +1131,31 @@ const bridge = {
   },
 
   scrollToLine(lineNumber) {
-    if (!this._view) return;
-    const { doc } = this._view.state;
+    const inst = this._activeInstance();
+    if (!inst) return;
+    const { doc } = inst.view.state;
     if (lineNumber < 1 || lineNumber > doc.lines) return;
     const line = doc.line(lineNumber);
-    this._view.dispatch({
+    inst.view.dispatch({
       effects: EditorView.scrollIntoView(line.from, { y: "center" }),
     });
   },
 
   closeSearch() {
-    if (this._view) closeSearchPanel(this._view);
+    const inst = this._activeInstance();
+    if (inst && inst.view) closeSearchPanel(inst.view);
   },
 
   focus() {
-    if (this._view) this._view.focus();
+    const inst = this._activeInstance();
+    if (inst && inst.view) inst.view.focus();
   },
 
-  destroy() {
-    if (this._view) {
-      this._view.destroy();
-      this._view = null;
-    }
-  },
+  _completionContext: createCompletionContext(),
 };
 
 // Named exports → CM6.createEditor(), CM6.setContent(), etc.
+// Standard API (backward-compatible)
 export const createEditor = bridge.createEditor.bind(bridge);
 export const setLanguage = bridge.setLanguage.bind(bridge);
 export const setCompletionContext = bridge.setCompletionContext.bind(bridge);
@@ -1034,3 +1171,11 @@ export const scrollToLine = bridge.scrollToLine.bind(bridge);
 export const closeSearch = bridge.closeSearch.bind(bridge);
 export const focus = bridge.focus.bind(bridge);
 export const destroy = bridge.destroy.bind(bridge);
+
+// Multi-instance API (new)
+export const create = bridge.create.bind(bridge);
+export const show = bridge.show.bind(bridge);
+export const destroyKey = bridge.destroy.bind(bridge);
+export const getActiveKey = bridge.getActiveKey.bind(bridge);
+export const count = bridge.count.bind(bridge);
+export const destroyAll = bridge.destroyAll.bind(bridge);

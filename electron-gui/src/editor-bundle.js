@@ -21,9 +21,14 @@ var CM6 = (() => {
   var editor_bridge_exports = {};
   __export(editor_bridge_exports, {
     closeSearch: () => closeSearch,
+    count: () => count,
+    create: () => create,
     createEditor: () => createEditor,
     destroy: () => destroy,
+    destroyAll: () => destroyAll,
+    destroyKey: () => destroyKey,
     focus: () => focus,
+    getActiveKey: () => getActiveKey,
     getContent: () => getContent,
     getKeywordUnderCursor: () => getKeywordUnderCursor,
     getSelection: () => getSelection2,
@@ -34,7 +39,8 @@ var CM6 = (() => {
     setContent: () => setContent,
     setDebugState: () => setDebugState,
     setEnabled: () => setEnabled,
-    setLanguage: () => setLanguage
+    setLanguage: () => setLanguage,
+    show: () => show
   });
 
   // node_modules/@marijn/find-cluster-break/src/index.js
@@ -1763,8 +1769,8 @@ var CM6 = (() => {
     way it is initialized. Can be useful when you need to provide a
     non-default starting value for the field.
     */
-    init(create) {
-      return [this, initField.of({ field: this, create })];
+    init(create2) {
+      return [this, initField.of({ field: this, create: create2 })];
     }
     /**
     State field instances can be used as
@@ -4889,9 +4895,9 @@ var CM6 = (() => {
     }
   });
   var ViewPlugin = class _ViewPlugin {
-    constructor(id, create, domEventHandlers, domEventObservers, buildExtensions2) {
+    constructor(id, create2, domEventHandlers, domEventObservers, buildExtensions2) {
       this.id = id;
-      this.create = create;
+      this.create = create2;
       this.domEventHandlers = domEventHandlers;
       this.domEventObservers = domEventObservers;
       this.baseExtensions = buildExtensions2(this);
@@ -4907,9 +4913,9 @@ var CM6 = (() => {
     Define a plugin from a constructor function that creates the
     plugin's value, given an editor view.
     */
-    static define(create, spec) {
+    static define(create2, spec) {
       const { eventHandlers, eventObservers, provide, decorations: deco } = spec || {};
-      return new _ViewPlugin(nextPluginID++, create, eventHandlers, eventObservers, (plugin) => {
+      return new _ViewPlugin(nextPluginID++, create2, eventHandlers, eventObservers, (plugin) => {
         let ext = [];
         if (deco)
           ext.push(decorations.of((view) => {
@@ -22609,7 +22615,7 @@ var CM6 = (() => {
         if (!config2) {
           continue;
         }
-        const { create, gutters: gutters2 } = config2, rest = __rest(config2, ["create", "gutters"]);
+        const { create: create2, gutters: gutters2 } = config2, rest = __rest(config2, ["create", "gutters"]);
         configs.push(Object.assign(Object.assign({}, rest), { enabled: true, gutters: gutters2 ? gutters2.filter((v) => Object.keys(v).length > 0) : void 0 }));
       }
       return combineConfig(configs, {
@@ -23809,8 +23815,6 @@ var CM6 = (() => {
     },
     initialSpacer: () => new DebugStartMarker()
   });
-  var languageCompartment = new Compartment();
-  var readonlyCompartment = new Compartment();
   function createCompletionContext() {
     return {
       language: "plain",
@@ -23822,7 +23826,8 @@ var CM6 = (() => {
     return language2 === "dsl" || language2 === "resource";
   }
   function dslCompletionSource(context) {
-    const completionContext = bridge._completionContext || createCompletionContext();
+    const inst = _activeBridgeInstance;
+    const completionContext = inst && inst.completionContext || createCompletionContext();
     if (!isDslLikeLanguage(completionContext.language)) {
       return null;
     }
@@ -24210,7 +24215,7 @@ var CM6 = (() => {
       closeBrackets(),
       indentOnInput(),
       // Language (compartment for dynamic switching)
-      languageCompartment.of(StreamLanguage.define({ token: (s) => {
+      (opts._languageCompartment || new Compartment()).of(StreamLanguage.define({ token: (s) => {
         s.next();
         return null;
       } })),
@@ -24237,7 +24242,7 @@ var CM6 = (() => {
       debugLineDecorations,
       debugGutterMarkers,
       // Read-only compartment
-      readonlyCompartment.of([]),
+      (opts._readonlyCompartment || new Compartment()).of([]),
       // Update listener
       EditorView.updateListener.of((update) => {
         if (update.docChanged && opts.onContentChange) {
@@ -24309,51 +24314,164 @@ var CM6 = (() => {
     }
     return null;
   }
+  var _activeBridgeInstance = null;
   var bridge = {
-    _view: null,
-    _opts: {},
-    _extensions: null,
-    _completionContext: createCompletionContext(),
-    createEditor(parent, opts = {}) {
-      if (this._view) {
-        this._view.destroy();
+    _instances: /* @__PURE__ */ Object.create(null),
+    _activeKey: null,
+    _nextId: 0,
+    _activeInstance() {
+      return this._activeKey ? this._instances[this._activeKey] || null : null;
+    },
+    create(key, parent, opts = {}) {
+      const resolvedKey = key || `cm-${++this._nextId}`;
+      if (this._instances[resolvedKey]) {
+        this.destroy(resolvedKey);
       }
-      this._opts = opts;
-      this._extensions = buildExtensions(opts);
+      const langComp = new Compartment();
+      const roComp = new Compartment();
+      const extensions = buildExtensions({
+        ...opts,
+        _languageCompartment: langComp,
+        _readonlyCompartment: roComp
+      });
       const state = EditorState.create({
         doc: "",
-        extensions: this._extensions
+        extensions
       });
-      this._view = new EditorView({
+      const container = document.createElement("div");
+      container.className = "cm-instance";
+      container.style.display = "none";
+      container.dataset.key = resolvedKey;
+      parent.appendChild(container);
+      const view = new EditorView({
         state,
-        parent
+        parent: container
       });
-      return this._view;
+      this._instances[resolvedKey] = {
+        view,
+        dom: container,
+        opts,
+        extensions,
+        completionContext: createCompletionContext(),
+        languageCompartment: langComp,
+        readonlyCompartment: roComp
+      };
+      return resolvedKey;
+    },
+    createEditor(parent, opts = {}) {
+      const key = this.create("main", parent, opts);
+      this.show(key);
+      return this._instances[key] ? this._instances[key].view : null;
+    },
+    show(key) {
+      if (!key || !this._instances[key]) return;
+      if (this._activeKey && this._activeKey !== key) {
+        const cur2 = this._instances[this._activeKey];
+        if (cur2 && cur2.view) {
+          try {
+            const scroll = cur2.view.scrollSnapshot();
+            cur2._scrollSnapshot = scroll;
+            cur2._selection = cur2.view.state.selection.main;
+          } catch (_) {
+          }
+        }
+      }
+      for (const k of Object.keys(this._instances)) {
+        const inst2 = this._instances[k];
+        if (inst2 && inst2.dom) {
+          inst2.dom.style.display = k === key ? "" : "none";
+        }
+      }
+      this._activeKey = key;
+      _activeBridgeInstance = this._instances[key] || null;
+      const inst = this._instances[key];
+      if (inst && inst.view) {
+        if (inst._scrollSnapshot) {
+          try {
+            inst.view.requestMeasure({
+              read() {
+                return inst._scrollSnapshot;
+              },
+              write(snap) {
+                if (snap) inst.view.scrollSnapshot(snap);
+              }
+            });
+          } catch (_) {
+          }
+        }
+        if (inst._selection) {
+          try {
+            inst.view.dispatch({ selection: inst._selection, scrollIntoView: false });
+          } catch (_) {
+          }
+        }
+        if (inst.view.contentDOM.contentEditable !== "false") {
+          inst.view.focus();
+        }
+      }
+    },
+    destroy(key) {
+      const inst = this._instances[key];
+      if (!inst) return;
+      if (inst.view) {
+        try {
+          inst.view.destroy();
+        } catch (_) {
+        }
+      }
+      if (inst.dom && inst.dom.parentElement) {
+        inst.dom.parentElement.removeChild(inst.dom);
+      }
+      delete this._instances[key];
+      if (this._activeKey === key) {
+        this._activeKey = null;
+        _activeBridgeInstance = null;
+        const keys = Object.keys(this._instances);
+        if (keys.length > 0) {
+          this.show(keys[0]);
+        }
+      }
+    },
+    getActiveKey() {
+      return this._activeKey;
+    },
+    count() {
+      return Object.keys(this._instances).length;
+    },
+    destroyAll() {
+      const keys = Object.keys(this._instances);
+      for (const key of keys) {
+        this.destroy(key);
+      }
     },
     setLanguage(lang) {
-      if (!this._view) return;
-      this._completionContext = {
-        ...this._completionContext,
+      const inst = this._activeInstance();
+      if (!inst) return;
+      inst.completionContext = {
+        ...inst.completionContext,
         language: lang || "plain"
       };
       const language2 = LANGUAGES[lang];
       if (language2) {
-        this._view.dispatch({
-          effects: languageCompartment.reconfigure(language2)
+        inst.view.dispatch({
+          effects: inst.languageCompartment.reconfigure(language2)
         });
       }
     },
     setCompletionContext(context = {}) {
-      this._completionContext = {
-        language: context.language || this._completionContext.language || "plain",
+      const inst = this._activeInstance();
+      if (!inst) return;
+      inst.completionContext = {
+        language: context.language || inst.completionContext.language || "plain",
         keywords: Array.isArray(context.keywords) ? context.keywords : [],
         variables: Array.isArray(context.variables) ? context.variables : []
       };
     },
     setContent(text2) {
-      if (!this._view) return;
-      const { state } = this._view;
-      this._view.dispatch({
+      const inst = this._activeInstance();
+      if (!inst) return;
+      const { state } = inst.view;
+      inst.view.dispatch({
         changes: { from: 0, to: state.doc.length, insert: text2 },
         selection: { anchor: 0 },
         effects: [
@@ -24363,16 +24481,19 @@ var CM6 = (() => {
       });
     },
     getContent() {
-      if (!this._view) return "";
-      return this._view.state.doc.toString();
+      const inst = this._activeInstance();
+      if (!inst) return "";
+      return inst.view.state.doc.toString();
     },
     lineCount() {
-      if (!this._view) return 0;
-      return this._view.state.doc.lines;
+      const inst = this._activeInstance();
+      if (!inst) return 0;
+      return inst.view.state.doc.lines;
     },
     getSelection() {
-      if (!this._view) return null;
-      const { state } = this._view;
+      const inst = this._activeInstance();
+      if (!inst) return null;
+      const { state } = inst.view;
       const range = state.selection.main;
       if (range.empty) return null;
       const fromLine = state.doc.lineAt(range.from).number;
@@ -24384,33 +24505,37 @@ var CM6 = (() => {
       return { startLine: fromLine, endLine: toLine, content: content2 };
     },
     getKeywordUnderCursor() {
-      if (!this._view) return null;
-      return keywordAtSelection(this._view);
+      const inst = this._activeInstance();
+      if (!inst) return null;
+      return keywordAtSelection(inst.view);
     },
     insertText(text2) {
-      if (!this._view) return;
-      const { state } = this._view;
+      const inst = this._activeInstance();
+      if (!inst) return;
+      const { state } = inst.view;
       const range = state.selection.main;
       const insert2 = String(text2 || "");
-      this._view.dispatch({
+      inst.view.dispatch({
         changes: { from: range.from, to: range.to, insert: insert2 },
         selection: { anchor: range.from + insert2.length },
         scrollIntoView: true
       });
-      this._view.focus();
+      inst.view.focus();
     },
     setEnabled(enabled) {
-      if (!this._view) return;
-      this._view.dispatch({
-        effects: readonlyCompartment.reconfigure(
+      const inst = this._activeInstance();
+      if (!inst) return;
+      inst.view.dispatch({
+        effects: inst.readonlyCompartment.reconfigure(
           enabled ? [] : [EditorState.readOnly.of(true)]
         )
       });
-      this._view.contentDOM.contentEditable = String(enabled);
+      inst.view.contentDOM.contentEditable = String(enabled);
     },
     setDebugState(debugState) {
-      if (!this._view) return;
-      this._view.dispatch({
+      const inst = this._activeInstance();
+      if (!inst) return;
+      inst.view.dispatch({
         effects: setDebugStateEffect.of({
           debugStartLine: debugState.debugStartLine || null,
           currentDebugLine: debugState.currentDebugLine || null,
@@ -24419,26 +24544,24 @@ var CM6 = (() => {
       });
     },
     scrollToLine(lineNumber) {
-      if (!this._view) return;
-      const { doc: doc2 } = this._view.state;
+      const inst = this._activeInstance();
+      if (!inst) return;
+      const { doc: doc2 } = inst.view.state;
       if (lineNumber < 1 || lineNumber > doc2.lines) return;
       const line = doc2.line(lineNumber);
-      this._view.dispatch({
+      inst.view.dispatch({
         effects: EditorView.scrollIntoView(line.from, { y: "center" })
       });
     },
     closeSearch() {
-      if (this._view) closeSearchPanel(this._view);
+      const inst = this._activeInstance();
+      if (inst && inst.view) closeSearchPanel(inst.view);
     },
     focus() {
-      if (this._view) this._view.focus();
+      const inst = this._activeInstance();
+      if (inst && inst.view) inst.view.focus();
     },
-    destroy() {
-      if (this._view) {
-        this._view.destroy();
-        this._view = null;
-      }
-    }
+    _completionContext: createCompletionContext()
   };
   var createEditor = bridge.createEditor.bind(bridge);
   var setLanguage = bridge.setLanguage.bind(bridge);
@@ -24455,5 +24578,11 @@ var CM6 = (() => {
   var closeSearch = bridge.closeSearch.bind(bridge);
   var focus = bridge.focus.bind(bridge);
   var destroy = bridge.destroy.bind(bridge);
+  var create = bridge.create.bind(bridge);
+  var show = bridge.show.bind(bridge);
+  var destroyKey = bridge.destroy.bind(bridge);
+  var getActiveKey = bridge.getActiveKey.bind(bridge);
+  var count = bridge.count.bind(bridge);
+  var destroyAll = bridge.destroyAll.bind(bridge);
   return __toCommonJS(editor_bridge_exports);
 })();
