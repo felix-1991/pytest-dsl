@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld("pytestDslGui", {
   invalidateDefinitionCache: (projectRoot) => ipcRenderer.invoke("keyword:definition:invalidate", projectRoot),
   readSourceFile: (options) => ipcRenderer.invoke("source:read", options),
   copyText: (text) => ipcRenderer.invoke("clipboard:write", text),
+  resetConsoleLog: (options) => ipcRenderer.invoke("console:reset-log", options),
+  appendConsoleLog: (options) => ipcRenderer.send("console:append-log", options),
+  exportConsoleLog: (options) => ipcRenderer.invoke("console:export-log", options),
   startExecution: (options) => ipcRenderer.invoke("execution:start", options),
   sendExecutionCommand: (taskId, command) => (
     ipcRenderer.invoke("execution:command", taskId, command)

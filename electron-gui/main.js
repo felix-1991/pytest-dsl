@@ -37,6 +37,12 @@ const {
   resetRuntimeExecutable,
   saveRuntimeExecutable
 } = require("./src/services/runtimeConfigService");
+const {
+  appendConsoleLogFile,
+  defaultConsoleLogExportName,
+  exportConsoleLogFile,
+  resetConsoleLogFile,
+} = require("./src/services/consoleLogService");
 
 const DEFAULT_PROJECT_ROOT = path.resolve(__dirname, "..");
 const PYTHON_DIRECTORY_SELECTION_MODE = "python-directory";
@@ -242,6 +248,31 @@ function registerIpc() {
   ipcMain.handle("clipboard:write", (_event, text) => {
     clipboard.writeText(String(text || ""));
     return { copied: true };
+  });
+  ipcMain.handle("console:reset-log", (_event, options = {}) => resetConsoleLogFile(options));
+  ipcMain.on("console:append-log", (_event, options = {}) => {
+    try {
+      appendConsoleLogFile(options);
+    } catch (error) {
+      console.warn(`Failed to append console log: ${error && error.message ? error.message : error}`);
+    }
+  });
+  ipcMain.handle("console:export-log", async (event, options = {}) => {
+    const result = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+      title: "保存控制台日志",
+      defaultPath: defaultConsoleLogExportName(options.scope),
+      filters: [
+        { name: "Log Files", extensions: ["log", "txt"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+    return exportConsoleLogFile({
+      ...options,
+      destinationPath: result.filePath,
+    });
   });
   ipcMain.handle("execution:start", (event, options) => (
     startExecutionTask(options, {

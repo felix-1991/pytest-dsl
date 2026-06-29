@@ -30,6 +30,7 @@ const requiredFiles = [
   "src/renderer/utils.js",
   "src/renderer/workspaceController.js",
   "src/services/configService.js",
+  "src/services/consoleLogService.js",
   "src/services/executionService.js",
   "src/services/metadataStore.js",
   "src/services/projectService.js",

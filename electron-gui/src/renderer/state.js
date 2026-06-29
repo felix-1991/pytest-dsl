@@ -1,6 +1,7 @@
 export function createConsoleBuffer() {
   return {
     lines: [],
+    exportLogTarget: null,
     commandOutputChunks: [],
     droppedLineCount: 0,
   };

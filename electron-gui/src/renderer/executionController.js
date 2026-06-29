@@ -16,6 +16,7 @@ export function createExecutionController({
   consoleScopeForMode,
   appendProcessOutput,
   resetConsoleForExecution,
+  finishConsoleForExecution,
   setConsoleScope,
   openConsolePanel,
   setExecutionCommand,
@@ -85,7 +86,10 @@ export function createExecutionController({
     state.debugSelection = selection;
     state.currentDebugLine = null;
     CM6.setDebugState({ debugStartLine: state.debugStartLine, currentDebugLine: null, debugSelection: selection });
-    resetConsoleForExecution("debug");
+    await resetConsoleForExecution("debug", {
+      projectRoot: state.snapshot.project.rootPath,
+      taskId,
+    });
     setConsoleScope("debug");
     openConsolePanel("debug");
     setRunningState(true, taskId, mode);
@@ -117,6 +121,7 @@ export function createExecutionController({
         releaseExecutionCommand(taskId);
         setRunningState(false);
       }
+      finishConsoleForExecution("debug");
     }
   }
 
@@ -193,7 +198,10 @@ export function createExecutionController({
     const yamlVars = selectedConfigSources().map((source) => source.relativePath);
     const taskId = createTaskId("suite");
     const command = suiteCommandLabel(selectedSuiteIds, yamlVars);
-    resetConsoleForExecution("debug");
+    await resetConsoleForExecution("debug", {
+      projectRoot: state.snapshot.project.rootPath,
+      taskId,
+    });
     setConsoleScope("debug");
     openConsolePanel("debug");
     setRunningState(true, taskId, "suite");
@@ -219,6 +227,7 @@ export function createExecutionController({
         releaseExecutionCommand(taskId);
         setRunningState(false);
       }
+      finishConsoleForExecution("debug");
     }
   }
 
@@ -257,7 +266,10 @@ export function createExecutionController({
     state.currentBuildReportText = "";
     state.currentBuildResultsDir = "";
     resetBuildReport();
-    resetConsoleForExecution("build");
+    await resetConsoleForExecution("build", {
+      projectRoot: state.snapshot.project.rootPath,
+      taskId: buildId,
+    });
     setConsoleScope("build");
     openConsolePanel("build");
     setRunningState(true, buildId, "build");
@@ -287,6 +299,7 @@ export function createExecutionController({
         state.currentBuildStatus = "";
         updateBuildSummary({ status: "构建启动失败" });
       }
+      finishConsoleForExecution("build");
     }
   }
 
@@ -380,6 +393,7 @@ export function createExecutionController({
       }
       releaseExecutionCommand(event.taskId);
       setRunningState(false);
+      finishConsoleForExecution("debug");
     }
   }
 
@@ -450,6 +464,7 @@ export function createExecutionController({
         resultsDir: event.allureResultsDir,
       });
       recordBuildHistory(event);
+      finishConsoleForExecution("build");
     }
   }
 

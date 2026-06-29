@@ -59,8 +59,33 @@ export function createConsoleController({
     appendConsoleEntries(scope, entries);
   }
 
-  function resetConsoleForExecution(scope) {
-    clearConsole(scope);
+  async function resetConsoleForExecution(scope, options = {}) {
+    const normalizedScope = normalizeConsoleScope(scope);
+    clearConsole(normalizedScope);
+    const buffer = consoleBufferForScope(normalizedScope);
+    buffer.exportLogTarget = null;
+
+    const projectRoot = options.projectRoot || state.snapshot?.project?.rootPath;
+    if (!projectRoot || typeof api.resetConsoleLog !== "function") {
+      return null;
+    }
+    try {
+      const result = await api.resetConsoleLog({
+        projectRoot,
+        scope: normalizedScope,
+        taskId: options.taskId,
+      });
+      buffer.exportLogTarget = {
+        projectRoot,
+        scope: normalizedScope,
+        path: result?.path || null,
+        active: true,
+      };
+      return result;
+    } catch (error) {
+      appendLog("warn", `控制台日志文件初始化失败: ${errorMessage(error)}`, { scope: normalizedScope });
+      return null;
+    }
   }
 
   function appendLog(level, message, options = {}) {
@@ -74,16 +99,40 @@ export function createConsoleController({
     }]);
   }
 
+  function finishConsoleForExecution(scope) {
+    const buffer = consoleBufferForScope(scope);
+    if (buffer.exportLogTarget) {
+      buffer.exportLogTarget.active = false;
+    }
+  }
+
   function appendConsoleEntries(scope, entries) {
     if (!Array.isArray(entries) || entries.length === 0) {
       return;
     }
     const buffer = consoleBufferForScope(scope);
+    appendConsoleExportEntries(scope, entries);
     buffer.lines.push(...entries);
     trimConsoleBuffer(buffer);
     if (scope === state.console.activeScope && shouldRenderConsoleBuffer()) {
       scheduleConsoleBufferRender();
     }
+  }
+
+  function appendConsoleExportEntries(scope, entries) {
+    const buffer = consoleBufferForScope(scope);
+    if (!buffer.exportLogTarget?.active || typeof api.appendConsoleLog !== "function") {
+      return;
+    }
+    const text = formatConsoleLogEntries(entries);
+    if (!text) {
+      return;
+    }
+    api.appendConsoleLog({
+      projectRoot: buffer.exportLogTarget.projectRoot,
+      scope: buffer.exportLogTarget.scope,
+      text,
+    });
   }
 
   function trimConsoleBuffer(buffer) {
@@ -203,6 +252,41 @@ export function createConsoleController({
     buffer.droppedLineCount = 0;
     if (normalizeConsoleScope(scope) === state.console.activeScope) {
       requestConsoleBufferRender();
+    }
+  }
+
+  function formatConsoleLogEntries(entries) {
+    return entries.map((entry) => {
+      const level = String(entry.level || "info").toUpperCase();
+      return `[${entry.timestamp || "--:--:--"}] ${level} ${entry.message || ""}`;
+    }).join("\n") + "\n";
+  }
+
+  async function exportConsoleLog() {
+    const scope = state.console.activeScope;
+    const buffer = currentConsoleBuffer();
+    if (!buffer.exportLogTarget) {
+      appendLog("warn", "没有控制台日志可导出");
+      return null;
+    }
+    if (typeof api.exportConsoleLog !== "function") {
+      appendLog("warn", "当前环境不支持导出控制台日志");
+      return null;
+    }
+    try {
+      const result = await api.exportConsoleLog({
+        projectRoot: buffer.exportLogTarget.projectRoot,
+        scope: buffer.exportLogTarget.scope,
+      });
+      if (result?.canceled) {
+        appendLog("info", "已取消导出控制台日志");
+        return null;
+      }
+      appendLog("pass", `控制台日志已导出: ${result.path}`);
+      return result;
+    } catch (error) {
+      appendLog("error", `导出控制台日志失败: ${errorMessage(error)}`);
+      return null;
     }
   }
 
@@ -341,6 +425,9 @@ export function createConsoleController({
     consoleScopeForMode,
     copyConsoleOutput,
     currentConsoleBuffer,
+    exportConsoleLog,
+    finishConsoleForExecution,
+    formatConsoleLogEntries,
     normalizeConsoleScope,
     openConsolePanel,
     requestConsoleBufferRender,

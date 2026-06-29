@@ -148,6 +148,48 @@ test("suite runner uses multi-select suite controls", () => {
   assert.match(css, /\.suite-option\.is-partial/);
 });
 
+test("topbar removes the inert settings action beside suite run", () => {
+  assert.doesNotMatch(html, /id="settingsBtn"/);
+  assert.doesNotMatch(renderer, /settingsBtn/);
+  assert.doesNotMatch(renderer, /Settings shell is not implemented/);
+  assert.match(
+    css,
+    /\.top-actions\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto/,
+  );
+});
+
+test("current console logs can be exported from the active console buffer", () => {
+  assert.match(html, /id="exportConsoleBtn"/);
+  assert.match(html, />\s*导出\s*</);
+  assert.match(preload, /resetConsoleLog/);
+  assert.match(preload, /appendConsoleLog/);
+  assert.match(preload, /exportConsoleLog/);
+  assert.match(main, /console:reset-log/);
+  assert.match(main, /console:append-log/);
+  assert.match(main, /console:export-log/);
+  assert.match(renderer, /function formatConsoleLogEntries\(entries\)/);
+  assert.match(renderer, /api\.appendConsoleLog\(\{[\s\S]*text:/);
+  assert.match(renderer, /api\.exportConsoleLog\(\{[\s\S]*projectRoot:[\s\S]*scope:/);
+  assert.match(renderer, /exportConsoleBtn\.addEventListener\("click", exportConsoleLog\)/);
+});
+
+test("console export streams the full per-execution log without renderer retention", () => {
+  assert.doesNotMatch(renderer, /exportLines/);
+  assert.match(renderer, /exportLogTarget:\s*null/);
+  assert.match(renderer, /active:\s*true/);
+  assert.match(renderer, /function finishConsoleForExecution\(scope\)[\s\S]*buffer\.exportLogTarget\.active = false/);
+  assert.match(renderer, /if \(!buffer\.exportLogTarget\?\.active \|\| typeof api\.appendConsoleLog !== "function"\)/);
+  assert.match(
+    renderer,
+    /function appendConsoleEntries\(scope, entries\)[\s\S]*appendConsoleExportEntries\(scope, entries\);[\s\S]*buffer\.lines\.push\(\.\.\.entries\);[\s\S]*trimConsoleBuffer\(buffer\)/,
+  );
+  assert.match(renderer, /async function resetConsoleForExecution\(scope, options = \{\}\)/);
+  assert.match(renderer, /await api\.resetConsoleLog\(\{[\s\S]*projectRoot,[\s\S]*scope: normalizedScope,[\s\S]*taskId: options\.taskId/);
+  assert.match(renderer, /appendLog\([\s\S]*\$\{executionModeLabel\(event\.mode\)\} \$\{event\.status\}[\s\S]*finishConsoleForExecution\("debug"\)/);
+  assert.match(renderer, /appendLog\(level, `\$\{buildStatusLabel\(event\.status\)\}[\s\S]*finishConsoleForExecution\("build"\)/);
+  assert.doesNotMatch(renderer, /formatConsoleLogExport/);
+});
+
 test("build center exposes pytest plus Allure report orchestration", () => {
   [
     "debugNavBtn",
@@ -243,7 +285,7 @@ test("debug and build topbars keep project path readable and controls aligned", 
   assert.match(css, /\.topbar\.is-build-view \.top-actions\s*\{[\s\S]*grid-column:\s*2/);
   assert.match(css, /\.suite-picker\s*\{[\s\S]*width:\s*100%/);
   assert.match(css, /\.top-actions\s*\{[\s\S]*display:\s*grid/);
-  assert.match(css, /\.top-actions\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto\s+auto/);
+  assert.match(css, /\.top-actions\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto/);
   assert.match(css, /\.top-actions \.config-picker\s*\{[\s\S]*width:\s*100%/);
   assert.match(css, /\.remote-summary\s*\{[\s\S]*flex:\s*0 1 auto/);
   assert.match(css, /\.remote-summary span:last-child\s*\{[\s\S]*text-overflow:\s*ellipsis/);
@@ -772,10 +814,10 @@ test("console output can be cleared manually and resets before each execution", 
   assert.match(renderer, /function clearConsole\(scope = state\.console\.activeScope\)\s*\{[\s\S]*requestConsoleBufferRender\(\)/);
   assert.match(renderer, /buffer\.lines = \[\]/);
   assert.match(renderer, /buffer\.commandOutputChunks = \[\]/);
-  assert.match(renderer, /function resetConsoleForExecution\(scope\)\s*\{[\s\S]*clearConsole\(scope\)/);
-  assert.match(renderer, /resetConsoleForExecution\("debug"\);[\s\S]*appendLog\("info", `\$\{executionModeLabel\(mode\)\} started:/);
-  assert.match(renderer, /resetConsoleForExecution\("debug"\);[\s\S]*appendLog\("info", `测试套运行 started:/);
-  assert.match(renderer, /resetConsoleForExecution\("build"\);[\s\S]*appendLog\("info", `构建运行 started:/);
+  assert.match(renderer, /function resetConsoleForExecution\(scope, options = \{\}\)\s*\{[\s\S]*clearConsole\(normalizedScope\)/);
+  assert.match(renderer, /await resetConsoleForExecution\("debug", \{[\s\S]*taskId[\s\S]*\}\);[\s\S]*appendLog\("info", `\$\{executionModeLabel\(mode\)\} started:/);
+  assert.match(renderer, /await resetConsoleForExecution\("debug", \{[\s\S]*taskId[\s\S]*\}\);[\s\S]*appendLog\("info", `测试套运行 started:/);
+  assert.match(renderer, /await resetConsoleForExecution\("build", \{[\s\S]*taskId: buildId[\s\S]*\}\);[\s\S]*appendLog\("info", `构建运行 started:/);
 });
 
 test("console supports long output reading and copying", () => {

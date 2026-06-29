@@ -41,6 +41,8 @@ const {
   clearConsole,
   consoleScopeForMode,
   copyConsoleOutput,
+  exportConsoleLog,
+  finishConsoleForExecution,
   normalizeConsoleScope,
   openConsolePanel,
   resetAllConsoleState,
@@ -304,6 +306,7 @@ const executionController = createExecutionController({
   consoleScopeForMode,
   appendProcessOutput,
   resetConsoleForExecution,
+  finishConsoleForExecution,
   setConsoleScope,
   openConsolePanel,
   setExecutionCommand,
@@ -450,7 +453,6 @@ function cacheElements() {
     "remoteServiceRows",
     "openProjectBtn",
     "refreshBtn",
-    "settingsBtn",
     "runAllBtn",
     "debugNavBtn",
     "buildNavBtn",
@@ -520,6 +522,7 @@ function cacheElements() {
     "consoleStatusToggleBtn",
     "consoleActions",
     "copyConsoleBtn",
+    "exportConsoleBtn",
     "wrapConsoleBtn",
     "expandConsoleBtn",
     "clearConsoleBtn",
@@ -579,6 +582,7 @@ function bindEvents() {
   el.consoleToggleBtn.addEventListener("click", toggleConsoleOpen);
   el.consoleStatusToggleBtn.addEventListener("click", toggleConsoleOpen);
   el.copyConsoleBtn.addEventListener("click", copyConsoleOutput);
+  el.exportConsoleBtn.addEventListener("click", exportConsoleLog);
   el.wrapConsoleBtn.addEventListener("click", toggleConsoleWrap);
   el.expandConsoleBtn.addEventListener("click", toggleConsoleExpanded);
   el.clearConsoleBtn.addEventListener("click", () => clearConsole());
@@ -699,9 +703,6 @@ function bindEvents() {
       setAllTreeGroupsCollapsed(true);
     }
   });
-  el.settingsBtn.addEventListener("click", () =>
-    appendLog("info", "Settings shell is not implemented in this MVP"),
-  );
   el.keywordBtn.addEventListener("click", () =>
     toggleKeywordPanel(),
   );
