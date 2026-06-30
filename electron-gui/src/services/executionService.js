@@ -12,6 +12,7 @@ const {
 const { buildPytestTargets } = require("./suiteService");
 
 const STRUCTURED_EVENT_PREFIX = "__PYTEST_DSL_GUI_EVENT__";
+const KEYWORD_TRACE_ENV = "PYTEST_DSL_KEYWORD_TRACE";
 const runningTasks = new Map();
 
 function createExecutionPlan(
@@ -84,6 +85,7 @@ function startExecutionTask(options, callbacks = {}) {
   let child;
   try {
     plan = createExecutionPlan({ ...options, taskId }, env);
+    applyDefaultKeywordTraceEnv(env, plan.mode, options.platform);
     const spawnTarget = options.commandOverride
       ? options.commandOverride
       : resolveSpawnTarget(plan, options, env);
@@ -506,6 +508,24 @@ function executionEnv(extraEnv, platform = process.platform) {
       ? `${packageRoot}${delimiter}${existingPythonPath}`
       : packageRoot,
   }, platform);
+}
+
+function applyDefaultKeywordTraceEnv(env, mode, platform = process.platform) {
+  if (!["debug", "run"].includes(mode) || hasEnvironmentKey(env, KEYWORD_TRACE_ENV, platform)) {
+    return;
+  }
+  env[KEYWORD_TRACE_ENV] = "1";
+}
+
+function hasEnvironmentKey(env, key, platform = process.platform) {
+  if (!env || typeof env !== "object") {
+    return false;
+  }
+  if (platform !== "win32") {
+    return Object.prototype.hasOwnProperty.call(env, key);
+  }
+  const normalized = key.toLowerCase();
+  return Object.keys(env).some((item) => item.toLowerCase() === normalized);
 }
 
 function isDirectory(directory) {

@@ -7,7 +7,11 @@ import allure
 
 from pytest_dsl.core.execution.exceptions import DSLExecutionError
 from pytest_dsl.core.keyword_manager import keyword_manager
-from pytest_dsl.core.reporting import format_keyword_arguments, is_verbose
+from pytest_dsl.core.reporting import (
+    format_keyword_arguments,
+    is_verbose,
+    print_keyword_trace,
+)
 
 
 class KeywordInvoker:
@@ -42,6 +46,7 @@ class KeywordInvoker:
                     kwargs,
                     keyword_info,
                 )
+                print_keyword_trace(keyword_name, kwargs, keyword_info)
                 kwargs.setdefault('step_name', keyword_name)
                 kwargs['skip_logging'] = True
 

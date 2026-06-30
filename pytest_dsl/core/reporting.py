@@ -32,7 +32,16 @@ T = TypeVar("T")
 
 def is_verbose() -> bool:
     """Return whether detailed DSL diagnostics should be emitted."""
-    value = os.getenv("PYTEST_DSL_VERBOSE", "").strip().lower()
+    return _truthy_env("PYTEST_DSL_VERBOSE")
+
+
+def is_keyword_trace_enabled() -> bool:
+    """Return whether keyword calls should be printed to stdout."""
+    return _truthy_env("PYTEST_DSL_KEYWORD_TRACE")
+
+
+def _truthy_env(name: str) -> bool:
+    value = os.getenv(name, "").strip().lower()
     return value in {"1", "true", "yes", "y", "on"}
 
 
@@ -40,6 +49,69 @@ def print_verbose(message: str) -> None:
     """Print detailed console diagnostics only when verbose mode is enabled."""
     if is_verbose():
         print(message)
+
+
+def print_keyword_trace(keyword_name: str, arguments: Dict[str, Any],
+                        keyword_info: Dict = None) -> None:
+    """Print a concise keyword execution line when keyword tracing is enabled."""
+    if not is_keyword_trace_enabled():
+        return
+    details = format_keyword_trace_arguments(arguments, keyword_info)
+    print(f"关键字执行: {_single_line(keyword_name)} | {details}", flush=True)
+
+
+def format_keyword_trace_arguments(arguments: Dict[str, Any],
+                                   keyword_info: Dict = None,
+                                   excluded_keys: Iterable[str] = None,
+                                   max_value_len: int = 160) -> str:
+    """Format keyword call arguments as a compact single-line trace."""
+    excluded = set(excluded_keys or ("context", "skip_logging"))
+    visible_arguments = {
+        key: value for key, value in arguments.items()
+        if key not in excluded
+    }
+
+    if not visible_arguments:
+        return "<无参数>"
+
+    mapping = {}
+    if keyword_info:
+        mapping = keyword_info.get("mapping", {}) or {}
+
+    reverse_mapping = {}
+    for display_name, runtime_name in mapping.items():
+        reverse_mapping.setdefault(runtime_name, display_name)
+
+    ordered_keys = []
+    parameters = (keyword_info.get("parameters") or []) if keyword_info else []
+    for parameter in parameters:
+        runtime_name = getattr(parameter, "mapping", None)
+        if (runtime_name in visible_arguments and
+                runtime_name not in ordered_keys):
+            ordered_keys.append(runtime_name)
+
+    for key in visible_arguments.keys():
+        if key not in ordered_keys:
+            ordered_keys.append(key)
+
+    parts = []
+    for key in ordered_keys:
+        display_name = reverse_mapping.get(key)
+        if display_name and display_name != key:
+            label = f"{display_name}({key})"
+        else:
+            label = str(key)
+        value_preview = preview_value(
+            visible_arguments[key],
+            max_len=max_value_len,
+            key=key,
+        )
+        parts.append(f"{_single_line(label)}: {_single_line(value_preview)}")
+    return ", ".join(parts)
+
+
+def _single_line(value: Any) -> str:
+    return " ".join(str(value).splitlines())
 
 
 def run_with_suppressed_success_output(callback: Callable[[], T]) -> T:

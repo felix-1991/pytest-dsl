@@ -1002,6 +1002,8 @@ test("editor offers DSL and resource completions from keywords metadata and conf
   assert.match(editorBridge, /function keywordParametersForName/);
   assert.match(editorBridge, /usedParameterNames/);
   assert.match(editorBridge, /function variableCompletions/);
+  assert.match(editorBridge, /normalizeVariableCompletion/);
+  assert.match(editorBridge, /valuePreview/);
   assert.match(editorBridge, /setCompletionContext/);
   assert.match(editorBridge, /isDslLikeLanguage/);
   assert.match(editorBridge, /autocompletion\(\{\s*override:\s*\[dslCompletionSource\]/);
@@ -1011,7 +1013,7 @@ test("editor offers DSL and resource completions from keywords metadata and conf
   assert.match(renderer, /completionKeywords/);
   assert.match(renderer, /syncEditorCompletionContext/);
   assert.match(renderer, /loadEditorCompletionKeywords/);
-  assert.match(renderer, /flattenConfigVariablePaths\(selectedMergedConfig\(\)\)/);
+  assert.match(renderer, /selectedConfigVariableDefinitions\(\)/);
   assert.match(renderer, /CM6\.setCompletionContext/);
   assert.match(renderer, /language === "dsl" \|\| language === "resource"/);
   assert.match(renderer, /api\.listKeywords\(\{\s*projectRoot: state\.snapshot\.project\.rootPath,[\s\S]*limit: 500/);
@@ -1071,6 +1073,26 @@ test("editor exposes go-to-definition for DSL keyword calls", () => {
   assert.match(renderer, /api\.readSourceFile/);
   assert.match(renderer, /CM6\.scrollToLine/);
   assert.match(renderer, /readonlySource/);
+});
+
+test("editor exposes go-to-definition for YAML config variables", () => {
+  assert.match(editorBridge, /variableAtMouseEvent/);
+  assert.match(editorBridge, /variableAtSelection/);
+  assert.match(editorBridge, /variableName/);
+  assert.match(editorBridge, /keywordAtMouseEvent/);
+  assert.match(editorBridge, /keywordAtSelection/);
+  assert.match(editorBridge, /onDefinitionRequest/);
+  assert.match(editorBridge, /Mod-Click/);
+  assert.match(editorBridge, /F12/);
+
+  assert.match(renderer, /handleDefinitionRequest/);
+  assert.match(renderer, /goToVariableDefinition/);
+  assert.match(renderer, /selectedConfigVariableDefinitions/);
+  assert.match(renderer, /chooseVariableDefinitionTarget/);
+  assert.match(renderer, /未在当前选中 YAML 配置中找到变量/);
+  assert.match(editorBridge, /goToLine\(lineNumber,\s*columnNumber = 1\)/);
+  assert.match(editorBridge, /selection:\s*\{\s*anchor:\s*target\s*\}/);
+  assert.match(renderer, /CM6\.goToLine\(definition\.line,\s*definition\.column \|\| 1\)/);
 });
 
 test("runtime config section exposes Python and Allure controls", () => {

@@ -6,6 +6,7 @@ from pytest_dsl.core.execution.exceptions import DSLExecutionError
 from pytest_dsl.core.reporting import (
     format_keyword_arguments,
     is_verbose,
+    print_keyword_trace,
     preview_value,
 )
 from pytest_dsl.remote.diagnostics import diagnostics_has_output
@@ -199,6 +200,7 @@ class RemoteKeywordInvoker:
 
                 kwargs['context'] = executor.test_context
                 argument_details = format_keyword_arguments(kwargs)
+                print_keyword_trace(f"{alias}|{keyword_name}", kwargs)
 
                 step_name = kwargs.get(
                     '步骤名称',

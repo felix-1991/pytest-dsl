@@ -630,6 +630,54 @@ test("task environment public CLI overrides bypass Python only for their modes",
   }
 });
 
+test("debug and run execution enable keyword trace by default", async () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");
+
+  const debugEvents = [];
+  const debugResult = await startExecutionTask({
+    taskId: "debug-keyword-trace-env",
+    projectRoot: root,
+    relativePath: "tests/case.dsl",
+    mode: "debug",
+    content: "[打印], 内容: \"ok\"\n",
+    commandOverride: {
+      command: process.execPath,
+      args: ["-e", "console.log(process.env.PYTEST_DSL_KEYWORD_TRACE || '')"],
+    },
+  }, {
+    onEvent(event) {
+      debugEvents.push(event);
+    },
+  });
+
+  const runEvents = [];
+  const runResult = await startExecutionTask({
+    taskId: "run-keyword-trace-env",
+    projectRoot: root,
+    relativePath: "tests/case.dsl",
+    mode: "run",
+    content: "[打印], 内容: \"ok\"\n",
+    commandOverride: {
+      command: process.execPath,
+      args: ["-e", "console.log(process.env.PYTEST_DSL_KEYWORD_TRACE || '')"],
+    },
+  }, {
+    onEvent(event) {
+      runEvents.push(event);
+    },
+  });
+
+  assert.equal(debugResult.status, "passed");
+  assert.ok(debugEvents.some((event) => (
+    event.type === "stdout" && event.text.trim() === "1"
+  )));
+  assert.equal(runResult.status, "passed");
+  assert.ok(runEvents.some((event) => (
+    event.type === "stdout" && event.text.trim() === "1"
+  )));
+});
+
 test("Python fallback maps syntax, debug, and suite execution to their modules", async () => {
   const root = makeTempProject();
   writeFile(root, "tests/case.dsl", "[打印], 内容: \"ok\"\n");

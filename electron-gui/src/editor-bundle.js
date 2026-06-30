@@ -32,6 +32,7 @@ var CM6 = (() => {
     getContent: () => getContent,
     getKeywordUnderCursor: () => getKeywordUnderCursor,
     getSelection: () => getSelection2,
+    goToLine: () => goToLine,
     insertText: () => insertText,
     lineCount: () => lineCount,
     scrollToLine: () => scrollToLine,
@@ -24037,11 +24038,18 @@ var CM6 = (() => {
     };
   }
   function variableCompletions(from, variables) {
-    const options = uniqueStrings(variables).slice(0, 300).map((name2) => ({
-      label: name2,
+    const byName = /* @__PURE__ */ new Map();
+    variables.map((variable) => normalizeVariableCompletion(variable)).filter(Boolean).forEach((variable) => {
+      if (!byName.has(variable.name)) {
+        byName.set(variable.name, variable);
+      }
+    });
+    const options = Array.from(byName.values()).slice(0, 300).map((variable) => ({
+      label: variable.name,
       type: "variable",
-      detail: "\u914D\u7F6E\u53D8\u91CF",
-      apply: `${name2}}`,
+      detail: variable.sourceLabel || "\u914D\u7F6E\u53D8\u91CF",
+      info: variable.valuePreview ? `\u5F53\u524D\u503C: ${variable.valuePreview}` : void 0,
+      apply: `${variable.name}}`,
       section: "\u53D8\u91CF"
     }));
     if (options.length === 0) {
@@ -24051,6 +24059,24 @@ var CM6 = (() => {
       from,
       options,
       validFor: /^[A-Za-z0-9_.-]*$/
+    };
+  }
+  function normalizeVariableCompletion(variable) {
+    if (typeof variable === "string") {
+      return { name: variable };
+    }
+    if (!variable || typeof variable !== "object") {
+      return null;
+    }
+    const name2 = String(variable.name || variable.path || "").trim();
+    if (!name2) {
+      return null;
+    }
+    return {
+      ...variable,
+      name: name2,
+      sourceLabel: variable.sourceLabel || (variable.relativePath && variable.line ? `${variable.relativePath}:${variable.line}` : ""),
+      valuePreview: variable.valuePreview ? String(variable.valuePreview) : ""
     };
   }
   function uniqueByLabel(keywords) {
@@ -24069,16 +24095,6 @@ var CM6 = (() => {
       });
     });
     return result;
-  }
-  function uniqueStrings(values) {
-    const seen = /* @__PURE__ */ new Set();
-    return (Array.isArray(values) ? values : []).map((value) => String(value || "").trim()).filter((value) => {
-      if (!value || seen.has(value)) {
-        return false;
-      }
-      seen.add(value);
-      return true;
-    }).sort((left, right) => left.localeCompare(right, "zh-CN"));
   }
   function escapeSnippetText(value) {
     return String(value || "").replace(/[\\{}]/g, "\\$&");
@@ -24259,6 +24275,16 @@ var CM6 = (() => {
           if (event.button !== 0 || !(event.metaKey || event.ctrlKey)) {
             return false;
           }
+          const variableName = variableAtMouseEvent(view, event);
+          if (variableName && opts.onDefinitionRequest) {
+            event.preventDefault();
+            opts.onDefinitionRequest({
+              variableName,
+              source: "Mod-Click",
+              showAll: event.altKey
+            });
+            return true;
+          }
           const keywordName = keywordAtMouseEvent(view, event);
           if (!keywordName || !opts.onDefinitionRequest) {
             return false;
@@ -24274,6 +24300,16 @@ var CM6 = (() => {
         keydown(event, view) {
           if (event.key !== "F12") {
             return false;
+          }
+          const variableName = variableAtSelection(view);
+          if (variableName && opts.onDefinitionRequest) {
+            event.preventDefault();
+            opts.onDefinitionRequest({
+              variableName,
+              source: "F12",
+              showAll: event.altKey
+            });
+            return true;
           }
           const keywordName = keywordAtSelection(view);
           if (!keywordName || !opts.onDefinitionRequest) {
@@ -24297,13 +24333,35 @@ var CM6 = (() => {
     if (pos == null) return null;
     return keywordAtPosition(view.state, pos);
   }
+  function variableAtMouseEvent(view, event) {
+    const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+    if (pos == null) return null;
+    return variableAtPosition(view.state, pos);
+  }
   function keywordAtSelection(view) {
     return keywordAtPosition(view.state, view.state.selection.main.head);
+  }
+  function variableAtSelection(view) {
+    return variableAtPosition(view.state, view.state.selection.main.head);
   }
   function keywordAtPosition(state, pos) {
     const line = state.doc.lineAt(pos);
     const offset = pos - line.from;
     const pattern = /\[([^\]]+)\]/g;
+    let match;
+    while ((match = pattern.exec(line.text)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length;
+      if (offset >= start && offset <= end) {
+        return match[1].trim() || null;
+      }
+    }
+    return null;
+  }
+  function variableAtPosition(state, pos) {
+    const line = state.doc.lineAt(pos);
+    const offset = pos - line.from;
+    const pattern = /\$\{([A-Za-z0-9_.-]+)\}/g;
     let match;
     while ((match = pattern.exec(line.text)) !== null) {
       const start = match.index;
@@ -24553,6 +24611,20 @@ var CM6 = (() => {
         effects: EditorView.scrollIntoView(line.from, { y: "center" })
       });
     },
+    goToLine(lineNumber, columnNumber = 1) {
+      const inst = this._activeInstance();
+      if (!inst) return;
+      const { doc: doc2 } = inst.view.state;
+      if (lineNumber < 1 || lineNumber > doc2.lines) return;
+      const line = doc2.line(lineNumber);
+      const column = Math.max(1, Math.trunc(Number(columnNumber)) || 1);
+      const target = Math.min(line.to, line.from + column - 1);
+      inst.view.dispatch({
+        selection: { anchor: target },
+        effects: EditorView.scrollIntoView(target, { y: "center" })
+      });
+      inst.view.focus();
+    },
     closeSearch() {
       const inst = this._activeInstance();
       if (inst && inst.view) closeSearchPanel(inst.view);
@@ -24575,6 +24647,7 @@ var CM6 = (() => {
   var setEnabled = bridge.setEnabled.bind(bridge);
   var setDebugState = bridge.setDebugState.bind(bridge);
   var scrollToLine = bridge.scrollToLine.bind(bridge);
+  var goToLine = bridge.goToLine.bind(bridge);
   var closeSearch = bridge.closeSearch.bind(bridge);
   var focus = bridge.focus.bind(bridge);
   var destroy = bridge.destroy.bind(bridge);

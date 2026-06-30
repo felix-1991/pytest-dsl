@@ -64,6 +64,40 @@ test("non-git projects display local, list DSL files, and load config defaults",
   assert.equal(snapshot.score.value, 100);
 });
 
+test("project config snapshot records YAML variable definition sources", () => {
+  const root = makeTempProject();
+  writeFile(root, "tests/case.dsl", "[打印], 内容: \"${api.base_url}\"\n");
+  writeFile(root, "config/app.yaml", [
+    "environment: local",
+    "api:",
+    "  base_url: http://localhost",
+    "  timeout: 30",
+    "enabled: true",
+    ""
+  ].join("\n"));
+
+  const snapshot = getProjectSnapshot(root);
+  const source = snapshot.config.sources.find((item) => item.relativePath === "config/app.yaml");
+
+  assert.ok(source);
+  assert.deepEqual(
+    source.variableDefinitions.map((definition) => ({
+      path: definition.path,
+      relativePath: definition.relativePath,
+      line: definition.line,
+      column: definition.column,
+      valuePreview: definition.valuePreview
+    })),
+    [
+      { path: "environment", relativePath: "config/app.yaml", line: 1, column: 1, valuePreview: "local" },
+      { path: "api", relativePath: "config/app.yaml", line: 2, column: 1, valuePreview: "{...}" },
+      { path: "api.base_url", relativePath: "config/app.yaml", line: 3, column: 3, valuePreview: "http://localhost" },
+      { path: "api.timeout", relativePath: "config/app.yaml", line: 4, column: 3, valuePreview: "30" },
+      { path: "enabled", relativePath: "config/app.yaml", line: 5, column: 1, valuePreview: "true" }
+    ]
+  );
+});
+
 test("project snapshots include convention suite metadata and ignore generated files", () => {
   const root = makeTempProject();
   writeFile(root, "tests/setup.dsl", "[打印], 内容: \"setup\"\n");

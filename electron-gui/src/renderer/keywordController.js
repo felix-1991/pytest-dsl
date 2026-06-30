@@ -16,11 +16,22 @@ export function createKeywordController({
   selectFile,
   setDirty,
   syncEditorCompletionContext,
+  selectedConfigVariableDefinitions,
   openExternalReadonlySource: _openExternalReadonlySource,
   openDefinitionWindow,
 }) {
   function handleDefinitionRequest(request) {
-    if (!request || !request.keywordName) {
+    if (!request) {
+      return;
+    }
+    if (request.variableName) {
+      goToVariableDefinition(request.variableName, {
+        showAll: Boolean(request.showAll),
+        source: request.source || "editor",
+      });
+      return;
+    }
+    if (!request.keywordName) {
       return;
     }
     goToKeywordDefinition(request.keywordName, {
@@ -54,6 +65,52 @@ export function createKeywordController({
     } catch (error) {
       appendLog("error", errorMessage(error));
     }
+  }
+
+  async function goToVariableDefinition(variableName, options = {}) {
+    if (!state.snapshot) {
+      appendLog("warn", "请先打开一个项目");
+      return;
+    }
+    if (!state.currentFile || state.readonlySource || !isExecutableFile(state.currentFile)) {
+      appendLog("warn", "当前文件不支持变量跳转");
+      return;
+    }
+    if (typeof selectedConfigVariableDefinitions !== "function") {
+      appendLog("warn", "当前配置未提供变量来源索引");
+      return;
+    }
+
+    const definitions = selectedConfigVariableDefinitions({
+      includeShadowed: Boolean(options.showAll),
+    }).filter((definition) => (
+      definition && (definition.path === variableName || definition.name === variableName)
+    ));
+    if (definitions.length === 0) {
+      appendLog("warn", `未在当前选中 YAML 配置中找到变量: ${variableName}`);
+      return;
+    }
+
+    const definition = chooseVariableDefinitionTarget(definitions, options);
+    await selectFile(definition.relativePath);
+    CM6.goToLine(definition.line, definition.column || 1);
+    appendLog(
+      "info",
+      `Go to variable definition: ${variableName} -> ${definition.relativePath}:${definition.line}`,
+    );
+  }
+
+  function chooseVariableDefinitionTarget(definitions, options = {}) {
+    if (definitions.length > 1 && options.showAll) {
+      appendLog(
+        "info",
+        `Variable definition candidates: ${definitions.map((item) =>
+          `${item.relativePath}:${item.line}`,
+        ).join(" | ")}`,
+      );
+    }
+    return definitions.find((definition) => definition.effective) ||
+      definitions[definitions.length - 1];
   }
 
   function chooseDefinitionTarget(definitions, options = {}) {
@@ -333,6 +390,7 @@ export function createKeywordController({
     handleKeywordListClick,
     handleKeywordSearchInput,
     handleRefreshDefinitions,
+    goToVariableDefinition,
     resetKeywordBrowser,
     toggleKeywordPanel,
     doOpenExternalReadonlySource,

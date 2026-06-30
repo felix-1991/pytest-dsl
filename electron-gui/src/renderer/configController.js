@@ -161,7 +161,7 @@ export function createConfigController({
       CM6.setCompletionContext({
         language,
         keywords: shouldComplete ? state.completionKeywords : [],
-        variables: shouldComplete ? flattenConfigVariablePaths(selectedMergedConfig()) : [],
+        variables: shouldComplete ? selectedConfigVariableDefinitions() : [],
       });
     }
   }
@@ -248,6 +248,42 @@ export function createConfigController({
     return Array.from(new Set(result));
   }
 
+  function selectedConfigVariableDefinitions(options = {}) {
+    const mergedPaths = new Set(flattenConfigVariablePaths(selectedMergedConfig()));
+    const definitions = [];
+    const lastIndexByPath = new Map();
+
+    selectedConfigSources().forEach((source) => {
+      const sourceDefinitions = Array.isArray(source.variableDefinitions)
+        ? source.variableDefinitions
+        : [];
+      sourceDefinitions.forEach((definition) => {
+        if (!definition || !mergedPaths.has(definition.path)) {
+          return;
+        }
+        const entry = {
+          ...definition,
+          name: definition.path,
+          sourceLabel: `${definition.relativePath}:${definition.line}`,
+          effective: false,
+        };
+        lastIndexByPath.set(entry.path, definitions.length);
+        definitions.push(entry);
+      });
+    });
+
+    definitions.forEach((definition, index) => {
+      definition.effective = lastIndexByPath.get(definition.path) === index;
+    });
+
+    const visibleDefinitions = options.includeShadowed
+      ? definitions
+      : definitions.filter((definition) => definition.effective);
+    return visibleDefinitions.sort((left, right) =>
+      left.path.localeCompare(right.path, "zh-CN"),
+    );
+  }
+
   function sameStringArray(left, right) {
     if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
       return false;
@@ -266,5 +302,6 @@ export function createConfigController({
     loadEditorCompletionKeywords,
     resetEditorCompletionKeywords,
     flattenConfigVariablePaths,
+    selectedConfigVariableDefinitions,
   };
 }

@@ -35,13 +35,15 @@ function loadProjectConfig(projectRoot, options = {}) {
 
     try {
       const data = parseYaml(raw) || {};
+      const variableDefinitions = extractYamlVariableDefinitions(raw, relativePath);
       sources.push({
         relativePath,
         fileName,
         defaultSelected,
         ok: true,
         data,
-        raw
+        raw,
+        variableDefinitions
       });
     } catch (error) {
       const message = error && error.message ? error.message : String(error);
@@ -169,6 +171,63 @@ function mergeConfigSources(sources, selectedPaths = null) {
   });
 
   return merged;
+}
+
+function extractYamlVariableDefinitions(raw, relativePath) {
+  const definitions = [];
+  const lines = String(raw || "").replace(/\r\n/g, "\n").split("\n");
+  const stack = [{ indent: -1, path: "" }];
+
+  lines.forEach((line, index) => {
+    if (!line.trim() || line.trimStart().startsWith("#")) {
+      return;
+    }
+    if (line.includes("\t")) {
+      return;
+    }
+
+    const indent = line.match(/^ */)[0].length;
+    const trimmed = stripInlineComment(line.trim());
+    if (!trimmed || trimmed.startsWith("- ")) {
+      return;
+    }
+
+    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
+      stack.pop();
+    }
+
+    const pair = trimmed.match(/^([^:]+):\s*(.*)$/);
+    if (!pair) {
+      return;
+    }
+
+    const key = unquote(pair[1].trim());
+    if (!key) {
+      return;
+    }
+    const parentPath = stack[stack.length - 1].path;
+    const variablePath = parentPath ? `${parentPath}.${key}` : key;
+    const rest = pair[2].trim();
+    definitions.push({
+      path: variablePath,
+      relativePath: normalizeRelative(relativePath),
+      line: index + 1,
+      column: indent + 1,
+      valuePreview: rest ? previewYamlScalar(rest) : "{...}"
+    });
+
+    if (!rest) {
+      stack.push({ indent, path: variablePath });
+    }
+  });
+
+  return definitions;
+}
+
+function previewYamlScalar(value) {
+  const parsed = parseScalar(stripInlineComment(String(value || "").trim()));
+  const text = typeof parsed === "string" ? parsed : String(parsed);
+  return text.length > 120 ? `${text.slice(0, 117)}...` : text;
 }
 
 function normalizeRelative(relativePath) {
@@ -305,6 +364,7 @@ module.exports = {
   loadProjectConfig,
   listConfigFiles,
   mergeConfigSources,
+  extractYamlVariableDefinitions,
   resolveSelectedPaths,
   buildConfigSignature,
   parseYaml,

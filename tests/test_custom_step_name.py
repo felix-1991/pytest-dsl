@@ -53,6 +53,44 @@ def test_keyword_call_reports_arguments_in_default_allure(monkeypatch):
     assert "skip_logging" not in keyword_call_details
 
 
+def test_keyword_trace_is_quiet_by_default(monkeypatch, capsys):
+    monkeypatch.delenv("PYTEST_DSL_KEYWORD_TRACE", raising=False)
+
+    content = """
+@name: "默认不打印关键字跟踪"
+
+[日志], 级别: "INFO", 消息: "quiet trace"
+"""
+
+    DSLExecutor(enable_hooks=False, enable_tracking=False).execute_from_content(content)
+
+    assert "关键字执行:" not in capsys.readouterr().out
+
+
+def test_keyword_trace_prints_keyword_name_and_arguments(monkeypatch, capsys):
+    monkeypatch.setenv("PYTEST_DSL_KEYWORD_TRACE", "1")
+
+    content = """
+@name: "关键字跟踪输出测试"
+
+[日志], 级别: "INFO", 消息: "hello trace"
+"""
+
+    DSLExecutor(enable_hooks=False, enable_tracking=False).execute_from_content(content)
+
+    output = capsys.readouterr().out
+    trace_lines = [
+        line for line in output.splitlines()
+        if line.startswith("关键字执行:")
+    ]
+    assert trace_lines == [
+        "关键字执行: 日志 | 级别(level): 'INFO', 消息(message): 'hello trace'"
+    ]
+    assert "传入参数:" not in output
+    assert "context" not in output
+    assert "skip_logging" not in output
+
+
 def test_remote_keyword_call_forwards_custom_step_name(monkeypatch):
     forwarded_calls = []
 
@@ -111,6 +149,59 @@ api|[打印], 内容: "hello remote"
     assert "传入参数:" in remote_details
     assert "内容: 'hello remote'" in remote_details
     assert "context" not in remote_details
+
+
+def test_remote_keyword_trace_prints_keyword_name_and_arguments(monkeypatch, capsys):
+    monkeypatch.setenv("PYTEST_DSL_KEYWORD_TRACE", "1")
+    monkeypatch.setattr(
+        "pytest_dsl.remote.keyword_client.remote_keyword_manager."
+        "execute_remote_keyword_with_outcome",
+        lambda *args, **kwargs: "ok",
+    )
+
+    content = """
+@name: "远程关键字跟踪输出测试"
+
+api|[打印], 内容: "hello remote trace"
+"""
+
+    DSLExecutor(enable_hooks=False, enable_tracking=False).execute_from_content(content)
+
+    output = capsys.readouterr().out
+    trace_lines = [
+        line for line in output.splitlines()
+        if line.startswith("关键字执行:")
+    ]
+    assert trace_lines == [
+        "关键字执行: api|打印 | 内容: 'hello remote trace'"
+    ]
+    assert "传入参数:" not in output
+    assert "context" not in output
+
+
+def test_remote_keyword_trace_prints_no_argument_call_on_one_line(monkeypatch, capsys):
+    monkeypatch.setenv("PYTEST_DSL_KEYWORD_TRACE", "1")
+    monkeypatch.setattr(
+        "pytest_dsl.remote.keyword_client.remote_keyword_manager."
+        "execute_remote_keyword_with_outcome",
+        lambda *args, **kwargs: "ok",
+    )
+
+    content = """
+@name: "远程无参关键字跟踪输出测试"
+
+api|[获取状态]
+"""
+
+    DSLExecutor(enable_hooks=False, enable_tracking=False).execute_from_content(content)
+
+    output = capsys.readouterr().out
+    trace_lines = [
+        line for line in output.splitlines()
+        if line.startswith("关键字执行:")
+    ]
+    assert trace_lines == ["关键字执行: api|获取状态 | <无参数>"]
+    assert "传入参数:" not in output
 
 
 def test_remote_keyword_call_reports_arguments_on_failure(monkeypatch):

@@ -553,13 +553,24 @@ function metadataCompletions(from) {
 }
 
 function variableCompletions(from, variables) {
-  const options = uniqueStrings(variables)
+  const byName = new Map();
+  variables
+    .map((variable) => normalizeVariableCompletion(variable))
+    .filter(Boolean)
+    .forEach((variable) => {
+      if (!byName.has(variable.name)) {
+        byName.set(variable.name, variable);
+      }
+    });
+
+  const options = Array.from(byName.values())
     .slice(0, 300)
-    .map((name) => ({
-      label: name,
+    .map((variable) => ({
+      label: variable.name,
       type: "variable",
-      detail: "配置变量",
-      apply: `${name}}`,
+      detail: variable.sourceLabel || "配置变量",
+      info: variable.valuePreview ? `当前值: ${variable.valuePreview}` : undefined,
+      apply: `${variable.name}}`,
       section: "变量",
     }));
 
@@ -571,6 +582,29 @@ function variableCompletions(from, variables) {
     from,
     options,
     validFor: /^[A-Za-z0-9_.-]*$/,
+  };
+}
+
+function normalizeVariableCompletion(variable) {
+  if (typeof variable === "string") {
+    return { name: variable };
+  }
+  if (!variable || typeof variable !== "object") {
+    return null;
+  }
+  const name = String(variable.name || variable.path || "").trim();
+  if (!name) {
+    return null;
+  }
+  return {
+    ...variable,
+    name,
+    sourceLabel: variable.sourceLabel || (
+      variable.relativePath && variable.line
+        ? `${variable.relativePath}:${variable.line}`
+        : ""
+    ),
+    valuePreview: variable.valuePreview ? String(variable.valuePreview) : "",
   };
 }
 
@@ -801,6 +835,16 @@ function buildExtensions(opts) {
         if (event.button !== 0 || !(event.metaKey || event.ctrlKey)) {
           return false;
         }
+        const variableName = variableAtMouseEvent(view, event);
+        if (variableName && opts.onDefinitionRequest) {
+          event.preventDefault();
+          opts.onDefinitionRequest({
+            variableName,
+            source: "Mod-Click",
+            showAll: event.altKey,
+          });
+          return true;
+        }
         const keywordName = keywordAtMouseEvent(view, event);
         if (!keywordName || !opts.onDefinitionRequest) {
           return false;
@@ -816,6 +860,16 @@ function buildExtensions(opts) {
       keydown(event, view) {
         if (event.key !== "F12") {
           return false;
+        }
+        const variableName = variableAtSelection(view);
+        if (variableName && opts.onDefinitionRequest) {
+          event.preventDefault();
+          opts.onDefinitionRequest({
+            variableName,
+            source: "F12",
+            showAll: event.altKey,
+          });
+          return true;
         }
         const keywordName = keywordAtSelection(view);
         if (!keywordName || !opts.onDefinitionRequest) {
@@ -842,14 +896,39 @@ function keywordAtMouseEvent(view, event) {
   return keywordAtPosition(view.state, pos);
 }
 
+function variableAtMouseEvent(view, event) {
+  const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+  if (pos == null) return null;
+  return variableAtPosition(view.state, pos);
+}
+
 function keywordAtSelection(view) {
   return keywordAtPosition(view.state, view.state.selection.main.head);
+}
+
+function variableAtSelection(view) {
+  return variableAtPosition(view.state, view.state.selection.main.head);
 }
 
 function keywordAtPosition(state, pos) {
   const line = state.doc.lineAt(pos);
   const offset = pos - line.from;
   const pattern = /\[([^\]]+)\]/g;
+  let match;
+  while ((match = pattern.exec(line.text)) !== null) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (offset >= start && offset <= end) {
+      return match[1].trim() || null;
+    }
+  }
+  return null;
+}
+
+function variableAtPosition(state, pos) {
+  const line = state.doc.lineAt(pos);
+  const offset = pos - line.from;
+  const pattern = /\$\{([A-Za-z0-9_.-]+)\}/g;
   let match;
   while ((match = pattern.exec(line.text)) !== null) {
     const start = match.index;
@@ -1141,6 +1220,21 @@ const bridge = {
     });
   },
 
+  goToLine(lineNumber, columnNumber = 1) {
+    const inst = this._activeInstance();
+    if (!inst) return;
+    const { doc } = inst.view.state;
+    if (lineNumber < 1 || lineNumber > doc.lines) return;
+    const line = doc.line(lineNumber);
+    const column = Math.max(1, Math.trunc(Number(columnNumber)) || 1);
+    const target = Math.min(line.to, line.from + column - 1);
+    inst.view.dispatch({
+      selection: { anchor: target },
+      effects: EditorView.scrollIntoView(target, { y: "center" }),
+    });
+    inst.view.focus();
+  },
+
   closeSearch() {
     const inst = this._activeInstance();
     if (inst && inst.view) closeSearchPanel(inst.view);
@@ -1168,6 +1262,7 @@ export const insertText = bridge.insertText.bind(bridge);
 export const setEnabled = bridge.setEnabled.bind(bridge);
 export const setDebugState = bridge.setDebugState.bind(bridge);
 export const scrollToLine = bridge.scrollToLine.bind(bridge);
+export const goToLine = bridge.goToLine.bind(bridge);
 export const closeSearch = bridge.closeSearch.bind(bridge);
 export const focus = bridge.focus.bind(bridge);
 export const destroy = bridge.destroy.bind(bridge);

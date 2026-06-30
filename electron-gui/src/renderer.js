@@ -208,6 +208,7 @@ const keywordController = createKeywordController({
   selectFile,
   setDirty: (...args) => fileController.setDirty(...args),
   syncEditorCompletionContext: (...args) => configController.syncEditorCompletionContext(...args),
+  selectedConfigVariableDefinitions: (...args) => configController.selectedConfigVariableDefinitions(...args),
   openExternalReadonlySource,
   openDefinitionWindow: (...args) => api.openDefinitionWindow(...args),
 });
@@ -218,6 +219,7 @@ const {
   handleKeywordListClick,
   handleKeywordSearchInput,
   handleRefreshDefinitions,
+  goToVariableDefinition,
   resetKeywordBrowser,
   toggleKeywordPanel,
 } = keywordController;
