@@ -206,7 +206,7 @@
                     </div>
 
                     <section class="tree-pane">
-                        <div class="pane-head">
+                        <div class="pane-head" id="treePaneHead">
                             <div class="section-title">
                                 <h2 id="treePaneTitle">目录树</h2>
                                 <span class="branch" id="branchName"
@@ -230,6 +230,15 @@
                                     title="收缩全部目录"
                                 >
                                     收缩
+                                </button>
+                                <button
+                                    class="text-btn"
+                                    id="projectSearchOpenBtn"
+                                    type="button"
+                                    title="内容搜索 (Ctrl/Cmd+Shift+F)"
+                                    aria-keyshortcuts="Control+Shift+F Meta+Shift+F"
+                                >
+                                    内容搜索
                                 </button>
                             </div>
                             <label class="mini-search">
@@ -258,6 +267,101 @@
                             role="menu"
                             hidden
                         ></div>
+                        <section
+                            class="project-search-panel"
+                            id="projectSearchPanel"
+                            aria-label="内容搜索"
+                            hidden
+                        >
+                            <div class="project-search-head">
+                                <div class="section-title">
+                                    <h2>内容搜索</h2>
+                                    <button
+                                        class="icon-btn project-search-close"
+                                        id="projectSearchCloseBtn"
+                                        type="button"
+                                        title="关闭内容搜索"
+                                        aria-label="关闭内容搜索"
+                                    >×</button>
+                                </div>
+                                <span
+                                    class="project-search-summary"
+                                    id="projectSearchSummary"
+                                >输入内容后点击搜索</span>
+                                <label class="project-search-field">
+                                    <span aria-hidden="true">⌕</span>
+                                    <input
+                                        id="projectSearchInput"
+                                        type="search"
+                                        placeholder="搜索内容"
+                                        autocomplete="off"
+                                    />
+                                </label>
+                                <label
+                                    class="project-search-field project-replace-row"
+                                    id="projectReplaceRow"
+                                    hidden
+                                >
+                                    <span aria-hidden="true">↔</span>
+                                    <input
+                                        id="projectReplaceInput"
+                                        type="text"
+                                        placeholder="替换内容"
+                                        autocomplete="off"
+                                    />
+                                </label>
+                                <div
+                                    class="project-search-options"
+                                    aria-label="搜索选项"
+                                >
+                                    <button
+                                        class="option-btn"
+                                        id="projectSearchCaseBtn"
+                                        type="button"
+                                        title="区分大小写"
+                                        aria-pressed="false"
+                                    >Aa</button>
+                                    <button
+                                        class="option-btn"
+                                        id="projectSearchWordBtn"
+                                        type="button"
+                                        title="全词匹配"
+                                        aria-pressed="false"
+                                    >W</button>
+                                    <button
+                                        class="option-btn"
+                                        id="projectSearchRegexBtn"
+                                        type="button"
+                                        title="正则表达式"
+                                        aria-pressed="false"
+                                    >.*</button>
+                                    <button
+                                        class="text-btn"
+                                        id="projectSearchRunBtn"
+                                        type="button"
+                                        title="搜索内容"
+                                    >搜索</button>
+                                    <button
+                                        class="text-btn"
+                                        id="projectReplaceToggleBtn"
+                                        type="button"
+                                        title="显示替换"
+                                    >替换</button>
+                                    <button
+                                        class="danger-btn"
+                                        id="projectReplaceAllBtn"
+                                        type="button"
+                                        disabled
+                                    >全部替换</button>
+                                </div>
+                            </div>
+                            <div
+                                class="project-search-results"
+                                id="projectSearchResults"
+                            >
+                                <p class="empty">输入内容后点击搜索</p>
+                            </div>
+                        </section>
                     </section>
                 </aside>
 

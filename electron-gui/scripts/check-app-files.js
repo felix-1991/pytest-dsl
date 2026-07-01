@@ -24,6 +24,7 @@ const requiredFiles = [
   "src/renderer/projectTreeController.js",
   "src/renderer/remoteStatusController.js",
   "src/renderer/runtimeController.js",
+  "src/renderer/searchController.js",
   "src/renderer/state.js",
   "src/renderer/suiteTreeController.js",
   "src/renderer/treeVirtualizer.js",
@@ -35,6 +36,8 @@ const requiredFiles = [
   "src/services/metadataStore.js",
   "src/services/projectService.js",
   "src/services/remoteStatusService.js",
+  "src/services/searchService.js",
+  "test/searchService.test.js",
   "test/projectService.test.js",
   "test/remoteStatusService.test.js"
 ];

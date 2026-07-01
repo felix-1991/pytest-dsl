@@ -44,9 +44,16 @@ const {
   exportConsoleLogFile,
   resetConsoleLogFile,
 } = require("./src/services/consoleLogService");
+const {
+  prepareSearchCandidates,
+  replaceProjectMatches,
+  searchProjectBatches,
+} = require("./src/services/searchService");
 
 const DEFAULT_PROJECT_ROOT = path.resolve(__dirname, "..");
 const PYTHON_DIRECTORY_SELECTION_MODE = "python-directory";
+const activeProjectSearches = new Map();
+const searchCandidateCache = new Map();
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -172,17 +179,20 @@ function registerIpc() {
     }
 
     const snapshot = getProjectSnapshot(result.filePaths[0]);
+    cacheProjectSearchCandidates(snapshot);
     prefetchDefinitionCache(snapshot.project.rootPath);
     return snapshot;
   });
 
   ipcMain.handle("project:default", () => {
     const snapshot = getProjectSnapshot(DEFAULT_PROJECT_ROOT);
+    cacheProjectSearchCandidates(snapshot);
     prefetchDefinitionCache(DEFAULT_PROJECT_ROOT);
     return snapshot;
   });
   ipcMain.handle("project:scan", (_event, projectRoot) => {
     const snapshot = getProjectSnapshot(projectRoot);
+    cacheProjectSearchCandidates(snapshot);
     prefetchDefinitionCache(projectRoot);
     return snapshot;
   });
@@ -193,6 +203,7 @@ function registerIpc() {
   ipcMain.handle("file:read", (_event, projectRoot, relativePath) => readProjectFile(projectRoot, relativePath));
   ipcMain.handle("file:save", (_event, projectRoot, relativePath, content) => {
     const result = saveProjectFile(projectRoot, relativePath, content);
+    invalidateProjectSearchCandidates(projectRoot);
     if (shouldInvalidateDefinitionCache(relativePath)) {
       invalidateDefinitionCache(projectRoot);
     }
@@ -200,6 +211,7 @@ function registerIpc() {
   });
   ipcMain.handle("file:create", (_event, projectRoot, options) => {
     const result = createProjectEntry(projectRoot, options);
+    invalidateProjectSearchCandidates(projectRoot);
     if (shouldInvalidateDefinitionCache(options && options.relativePath)) {
       invalidateDefinitionCache(projectRoot);
     }
@@ -210,6 +222,7 @@ function registerIpc() {
     const newName = options && options.newName;
     const newPath = oldPath ? path.posix.join(path.posix.dirname(String(oldPath).replace(/\\/g, "/")), String(newName || "")) : null;
     const result = renameProjectEntry(projectRoot, options);
+    invalidateProjectSearchCandidates(projectRoot);
     if (shouldInvalidateDefinitionCache(oldPath) || shouldInvalidateDefinitionCache(newPath)) {
       invalidateDefinitionCache(projectRoot);
     }
@@ -219,6 +232,7 @@ function registerIpc() {
     const oldPath = options && options.relativePath;
     const newDir = options && options.targetDirectory;
     const result = moveProjectEntry(projectRoot, options);
+    invalidateProjectSearchCandidates(projectRoot);
     if (shouldInvalidateDefinitionCache(oldPath) || shouldInvalidateDefinitionCache(newDir)) {
       invalidateDefinitionCache(projectRoot);
     }
@@ -227,6 +241,7 @@ function registerIpc() {
   ipcMain.handle("file:delete", (_event, projectRoot, options) => {
     const relativePath = options && options.relativePath;
     const result = deleteProjectEntry(projectRoot, options);
+    invalidateProjectSearchCandidates(projectRoot);
     if (shouldInvalidateDefinitionCache(relativePath)) {
       invalidateDefinitionCache(projectRoot);
     }
@@ -249,6 +264,69 @@ function registerIpc() {
     options.projectRoot || DEFAULT_PROJECT_ROOT,
     options.path
   ));
+  ipcMain.handle("search:start", (event, projectRoot, request = {}) => {
+    const root = projectRoot || DEFAULT_PROJECT_ROOT;
+    const searchId = String(request.searchId || createSearchId());
+    const existing = activeProjectSearches.get(searchId);
+    if (existing) {
+      existing.canceled = true;
+    }
+    const token = { canceled: false };
+    activeProjectSearches.set(searchId, token);
+    const candidatePayload = getProjectSearchCandidates(root, request);
+    const searchRequest = {
+      ...request,
+      candidates: candidatePayload.candidates,
+      candidatesRespectGitignore: candidatePayload.candidatesRespectGitignore,
+    };
+    sendSearchEvent(event.sender, { searchId, type: "started" });
+    searchProjectBatches(
+      root,
+      searchRequest,
+      (batch) => {
+        if (!token.canceled) {
+          sendSearchEvent(event.sender, { searchId, type: "batch", batch });
+        }
+      },
+      () => token.canceled,
+    )
+      .then((summary) => {
+        sendSearchEvent(event.sender, {
+          searchId,
+          type: summary.canceled ? "canceled" : "done",
+          summary,
+        });
+      })
+      .catch((error) => {
+        sendSearchEvent(event.sender, {
+          searchId,
+          type: "error",
+          message: error && error.message ? error.message : String(error),
+        });
+      })
+      .finally(() => {
+        if (activeProjectSearches.get(searchId) === token) {
+          activeProjectSearches.delete(searchId);
+        }
+      });
+    return { searchId };
+  });
+  ipcMain.handle("search:cancel", (_event, searchId) => {
+    const token = activeProjectSearches.get(String(searchId || ""));
+    if (!token) {
+      return { canceled: false };
+    }
+    token.canceled = true;
+    return { canceled: true };
+  });
+  ipcMain.handle("search:replace", (_event, projectRoot, request) => {
+    const root = projectRoot || DEFAULT_PROJECT_ROOT;
+    const result = replaceProjectMatches(root, request);
+    if (result.changedFiles.some((relativePath) => shouldInvalidateDefinitionCache(relativePath))) {
+      invalidateDefinitionCache(root);
+    }
+    return result;
+  });
   ipcMain.handle("clipboard:write", (_event, text) => {
     clipboard.writeText(String(text || ""));
     return { copied: true };
@@ -360,6 +438,57 @@ function shouldInvalidateDefinitionCache(relativePath) {
   if (!relativePath) return false;
   const normalized = String(relativePath).replace(/\\/g, "/");
   return normalized.endsWith(".resource") || normalized.startsWith("keywords/");
+}
+
+function createSearchId() {
+  return `search-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function cacheProjectSearchCandidates(snapshot) {
+  if (!snapshot || !snapshot.project || !snapshot.project.rootPath) {
+    return;
+  }
+  searchCandidateCache.set(
+    path.resolve(snapshot.project.rootPath),
+    compactSearchCandidates(snapshot.project.rootPath, snapshot.editableFiles || snapshot.dslFiles || []),
+  );
+}
+
+function invalidateProjectSearchCandidates(projectRoot) {
+  if (!projectRoot) {
+    return;
+  }
+  searchCandidateCache.delete(path.resolve(projectRoot));
+}
+
+function getProjectSearchCandidates(projectRoot, request = {}) {
+  if (Array.isArray(request.candidates)) {
+    return {
+      candidates: request.candidates,
+      candidatesRespectGitignore: Boolean(request.candidatesRespectGitignore),
+    };
+  }
+  const cached = searchCandidateCache.get(path.resolve(projectRoot));
+  return {
+    candidates: cached,
+    candidatesRespectGitignore: Array.isArray(cached),
+  };
+}
+
+function compactSearchCandidates(projectRoot, files) {
+  return prepareSearchCandidates(projectRoot, files).map((file) => ({
+    relativePath: file.relativePath,
+    language: file.language,
+    size: file.size,
+    lineCount: file.lineCount,
+  }));
+}
+
+function sendSearchEvent(webContents, payload) {
+  if (!webContents || webContents.isDestroyed()) {
+    return;
+  }
+  webContents.send("search:event", payload);
 }
 
 function runtimeDialogProperties(kind, selectionMode) {

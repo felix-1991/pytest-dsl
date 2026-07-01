@@ -536,6 +536,37 @@ export function createFileController({
     }
   }
 
+  async function reloadOpenFiles(relativePaths = []) {
+    if (!state.snapshot || !Array.isArray(relativePaths) || relativePaths.length === 0) {
+      return;
+    }
+    const changed = new Set(relativePaths);
+    const originalKey = state.activeFileKey;
+    const reloadTargets = state.openFiles.filter((entry) => (
+      changed.has(entry.relativePath) && !entry.dirty && !entry.readonlySource
+    ));
+
+    for (const entry of reloadTargets) {
+      try {
+        switchToTab(entry.key);
+        const result = await api.readFile(
+          state.snapshot.project.rootPath,
+          entry.relativePath,
+        );
+        CM6.setContent(result.content);
+        CM6.setLanguage(detectLanguage(result.relativePath));
+        setDirty(false);
+      } catch (error) {
+        appendLog("warn", `刷新已打开文件失败: ${errorMessage(error)}`);
+      }
+    }
+
+    if (originalKey && state.openFiles.some((entry) => entry.key === originalKey)) {
+      switchToTab(originalKey);
+    }
+    renderActiveFile();
+  }
+
   function clearEditor(message) {
     state.currentFile = null;
     state.readonlySource = null;
@@ -608,6 +639,7 @@ export function createFileController({
     clearEditor,
     setDirty,
     saveCurrentFile,
+    reloadOpenFiles,
     updateFileActionState,
     updateExecutionActionLabels,
     getEditableFiles,

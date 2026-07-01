@@ -24,6 +24,7 @@ const rendererModules = [
   "../src/renderer/projectTreeController.js",
   "../src/renderer/remoteStatusController.js",
   "../src/renderer/runtimeController.js",
+  "../src/renderer/searchController.js",
   "../src/renderer/state.js",
   "../src/renderer/suiteTreeController.js",
   "../src/renderer/treeVirtualizer.js",
@@ -115,11 +116,108 @@ test("app file check validates the split renderer module graph", () => {
   assert.match(checkAppFiles, /"preload-definition\.js"/);
   assert.match(checkAppFiles, /"src\/definition-window\.html"/);
   assert.match(checkAppFiles, /"src\/definition-renderer\.js"/);
+  assert.match(checkAppFiles, /"src\/renderer\/searchController\.js"/);
   assert.match(checkAppFiles, /require\("esbuild"\)/);
   assert.match(checkAppFiles, /entryPoints:\s*\[path\.join\(root,\s*"src",\s*"renderer\.js"\)\]/);
   assert.match(checkAppFiles, /bundle:\s*true/);
   assert.match(checkAppFiles, /platform:\s*"browser"/);
   assert.match(checkAppFiles, /write:\s*false/);
+});
+
+test("main and preload expose cancellable batched project search IPC", () => {
+  const saveHandler = main.match(/ipcMain\.handle\("file:save"[\s\S]*?\n\s*\}\);/);
+  assert.ok(saveHandler, "file:save handler should exist");
+  assert.match(main, /searchProjectBatches/);
+  assert.match(main, /prepareSearchCandidates/);
+  assert.match(main, /replaceProjectMatches/);
+  assert.match(main, /searchCandidateCache/);
+  assert.match(main, /cacheProjectSearchCandidates/);
+  assert.match(saveHandler[0], /invalidateProjectSearchCandidates\(projectRoot\)/);
+  assert.match(main, /candidatesRespectGitignore/);
+  assert.match(main, /ipcMain\.handle\("search:start"/);
+  assert.match(main, /ipcMain\.handle\("search:cancel"/);
+  assert.match(main, /\.send\("search:event"/);
+  assert.doesNotMatch(main, /ipcMain\.handle\("search:project"/);
+  assert.match(main, /ipcMain\.handle\("search:replace"/);
+  assert.match(preload, /startProjectSearch:\s*\(projectRoot, request\)/);
+  assert.match(preload, /cancelProjectSearch:\s*\(searchId\)/);
+  assert.match(preload, /onProjectSearchEvent:\s*\(callback\)/);
+  assert.match(preload, /replaceProjectMatches:\s*\(projectRoot, request\)/);
+  assert.match(preload, /ipcRenderer\.invoke\("search:start", projectRoot, request\)/);
+  assert.match(preload, /ipcRenderer\.invoke\("search:cancel", searchId\)/);
+  assert.match(preload, /ipcRenderer\.on\("search:event"/);
+  assert.doesNotMatch(preload, /searchProject:\s*\(projectRoot, request\)/);
+  assert.match(preload, /ipcRenderer\.invoke\("search:replace", projectRoot, request\)/);
+});
+
+test("renderer hosts project content search in the debug sidebar with virtual results", () => {
+  [
+    "treePaneHead",
+    "projectSearchOpenBtn",
+    "projectSearchPanel",
+    "projectSearchCloseBtn",
+    "projectSearchInput",
+    "projectReplaceInput",
+    "projectReplaceRow",
+    "projectSearchCaseBtn",
+    "projectSearchWordBtn",
+    "projectSearchRegexBtn",
+    "projectSearchResults",
+    "projectSearchSummary",
+    "projectSearchRunBtn",
+    "projectReplaceAllBtn",
+  ].forEach((id) => {
+    assert.match(html, new RegExp(`id="${id}"`), `missing #${id}`);
+  });
+  assert.doesNotMatch(html, /id="searchNavBtn"/);
+  assert.doesNotMatch(html, /id="projectSearchToggleBtn"/);
+  assert.match(html, /内容搜索/);
+  assert.match(html, /placeholder="搜索内容"/);
+  assert.match(html, /placeholder="替换内容"/);
+  assert.doesNotMatch(html, /项目内容/);
+  assert.ok(
+    html.indexOf('class="tree-pane"') < html.indexOf('id="projectSearchPanel"'),
+    "project search should be inside the debug sidebar",
+  );
+  assert.ok(
+    html.indexOf('id="projectSearchPanel"') < html.indexOf('id="mainStage"'),
+    "project search should stay out of the editor workspace",
+  );
+  assert.ok(
+    html.indexOf('id="projectSearchPanel"') < html.indexOf('id="debugWorkspace"'),
+    "project search should not be mounted in the editor stack",
+  );
+  assert.match(rendererEntry, /createSearchController/);
+  assert.match(rendererEntry, /handleProjectSearchShortcut/);
+  assert.match(rendererEntry, /projectSearchRunBtn\.addEventListener\("click",\s*\(\) => runProjectSearch\(\{ force: true \}\)\)/);
+  assert.match(renderer, /openProjectSearch/);
+  assert.match(renderer, /api\.startProjectSearch/);
+  assert.match(renderer, /api\.cancelProjectSearch/);
+  assert.match(renderer, /api\.onProjectSearchEvent/);
+  assert.match(renderer, /api\.replaceProjectMatches/);
+  assert.doesNotMatch(renderer, /MIN_AUTO_SEARCH_QUERY_LENGTH/);
+  assert.doesNotMatch(renderer, /SEARCH_DEBOUNCE_MS/);
+  assert.doesNotMatch(renderer, /function scheduleProjectSearch/);
+  assert.doesNotMatch(renderer, /function handleProjectSearchInput\(\) \{[^}]*runProjectSearch/);
+  assert.doesNotMatch(renderer, /candidates:\s*searchCandidatesForRequest/);
+  assert.doesNotMatch(renderer, /function searchCandidatesForRequest/);
+  assert.match(renderer, /renderVirtualSearchRows/);
+  assert.match(css, /\.project-search-options\s+\.danger-btn\s*\{[^}]*white-space:\s*nowrap/);
+  assert.match(css, /\.project-search-options\s+\.danger-btn\s*\{[^}]*min-width:\s*64px/);
+  const defaultNavWidth = Number(css.match(/--nav-width:\s*(\d+)px/)?.[1]);
+  const contentSearchControlMinWidth = (3 * 32) + (2 * 58) + 64 + (5 * 6);
+  const defaultContentSearchInnerWidth = defaultNavWidth - 76 - (16 * 2);
+  assert.ok(
+    defaultContentSearchInnerWidth >= contentSearchControlMinWidth,
+    "default sidebar width should leave room for content search controls",
+  );
+  assert.doesNotMatch(renderer, /api\.searchProject/);
+  assert.doesNotMatch(renderer, /sidePanel/);
+  assert.doesNotMatch(renderer, /searchNavBtn\.addEventListener/);
+  assert.doesNotMatch(renderer, /projectSearchToggleBtn/);
+  assert.doesNotMatch(renderer, /projectSearchResults\.innerHTML\s*=\s*renderSearchResults/);
+  assert.match(editorBridge, /openSearchPanel/);
+  assert.match(editorBridge, /openSearch\(replace = false\)/);
 });
 
 test("suite runner uses multi-select suite controls", () => {
@@ -721,6 +819,9 @@ test("layout exposes resizable file tree and bottom console", () => {
   assert.match(html, /data-resizer="nav"/);
   assert.match(html, /data-resizer="console"/);
   assert.match(html, /aria-orientation="horizontal"/);
+  assert.match(css, /--nav-width:\s*420px/);
+  assert.match(renderer, /defaultValue:\s*420/);
+  assert.match(renderer, /min:\s*300/);
   assert.match(css, /grid-template-columns:\s*var\(--nav-width\)\s+6px\s+minmax\(0,\s*1fr\)/);
   assert.match(css, /\.shell\s*\{[^}]*padding-right:\s*12px/);
   assert.doesNotMatch(css, /--output-width/);

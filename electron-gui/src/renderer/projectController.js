@@ -112,6 +112,8 @@ export function createProjectController({
       state.selectedFileOverrides = {};
       state.selectedBuildFileOverrides = {};
       state.expandedSuiteNodes.clear();
+      state.projectSearch.result = null;
+      state.projectSearch.loading = false;
       closeEntryDialog(null);
     }
     initializeConfigSelection(snapshot, previousSelected);
@@ -170,6 +172,16 @@ export function createProjectController({
     state.selectedTreePath = "";
     state.selectedTreeKind = "directory";
     state.activeView = "debug";
+    state.projectSearch.open = false;
+    state.projectSearch.query = "";
+    state.projectSearch.replacement = "";
+    state.projectSearch.replaceVisible = false;
+    state.projectSearch.result = null;
+    state.projectSearch.error = "";
+    state.projectSearch.loading = false;
+    state.projectSearch.activeSearchId = null;
+    clearTimeout(state.projectSearch.timer);
+    state.projectSearch.timer = null;
     state.buildCaseTreeSignature = null;
     state.filter = "";
     state.buildCaseFilter = "";

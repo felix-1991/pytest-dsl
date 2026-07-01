@@ -35,6 +35,7 @@ var CM6 = (() => {
     goToLine: () => goToLine,
     insertText: () => insertText,
     lineCount: () => lineCount,
+    openSearch: () => openSearch,
     scrollToLine: () => scrollToLine,
     setCompletionContext: () => setCompletionContext,
     setContent: () => setContent,
@@ -24629,6 +24630,20 @@ var CM6 = (() => {
       const inst = this._activeInstance();
       if (inst && inst.view) closeSearchPanel(inst.view);
     },
+    openSearch(replace2 = false) {
+      const inst = this._activeInstance();
+      if (!inst || !inst.view) return;
+      openSearchPanel(inst.view);
+      if (replace2) {
+        setTimeout(() => {
+          const replaceInput = inst.view.dom.querySelector(".cm-panel.cm-search input[name='replace']");
+          if (replaceInput) {
+            replaceInput.focus();
+            replaceInput.select();
+          }
+        }, 0);
+      }
+    },
     focus() {
       const inst = this._activeInstance();
       if (inst && inst.view) inst.view.focus();
@@ -24649,6 +24664,7 @@ var CM6 = (() => {
   var scrollToLine = bridge.scrollToLine.bind(bridge);
   var goToLine = bridge.goToLine.bind(bridge);
   var closeSearch = bridge.closeSearch.bind(bridge);
+  var openSearch = bridge.openSearch.bind(bridge);
   var focus = bridge.focus.bind(bridge);
   var destroy = bridge.destroy.bind(bridge);
   var create = bridge.create.bind(bridge);

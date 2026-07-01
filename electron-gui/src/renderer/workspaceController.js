@@ -38,8 +38,6 @@ export function createWorkspaceController({
     if (isBuildView) {
       closeSuitePicker();
     }
-    el.debugNavBtn.classList.toggle("is-active", !isBuildView);
-    el.buildNavBtn.classList.toggle("is-active", isBuildView);
     updateTreePaneForActiveView();
     setConsoleScope(nextView);
     syncBuildReportFrameVisibility({ defer: isBuildView });
@@ -124,6 +122,20 @@ export function createWorkspaceController({
 
   function updateTreePaneForActiveView() {
     const isBuildView = state.activeView === "build";
+    const isSearchOpen = state.projectSearch.open && !isBuildView;
+    if (el.treePaneHead) {
+      el.treePaneHead.hidden = isSearchOpen;
+    }
+    if (el.projectSearchPanel) {
+      el.projectSearchPanel.hidden = !isSearchOpen;
+    }
+    el.debugNavBtn.classList.toggle("is-active", !isBuildView);
+    el.buildNavBtn.classList.toggle("is-active", isBuildView);
+    if (isSearchOpen) {
+      el.fileTree.hidden = true;
+      el.buildCaseTree.hidden = true;
+      return;
+    }
     el.treePaneTitle.textContent = isBuildView ? "构建案例" : "目录树";
     el.fileTree.hidden = isBuildView;
     el.buildCaseTree.hidden = !isBuildView;

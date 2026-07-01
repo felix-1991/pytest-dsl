@@ -21,6 +21,14 @@ contextBridge.exposeInMainWorld("pytestDslGui", {
   findKeywordDefinitions: (options) => ipcRenderer.invoke("keyword:definition", options),
   invalidateDefinitionCache: (projectRoot) => ipcRenderer.invoke("keyword:definition:invalidate", projectRoot),
   readSourceFile: (options) => ipcRenderer.invoke("source:read", options),
+  startProjectSearch: (projectRoot, request) => ipcRenderer.invoke("search:start", projectRoot, request),
+  cancelProjectSearch: (searchId) => ipcRenderer.invoke("search:cancel", searchId),
+  onProjectSearchEvent: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("search:event", listener);
+    return () => ipcRenderer.removeListener("search:event", listener);
+  },
+  replaceProjectMatches: (projectRoot, request) => ipcRenderer.invoke("search:replace", projectRoot, request),
   copyText: (text) => ipcRenderer.invoke("clipboard:write", text),
   resetConsoleLog: (options) => ipcRenderer.invoke("console:reset-log", options),
   appendConsoleLog: (options) => ipcRenderer.send("console:append-log", options),

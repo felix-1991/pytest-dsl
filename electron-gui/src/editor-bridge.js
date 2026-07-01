@@ -31,7 +31,13 @@ import {
   bracketMatching,
   syntaxHighlighting,
 } from "@codemirror/language";
-import { search, searchKeymap, closeSearchPanel, highlightSelectionMatches } from "@codemirror/search";
+import {
+  search,
+  searchKeymap,
+  closeSearchPanel,
+  highlightSelectionMatches,
+  openSearchPanel,
+} from "@codemirror/search";
 import {
   autocompletion,
   completionKeymap,
@@ -1240,6 +1246,21 @@ const bridge = {
     if (inst && inst.view) closeSearchPanel(inst.view);
   },
 
+  openSearch(replace = false) {
+    const inst = this._activeInstance();
+    if (!inst || !inst.view) return;
+    openSearchPanel(inst.view);
+    if (replace) {
+      setTimeout(() => {
+        const replaceInput = inst.view.dom.querySelector(".cm-panel.cm-search input[name='replace']");
+        if (replaceInput) {
+          replaceInput.focus();
+          replaceInput.select();
+        }
+      }, 0);
+    }
+  },
+
   focus() {
     const inst = this._activeInstance();
     if (inst && inst.view) inst.view.focus();
@@ -1264,6 +1285,7 @@ export const setDebugState = bridge.setDebugState.bind(bridge);
 export const scrollToLine = bridge.scrollToLine.bind(bridge);
 export const goToLine = bridge.goToLine.bind(bridge);
 export const closeSearch = bridge.closeSearch.bind(bridge);
+export const openSearch = bridge.openSearch.bind(bridge);
 export const focus = bridge.focus.bind(bridge);
 export const destroy = bridge.destroy.bind(bridge);
 

@@ -12,6 +12,7 @@ import { createBuildReportController } from "./renderer/buildReportController.js
 import { createExecutionController } from "./renderer/executionController.js";
 import { createWorkspaceController } from "./renderer/workspaceController.js";
 import { createProjectController } from "./renderer/projectController.js";
+import { createSearchController } from "./renderer/searchController.js";
 import { createInitialState } from "./renderer/state.js";
 import { errorMessage } from "./renderer/utils.js";
 
@@ -187,6 +188,7 @@ const {
   isRunnableWholeFile,
   openExternalReadonlySource,
   saveCurrentFile,
+  reloadOpenFiles,
   selectFile,
   setDirty,
   switchToTab,
@@ -378,6 +380,7 @@ const {
   handleBuildCaseTreeScroll,
   handleEditorSaveShortcut,
   switchWorkspaceView,
+  updateTreePaneForActiveView,
   generateCurrentCommand,
   copyGeneratedCommand,
 } = workspaceController;
@@ -424,6 +427,32 @@ const {
   renderDeductions,
 } = projectController;
 
+const searchController = createSearchController({
+  state,
+  el,
+  api,
+  appendLog,
+  showActionFeedback,
+  switchWorkspaceView,
+  updateTreePaneForActiveView,
+  selectFile,
+  reloadOpenFiles,
+});
+
+const {
+  handleProjectSearchInput,
+  handleProjectSearchKeydown,
+  handleProjectReplaceInput,
+  handleProjectSearchResultsClick,
+  handleProjectSearchResultsScroll,
+  handleProjectSearchShortcut,
+  replaceAllProjectMatches,
+  renderProjectSearchPanel,
+  toggleProjectReplace,
+  toggleProjectSearchOption,
+  toggleProjectSearchPanel,
+} = searchController;
+
 document.addEventListener("DOMContentLoaded", () => {
   cacheElements();
   initializeLayoutSizing();
@@ -433,6 +462,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // No initial empty editor — the user starts with a clean slate.
   syncEditorCompletionContext();
   setEmptyProjectState();
+  renderProjectSearchPanel();
   appendLog("info", "Electron GUI initialized");
   appendLog("info", "请选择要打开的 pytest-dsl 项目");
 });
@@ -460,12 +490,27 @@ function cacheElements() {
     "buildNavBtn",
     "treeRefreshBtn",
     "collapseAllBtn",
+    "treePaneHead",
     "branchName",
     "treePaneTitle",
     "fileFilter",
     "fileTree",
     "buildCaseTree",
     "treeContextMenu",
+    "projectSearchOpenBtn",
+    "projectSearchCloseBtn",
+    "projectSearchPanel",
+    "projectSearchInput",
+    "projectReplaceInput",
+    "projectReplaceRow",
+    "projectSearchCaseBtn",
+    "projectSearchWordBtn",
+    "projectSearchRegexBtn",
+    "projectSearchRunBtn",
+    "projectReplaceToggleBtn",
+    "projectReplaceAllBtn",
+    "projectSearchResults",
+    "projectSearchSummary",
     "dirtyDot",
     "editorTabs",
     "activeTab",
@@ -621,6 +666,7 @@ function bindEvents() {
   });
   document.addEventListener("click", closeTransientPanelsForOutsideClick);
   document.addEventListener("keydown", handleEditorSaveShortcut, true);
+  document.addEventListener("keydown", handleProjectSearchShortcut, true);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeTreeContextMenu();
@@ -721,6 +767,20 @@ function bindEvents() {
     copyGeneratedCommand(),
   );
   el.keywordSearch.addEventListener("input", handleKeywordSearchInput);
+  el.projectSearchOpenBtn.addEventListener("click", toggleProjectSearchPanel);
+  el.projectSearchCloseBtn.addEventListener("click", toggleProjectSearchPanel);
+  el.projectSearchInput.addEventListener("input", handleProjectSearchInput);
+  el.projectSearchInput.addEventListener("keydown", handleProjectSearchKeydown);
+  el.projectReplaceInput.addEventListener("input", handleProjectReplaceInput);
+  el.projectReplaceInput.addEventListener("keydown", handleProjectSearchKeydown);
+  el.projectSearchRunBtn.addEventListener("click", () => runProjectSearch({ force: true }));
+  el.projectSearchCaseBtn.addEventListener("click", () => toggleProjectSearchOption("caseSensitive"));
+  el.projectSearchWordBtn.addEventListener("click", () => toggleProjectSearchOption("wholeWord"));
+  el.projectSearchRegexBtn.addEventListener("click", () => toggleProjectSearchOption("regexp"));
+  el.projectReplaceToggleBtn.addEventListener("click", toggleProjectReplace);
+  el.projectReplaceAllBtn.addEventListener("click", replaceAllProjectMatches);
+  el.projectSearchResults.addEventListener("click", handleProjectSearchResultsClick);
+  el.projectSearchResults.addEventListener("scroll", handleProjectSearchResultsScroll);
   el.configTrigger.addEventListener("click", () => {
     closeSuitePicker();
     closeKeywordPanel();
