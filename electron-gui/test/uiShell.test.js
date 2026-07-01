@@ -25,6 +25,7 @@ const rendererModules = [
   "../src/renderer/remoteStatusController.js",
   "../src/renderer/runtimeController.js",
   "../src/renderer/searchController.js",
+  "../src/renderer/shortcutHelpController.js",
   "../src/renderer/state.js",
   "../src/renderer/suiteTreeController.js",
   "../src/renderer/treeVirtualizer.js",
@@ -905,6 +906,42 @@ test("editor supports keyboard save with visible shortcut affordance", () => {
   );
   assert.match(renderer, /async function saveCurrentFile\(options = \{\}\)/);
   assert.match(renderer, /if \(options\.source === "shortcut" && !state\.dirty\)/);
+});
+
+test("app exposes a global keyboard shortcuts help dialog", () => {
+  assert.match(html, /id="shortcutHelpBtn"/);
+  assert.match(html, /title="查看快捷键"/);
+  assert.match(html, /id="shortcutHelpDialog"/);
+  assert.match(html, /aria-label="快捷键"/);
+  assert.match(html, /id="shortcutHelpCloseBtn"/);
+  assert.match(html, /id="shortcutHelpList"/);
+  [
+    "编辑器",
+    "项目搜索",
+    "标签页",
+    "定义跳转",
+    "布局辅助",
+    "Ctrl/Cmd+S",
+    "Ctrl/Cmd+Shift+F",
+    "Ctrl/Cmd+Shift+H",
+    "Ctrl/Cmd+W",
+    "Ctrl/Cmd+Tab",
+    "Ctrl/Cmd+1-9",
+    "Ctrl/Cmd+点击",
+    "F12",
+    "Shift+方向键",
+  ].forEach((text) => {
+    assert.match(html, new RegExp(text.replace(/[+/]/g, "\\$&")));
+  });
+  assert.match(rendererEntry, /createShortcutHelpController/);
+  assert.match(rendererEntry, /shortcutHelpBtn\.addEventListener\("click", openShortcutHelp\)/);
+  assert.match(rendererEntry, /shortcutHelpCloseBtn\.addEventListener\("click", closeShortcutHelp\)/);
+  assert.match(rendererEntry, /shortcutHelpDialog\.addEventListener\("click"/);
+  assert.match(rendererEntry, /shortcutHelpDialog\.addEventListener\("keydown"/);
+  assert.match(css, /\.shortcut-dialog/);
+  assert.match(css, /\.shortcut-section/);
+  assert.match(css, /\.shortcut-key/);
+  assert.match(checkAppFiles, /"src\/renderer\/shortcutHelpController\.js"/);
 });
 
 test("console output can be cleared manually and resets before each execution", () => {

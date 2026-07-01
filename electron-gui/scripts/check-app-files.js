@@ -25,6 +25,7 @@ const requiredFiles = [
   "src/renderer/remoteStatusController.js",
   "src/renderer/runtimeController.js",
   "src/renderer/searchController.js",
+  "src/renderer/shortcutHelpController.js",
   "src/renderer/state.js",
   "src/renderer/suiteTreeController.js",
   "src/renderer/treeVirtualizer.js",

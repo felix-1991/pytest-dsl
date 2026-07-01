@@ -13,6 +13,7 @@ import { createExecutionController } from "./renderer/executionController.js";
 import { createWorkspaceController } from "./renderer/workspaceController.js";
 import { createProjectController } from "./renderer/projectController.js";
 import { createSearchController } from "./renderer/searchController.js";
+import { createShortcutHelpController } from "./renderer/shortcutHelpController.js";
 import { createInitialState } from "./renderer/state.js";
 import { errorMessage } from "./renderer/utils.js";
 
@@ -77,6 +78,15 @@ const {
 
 const layoutController = createLayoutController();
 const { bindPanelResizers, initializeLayoutSizing } = layoutController;
+
+const shortcutHelpController = createShortcutHelpController({ el });
+
+const {
+  closeShortcutHelp,
+  handleShortcutHelpBackdropClick,
+  handleShortcutHelpKeydown,
+  openShortcutHelp,
+} = shortcutHelpController;
 
 const runtimeController = createRuntimeController({
   state,
@@ -579,6 +589,10 @@ function cacheElements() {
     "configMerged",
     "metadataList",
     "deductionList",
+    "shortcutHelpBtn",
+    "shortcutHelpDialog",
+    "shortcutHelpCloseBtn",
+    "shortcutHelpList",
     "workspaceStatus",
     "actionStatus",
     "gitStatus",
@@ -607,6 +621,10 @@ function cacheElements() {
 function bindEvents() {
   bindPanelResizers();
   el.openProjectBtn.addEventListener("click", openProject);
+  el.shortcutHelpBtn.addEventListener("click", openShortcutHelp);
+  el.shortcutHelpCloseBtn.addEventListener("click", closeShortcutHelp);
+  el.shortcutHelpDialog.addEventListener("click", handleShortcutHelpBackdropClick);
+  el.shortcutHelpDialog.addEventListener("keydown", handleShortcutHelpKeydown);
   el.refreshBtn.addEventListener("click", refreshProject);
   el.saveBtn.addEventListener("click", saveCurrentFile);
   el.syntaxBtn.addEventListener("click", () => runExecutionTask("syntax"));
@@ -672,6 +690,7 @@ function bindEvents() {
       closeTreeContextMenu();
       closeTopPickers();
       closeKeywordPanel();
+      closeShortcutHelp({ restoreFocus: false });
     }
   });
 

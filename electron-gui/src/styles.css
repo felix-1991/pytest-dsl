@@ -159,7 +159,7 @@ button {
 
 .top-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   justify-content: flex-end;
   width: 100%;
 }
@@ -1371,6 +1371,109 @@ body.is-resizing-console .panel-resizer {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.shortcut-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+  width: min(620px, calc(100vw - 48px));
+  max-height: min(720px, calc(100vh - 48px));
+  padding: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  outline: none;
+}
+
+.shortcut-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.shortcut-dialog-head h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 23px;
+}
+
+.shortcut-dialog-head p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.shortcut-list {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.shortcut-section {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+  border-top: 1px solid var(--line);
+}
+
+.shortcut-section:first-child {
+  border-top: 0;
+}
+
+.shortcut-section h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.shortcut-section dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.shortcut-section dl > div {
+  display: grid;
+  grid-template-columns: minmax(150px, 200px) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.shortcut-section dt,
+.shortcut-section dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.shortcut-section dd {
+  color: var(--text);
+  line-height: 20px;
+}
+
+.shortcut-key {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  max-width: 100%;
+  padding: 2px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-soft);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .main-stage {

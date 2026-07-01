@@ -164,6 +164,15 @@
                     </div>
                     <button
                         class="icon-btn"
+                        id="shortcutHelpBtn"
+                        type="button"
+                        aria-label="查看快捷键"
+                        title="查看快捷键"
+                    >
+                        ?
+                    </button>
+                    <button
+                        class="icon-btn"
                         id="refreshBtn"
                         type="button"
                         aria-label="刷新"
@@ -883,6 +892,111 @@
                     </button>
                 </div>
             </form>
+        </div>
+
+        <div class="modal-backdrop" id="shortcutHelpDialog" hidden>
+            <section
+                class="shortcut-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-label="快捷键"
+                tabindex="-1"
+            >
+                <header class="shortcut-dialog-head">
+                    <div>
+                        <h2>快捷键</h2>
+                        <p>当前工作台显式支持的快捷键</p>
+                    </div>
+                    <button
+                        class="icon-btn"
+                        id="shortcutHelpCloseBtn"
+                        type="button"
+                        aria-label="关闭快捷键"
+                        title="关闭快捷键"
+                    >
+                        ×
+                    </button>
+                </header>
+                <div class="shortcut-list" id="shortcutHelpList">
+                    <section class="shortcut-section">
+                        <h3>编辑器</h3>
+                        <dl>
+                            <div>
+                                <dt><kbd class="shortcut-key">Ctrl/Cmd+S</kbd></dt>
+                                <dd>保存当前文件</dd>
+                            </div>
+                            <div>
+                                <dt><kbd class="shortcut-key">Ctrl/Cmd+F</kbd></dt>
+                                <dd>当前文件查找</dd>
+                            </div>
+                            <div>
+                                <dt><kbd class="shortcut-key">Ctrl/Cmd+H</kbd></dt>
+                                <dd>当前文件替换</dd>
+                            </div>
+                        </dl>
+                    </section>
+                    <section class="shortcut-section">
+                        <h3>项目搜索</h3>
+                        <dl>
+                            <div>
+                                <dt><kbd class="shortcut-key">Ctrl/Cmd+Shift+F</kbd></dt>
+                                <dd>内容搜索</dd>
+                            </div>
+                            <div>
+                                <dt><kbd class="shortcut-key">Ctrl/Cmd+Shift+H</kbd></dt>
+                                <dd>内容替换</dd>
+                            </div>
+                        </dl>
+                    </section>
+                    <section class="shortcut-section">
+                        <h3>标签页</h3>
+                        <dl>
+                            <div>
+                                <dt><kbd class="shortcut-key">Ctrl/Cmd+W</kbd></dt>
+                                <dd>关闭当前标签</dd>
+                            </div>
+                            <div>
+                                <dt><kbd class="shortcut-key">Ctrl/Cmd+Tab</kbd></dt>
+                                <dd>切换到下一个标签</dd>
+                            </div>
+                            <div>
+                                <dt><kbd class="shortcut-key">Ctrl/Cmd+Shift+Tab</kbd></dt>
+                                <dd>切换到上一个标签</dd>
+                            </div>
+                            <div>
+                                <dt><kbd class="shortcut-key">Ctrl/Cmd+1-9</kbd></dt>
+                                <dd>切换到对应序号标签</dd>
+                            </div>
+                        </dl>
+                    </section>
+                    <section class="shortcut-section">
+                        <h3>定义跳转</h3>
+                        <dl>
+                            <div>
+                                <dt><kbd class="shortcut-key">Ctrl/Cmd+点击</kbd></dt>
+                                <dd>跳转变量或关键字定义</dd>
+                            </div>
+                            <div>
+                                <dt><kbd class="shortcut-key">F12</kbd></dt>
+                                <dd>跳转当前光标处变量或关键字定义</dd>
+                            </div>
+                        </dl>
+                    </section>
+                    <section class="shortcut-section">
+                        <h3>布局辅助</h3>
+                        <dl>
+                            <div>
+                                <dt><kbd class="shortcut-key">方向键</kbd></dt>
+                                <dd>分隔线聚焦时调整面板宽度或高度</dd>
+                            </div>
+                            <div>
+                                <dt><kbd class="shortcut-key">Shift+方向键</kbd></dt>
+                                <dd>分隔线聚焦时大步调整</dd>
+                            </div>
+                        </dl>
+                    </section>
+                </div>
+            </section>
         </div>
 
         <script src="./editor-bundle.js"></script>
