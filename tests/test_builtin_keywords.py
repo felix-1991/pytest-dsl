@@ -363,6 +363,105 @@ def test_print_keyword_keeps_user_output_in_default_report(monkeypatch):
     assert ("打印输出", "内容: hello report") in attachments
 
 
+def test_print_keyword_limits_large_console_and_allure_output_by_default(
+        monkeypatch, capsys):
+    attachments = []
+
+    def record_attachment(body, name=None, attachment_type=None):
+        attachments.append((name, body))
+
+    monkeypatch.setattr("allure.attach", record_attachment)
+    monkeypatch.delenv("PYTEST_DSL_PRINT_MAX_CHARS", raising=False)
+    monkeypatch.delenv("PYTEST_DSL_PRINT_ALLURE_MAX_CHARS", raising=False)
+
+    large_content = "x" * 2100
+
+    system_keywords.print_content(content=large_content, skip_logging=True)
+
+    stdout = capsys.readouterr().out
+    assert "x" * 2000 in stdout
+    assert "x" * 2100 not in stdout
+    assert "truncated, original_length=2100, max_length=2000" in stdout
+    assert len(attachments) == 1
+    assert attachments[0][0] == "打印输出"
+    assert "x" * 2000 in attachments[0][1]
+    assert "x" * 2100 not in attachments[0][1]
+    assert "truncated, original_length=2100, max_length=2000" in attachments[0][1]
+
+
+def test_print_keyword_allows_separate_console_and_allure_limits(
+        monkeypatch, capsys):
+    attachments = []
+
+    def record_attachment(body, name=None, attachment_type=None):
+        attachments.append((name, body))
+
+    monkeypatch.setattr("allure.attach", record_attachment)
+
+    system_keywords.print_content(
+        content="abcdef",
+        max_length=3,
+        allure_max_length=4,
+        skip_logging=True,
+    )
+
+    stdout = capsys.readouterr().out
+    assert "内容: abc...(truncated, original_length=6, max_length=3)" in stdout
+    assert attachments == [
+        (
+            "打印输出",
+            "内容: abcd...(truncated, original_length=6, max_length=4)",
+        )
+    ]
+
+
+def test_print_keyword_limit_can_be_set_from_environment(monkeypatch, capsys):
+    attachments = []
+
+    def record_attachment(body, name=None, attachment_type=None):
+        attachments.append((name, body))
+
+    monkeypatch.setattr("allure.attach", record_attachment)
+    monkeypatch.setenv("PYTEST_DSL_PRINT_MAX_CHARS", "5")
+    monkeypatch.setenv("PYTEST_DSL_PRINT_ALLURE_MAX_CHARS", "7")
+
+    system_keywords.print_content(content="abcdefghij", skip_logging=True)
+
+    stdout = capsys.readouterr().out
+    assert "内容: abcde...(truncated, original_length=10, max_length=5)" in stdout
+    assert attachments == [
+        (
+            "打印输出",
+            "内容: abcdefg...(truncated, original_length=10, max_length=7)",
+        )
+    ]
+
+
+def test_print_keyword_accepts_dsl_limit_parameters(monkeypatch, capsys):
+    attachments = []
+
+    def record_attachment(body, name=None, attachment_type=None):
+        attachments.append((name, body))
+
+    monkeypatch.setattr("allure.attach", record_attachment)
+    monkeypatch.delenv("PYTEST_DSL_KEYWORD_TRACE", raising=False)
+
+    content = """
+@name: "打印限制"
+
+[打印], 内容: "abcdef", 最大长度: 3, 报告最大长度: 4
+"""
+
+    DSLExecutor(enable_hooks=False, enable_tracking=False).execute_from_content(content)
+
+    stdout = capsys.readouterr().out
+    assert "内容: abc...(truncated, original_length=6, max_length=3)" in stdout
+    assert (
+        "打印输出",
+        "内容: abcd...(truncated, original_length=6, max_length=4)",
+    ) in attachments
+
+
 def test_failed_assertion_report_keeps_failure_details(monkeypatch):
     attachments = []
 

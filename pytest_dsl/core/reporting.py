@@ -4,7 +4,7 @@ import contextlib
 import io
 import json
 import os
-from typing import Any, Callable, Dict, Iterable, TypeVar
+from typing import Any, Callable, Dict, Iterable, Optional, TypeVar
 
 import allure
 
@@ -28,6 +28,7 @@ SENSITIVE_KEY_PARTS = (
 )
 
 T = TypeVar("T")
+DEFAULT_PRINT_MAX_CHARS = 2000
 
 
 def is_verbose() -> bool:
@@ -112,6 +113,46 @@ def format_keyword_trace_arguments(arguments: Dict[str, Any],
 
 def _single_line(value: Any) -> str:
     return " ".join(str(value).splitlines())
+
+
+def resolve_max_chars(explicit_value: Any, env_name: str,
+                      default: Optional[int] = DEFAULT_PRINT_MAX_CHARS
+                      ) -> Optional[int]:
+    """Resolve a text output limit from a keyword argument or env var."""
+    if explicit_value not in (None, ""):
+        return _parse_max_chars(explicit_value, default)
+
+    env_value = os.getenv(env_name)
+    if env_value not in (None, ""):
+        return _parse_max_chars(env_value, default)
+
+    return default
+
+
+def _parse_max_chars(value: Any, default: Optional[int]) -> Optional[int]:
+    value_text = str(value).strip().lower()
+    if value_text in {"full", "none", "unlimited", "off"}:
+        return None
+
+    try:
+        max_chars = int(value)
+    except (TypeError, ValueError):
+        return default
+
+    if max_chars <= 0:
+        return None
+    return max_chars
+
+
+def limit_text(text: Any, max_chars: Optional[int]) -> str:
+    """Limit text length and append a compact truncation marker."""
+    text = str(text)
+    if max_chars is None or len(text) <= max_chars:
+        return text
+    return (
+        f"{text[:max_chars]}...(truncated, original_length={len(text)}, "
+        f"max_length={max_chars})"
+    )
 
 
 def run_with_suppressed_success_output(callback: Callable[[], T]) -> T:

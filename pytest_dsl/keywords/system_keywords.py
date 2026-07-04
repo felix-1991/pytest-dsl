@@ -6,17 +6,38 @@ import subprocess
 import datetime
 import logging
 from pytest_dsl.core.keyword_manager import keyword_manager
+from pytest_dsl.core.reporting import (
+    DEFAULT_PRINT_MAX_CHARS,
+    limit_text,
+    resolve_max_chars,
+)
 
 
 @keyword_manager.register('打印', [
-    {'name': '内容', 'mapping': 'content', 'description': '要打印的文本内容'}
+    {'name': '内容', 'mapping': 'content', 'description': '要打印的文本内容'},
+    {'name': '最大长度', 'mapping': 'max_length',
+     'description': '控制台输出最大字符数，<=0 或 full 表示不限制'},
+    {'name': '报告最大长度', 'mapping': 'allure_max_length',
+     'description': 'Allure报告附件最大字符数，默认跟随最大长度'}
 ], category='系统/调试', tags=['输出', '调试'], returns='none')
 def print_content(**kwargs):
     content = kwargs.get('content')
-    output = f"内容: {content}"
+    content_text = str(content)
+    console_max = resolve_max_chars(
+        kwargs.get('max_length'),
+        "PYTEST_DSL_PRINT_MAX_CHARS",
+        DEFAULT_PRINT_MAX_CHARS,
+    )
+    allure_max = resolve_max_chars(
+        kwargs.get('allure_max_length'),
+        "PYTEST_DSL_PRINT_ALLURE_MAX_CHARS",
+        console_max,
+    )
+    output = f"内容: {limit_text(content_text, console_max)}"
+    report_output = f"内容: {limit_text(content_text, allure_max)}"
     print(output)
     allure.attach(
-        output,
+        report_output,
         name="打印输出",
         attachment_type=allure.attachment_type.TEXT
     )
