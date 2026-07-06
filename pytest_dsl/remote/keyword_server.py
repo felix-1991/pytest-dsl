@@ -34,7 +34,7 @@ class RemoteKeywordServer:
     """远程关键字服务器，提供关键字的远程调用能力"""
 
     def __init__(self, host='localhost', port=8270, api_key=None,
-                 max_concurrency=20):
+                 max_concurrency=20, register_shutdown_handlers=True):
         self.host = host
         self.port = port
         self.server = None
@@ -49,8 +49,10 @@ class RemoteKeywordServer:
         # 注册内置关键字
         self._register_builtin_keywords()
 
-        # 注册关闭信号处理
-        self._register_shutdown_handlers()
+        # 注册关闭信号处理。嵌入式调用方（如 MCP stdio server）不应安装
+        # 进程级 signal/atexit 处理器，否则会影响宿主协议生命周期。
+        if register_shutdown_handlers:
+            self._register_shutdown_handlers()
 
     def _register_builtin_keywords(self):
         """注册所有内置关键字，复用本地模式的加载逻辑"""

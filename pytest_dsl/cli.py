@@ -36,7 +36,7 @@ def parse_args():
     argv = sys.argv[1:]  # 去掉脚本名
 
     # 检查是否使用了子命令格式
-    if argv and argv[0] in ['run', 'list-keywords', 'list']:
+    if argv and argv[0] in ['run', 'list-keywords', 'list', 'mcp']:
         # 使用新的子命令格式
         parser = argparse.ArgumentParser(description='执行DSL测试文件')
         subparsers = parser.add_subparsers(dest='command', help='可用命令')
@@ -99,6 +99,49 @@ def parse_args():
                 '--include-remote', action='store_true',
                 help='是否包含远程关键字（默认不包含）'
             )
+
+        # MCP服务命令
+        mcp_parser = subparsers.add_parser(
+            'mcp',
+            help='以MCP服务模式启动pytest-dsl'
+        )
+        mcp_parser.add_argument(
+            '--transport',
+            choices=['stdio', 'http'],
+            default='stdio',
+            help='MCP传输模式：stdio(默认) 或 http服务'
+        )
+        mcp_parser.add_argument(
+            '--host',
+            default='127.0.0.1',
+            help='HTTP服务监听地址（--transport http时使用）'
+        )
+        mcp_parser.add_argument(
+            '--port',
+            type=int,
+            default=8765,
+            help='HTTP服务监听端口（--transport http时使用）'
+        )
+        mcp_parser.add_argument(
+            '--path',
+            default='/mcp',
+            help='HTTP MCP端点路径（--transport http时使用）'
+        )
+        mcp_parser.add_argument(
+            '--extensions',
+            help='扩展模块路径，多个路径用逗号分隔'
+        )
+        mcp_parser.add_argument(
+            '--max-concurrency',
+            type=int,
+            default=20,
+            help='最大并发关键字执行数（默认: 20）'
+        )
+        mcp_parser.add_argument(
+            '--no-keyword-tools',
+            action='store_true',
+            help='只暴露通用MCP工具，不为每个关键字生成独立工具'
+        )
 
         return parser.parse_args(argv)
     else:
@@ -351,6 +394,9 @@ def main():
         )
     elif args.command == 'run':
         run_dsl_tests(args)
+    elif args.command == 'mcp':
+        from pytest_dsl.mcp.server import run_server_from_args
+        sys.exit(run_server_from_args(args))
     elif args.command == 'list-keywords-compat':
         # 向后兼容：旧的--list-keywords格式
         output_file = getattr(args, 'output', None)
