@@ -41,6 +41,7 @@ export default defineConfig({
             { text: 'pytest集成', link: '/guide/pytest-integration' },
             { text: '测试报告', link: '/guide/reporting' },
             { text: '命令行工具', link: '/guide/cli-tools' },
+            { text: 'MCP 服务', link: '/guide/mcp-server' },
             { text: '最佳实践', link: '/guide/best-practices' }
           ]
         },

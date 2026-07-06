@@ -337,6 +337,28 @@ pytest-dsl-server --extensions "ext1.py,ext2.py,extensions/"
 
 详细使用方法请参考 [远程关键字指南](./remote-keywords)。
 
+## pytest-dsl-mcp - MCP 服务
+
+用于以 MCP（Model Context Protocol）服务模式启动 pytest-dsl，把已加载关键字暴露给支持 MCP 的 AI 客户端。
+
+### 基本用法
+
+```bash
+# stdio 模式，适合 MCP 客户端直接拉起
+pytest-dsl-mcp
+
+# 等价的 pytest-dsl 子命令
+pytest-dsl mcp
+
+# HTTP 模式，启动常驻 MCP 服务
+pytest-dsl-mcp --transport http --host 127.0.0.1 --port 8765 --path /mcp
+
+# 加载扩展关键字
+pytest-dsl-mcp --extensions extensions/
+```
+
+详细启动方式和客户端配置请参考 [MCP 服务](./mcp-server)。
+
 ## pytest-dsl - 主执行命令
 
 用于执行DSL测试文件。
