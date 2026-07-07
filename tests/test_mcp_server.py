@@ -1,5 +1,6 @@
 import hashlib
 import http.client
+import io
 import json
 from pathlib import Path
 import threading
@@ -143,6 +144,72 @@ def test_mcp_dynamic_keyword_tool_call_uses_existing_keyword_execution():
     assert result["structuredContent"]["status"] == "PASS"
     assert result["structuredContent"]["return"]["result"] == 5
     assert json.loads(result["content"][0]["text"])["status"] == "PASS"
+
+
+@pytest.mark.parametrize("resource_dir_name", ["resources", "resource"])
+def test_mcp_loads_project_resource_keywords_as_tools_by_default(
+    tmp_path,
+    monkeypatch,
+    resource_dir_name,
+):
+    from pytest_dsl.mcp.server import (
+        MCPKeywordServer,
+        build_parser,
+        run_server_from_args,
+    )
+
+    resources_dir = tmp_path / resource_dir_name
+    resources_dir.mkdir()
+    (resources_dir / "gui.resource").write_text(
+        "\n".join([
+            '@name: "GUI资源"',
+            "",
+            "function GUI测试关键字 (输入) do",
+            "    return ${输入}",
+            "end",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+    resource_tool_name = MCPKeywordServer.keyword_tool_name("GUI测试关键字")
+    input_stream = io.StringIO("\n".join([
+        json.dumps({
+            "jsonrpc": "2.0",
+            "id": 31,
+            "method": "tools/list",
+        }, ensure_ascii=False),
+        json.dumps({
+            "jsonrpc": "2.0",
+            "id": 32,
+            "method": "tools/call",
+            "params": {
+                "name": resource_tool_name,
+                "arguments": {"输入": "ok"},
+            },
+        }, ensure_ascii=False),
+        "",
+    ]))
+    output_stream = io.StringIO()
+    monkeypatch.setattr("sys.stdin", input_stream)
+    monkeypatch.setattr("sys.stdout", output_stream)
+
+    assert run_server_from_args(build_parser().parse_args([])) == 0
+
+    response, call_response = [
+        json.loads(line) for line in output_stream.getvalue().splitlines()
+    ]
+    tools = response["result"]["tools"]
+    resource_tool = next(
+        tool for tool in tools
+        if tool["title"] == "GUI测试关键字"
+    )
+    assert resource_tool["name"] == resource_tool_name
+    assert resource_tool["inputSchema"]["required"] == ["输入"]
+    assert call_response["result"]["isError"] is False
+    assert call_response["result"]["structuredContent"]["status"] == "PASS"
+    assert call_response["result"]["structuredContent"]["return"]["result"] == "ok"
 
 
 def test_mcp_keyword_tool_name_falls_back_to_stable_hash_for_non_ascii_names():

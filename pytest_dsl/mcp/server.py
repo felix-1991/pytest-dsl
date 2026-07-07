@@ -8,6 +8,7 @@ import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
 import json
+import os
 import re
 import sys
 import urllib.parse
@@ -25,6 +26,7 @@ from pytest_dsl.remote.keyword_server import (
 PROTOCOL_VERSION = "2025-06-18"
 JSONRPC_VERSION = "2.0"
 KEYWORD_TOOL_PREFIX = "pytest_dsl_keyword__"
+PROJECT_RESOURCE_DIR_NAMES = ("resources", "resource")
 ANY_JSON_SCHEMA_TYPE = [
     "string",
     "number",
@@ -484,6 +486,32 @@ def _package_version() -> str:
         return "0.0.0"
 
 
+def load_project_resources(project_root: Optional[str] = None) -> None:
+    """Load project .resource files so their keywords become MCP tools."""
+    root = os.path.abspath(project_root or os.getcwd())
+    from pytest_dsl.core.custom_keyword_manager import custom_keyword_manager
+
+    for resource_dir in _iter_project_resource_dirs(root):
+        custom_keyword_manager.add_resource_path(resource_dir)
+        for resource_file in _iter_resource_files(resource_dir):
+            custom_keyword_manager.load_resource_file(resource_file)
+
+
+def _iter_project_resource_dirs(project_root: str) -> Iterable[str]:
+    for dirname in PROJECT_RESOURCE_DIR_NAMES:
+        resource_dir = os.path.join(project_root, dirname)
+        if os.path.isdir(resource_dir):
+            yield resource_dir
+
+
+def _iter_resource_files(resource_dir: str) -> Iterable[str]:
+    for current_dir, dirnames, filenames in os.walk(resource_dir):
+        dirnames.sort()
+        for filename in sorted(filenames):
+            if filename.endswith(".resource"):
+                yield os.path.join(current_dir, filename)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Start pytest-dsl as an MCP server")
@@ -628,6 +656,7 @@ def run_server_from_args(args) -> int:
             max_concurrency=getattr(args, "max_concurrency", 20),
             expose_keyword_tools=not getattr(args, "no_keyword_tools", False),
         )
+        load_project_resources()
 
     if getattr(args, "transport", "stdio") == "http":
         return run_http_service_from_args(args, server)
