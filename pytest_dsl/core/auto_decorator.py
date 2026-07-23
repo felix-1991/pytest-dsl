@@ -16,10 +16,10 @@ from pytest_dsl.core.dsl_executor_utils import read_file, execute_dsl_file, extr
 from pytest_dsl.core.lexer import get_lexer
 from pytest_dsl.core.parser import get_parser
 from pytest_dsl.core.auto_directory import (
-    SETUP_FILE_NAME, TEARDOWN_FILE_NAME,
-    SETUP_DSL_FILE_NAME, TEARDOWN_DSL_FILE_NAME,
-    execute_hook_file
+    execute_directory_setup,
+    execute_directory_teardown,
 )
+from pytest_dsl.core.hook_files import is_hook_file
 
 # 获取词法分析器和解析器实例
 lexer = get_lexer()
@@ -61,45 +61,35 @@ def auto_dsl(directory: Union[str, Path], is_file: bool = False):
             # 如果是文件路径，只添加这个文件的测试方法
             _add_test_method(cls, file_path)
         else:
-            # 检查setup和teardown文件（支持.auto和.dsl扩展名）
-            setup_file = None
-            teardown_file = None
-
-            # 优先查找.auto文件，然后查找.dsl文件
-            for setup_name in [SETUP_FILE_NAME, SETUP_DSL_FILE_NAME]:
-                potential_setup = directory_path / setup_name
-                if potential_setup.exists():
-                    setup_file = potential_setup
-                    break
-
-            for teardown_name in [TEARDOWN_FILE_NAME, TEARDOWN_DSL_FILE_NAME]:
-                potential_teardown = directory_path / teardown_name
-                if potential_teardown.exists():
-                    teardown_file = potential_teardown
-                    break
+            hook_files = [
+                path
+                for path in directory_path.iterdir()
+                if path.is_file() and is_hook_file(path)
+            ]
+            has_setup = any(path.name.startswith("setup") for path in hook_files)
+            has_teardown = any(path.name.startswith("teardown") for path in hook_files)
 
             # 添加setup和teardown方法
-            if setup_file:
+            if has_setup:
                 @classmethod
                 @pytest.fixture(scope="class", autouse=True)
                 def setup_class(cls, request):
-                    execute_hook_file(setup_file, True, str(directory_path))
+                    execute_directory_setup(directory_path)
 
                 setattr(cls, "setup_class", setup_class)
 
-            if teardown_file:
+            if has_teardown:
                 @classmethod
                 @pytest.fixture(scope="class", autouse=True)
                 def teardown_class(cls, request):
-                    request.addfinalizer(lambda: execute_hook_file(teardown_file, False, str(directory_path)))
+                    request.addfinalizer(lambda: execute_directory_teardown(directory_path))
 
                 setattr(cls, "teardown_class", teardown_class)
 
             # 处理目录中的测试文件，支持.auto和.dsl扩展名
-            excluded_files = [SETUP_FILE_NAME, TEARDOWN_FILE_NAME, SETUP_DSL_FILE_NAME, TEARDOWN_DSL_FILE_NAME]
             for pattern in ["*.auto", "*.dsl"]:
                 for test_file in directory_path.glob(pattern):
-                    if test_file.name not in excluded_files:
+                    if not is_hook_file(test_file):
                         _add_test_method(cls, test_file)
 
         return cls

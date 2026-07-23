@@ -9,11 +9,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
+from pytest_dsl.core.hook_files import is_hook_file
+
 
 ROOT_SUITE_ID = "__root__"
 GENERATED_DIR_NAME = ".pytest-dsl-generated"
 GENERATED_FILE_NAME = "test_dsl_cases.py"
-HOOK_FILENAMES = {"setup.dsl", "setup.auto", "teardown.dsl", "teardown.auto"}
 DSL_SUFFIXES = {".dsl", ".auto"}
 PYTEST_FILE_RE = re.compile(r"^(test_.*|.*_test)\.py$")
 HELPER_DIR_NAMES = {"_support", "_data"}
@@ -199,7 +200,7 @@ def _compact_target_paths(paths: Iterable[Path]) -> list[Path]:
 
 
 def _is_dsl_case_file(file_path: Path) -> bool:
-    return file_path.suffix in DSL_SUFFIXES and file_path.name not in HOOK_FILENAMES
+    return file_path.suffix in DSL_SUFFIXES and not is_hook_file(file_path)
 
 
 def _is_pytest_file(file_path: Path) -> bool:

@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 
 const ROOT_SUITE_ID = "__root__";
 const GENERATED_DIR_NAME = ".pytest-dsl-generated";
-const HOOK_FILENAMES = new Set(["setup.dsl", "setup.auto", "teardown.dsl", "teardown.auto"]);
+const HOOK_FILENAME_PATTERN = /^(setup|teardown)(?:_\d+(?:_.+)?)?\.(dsl|auto)$/;
 const DSL_EXTENSIONS = new Set([".dsl", ".auto"]);
 const HELPER_DIRS = new Set(["_support", "_data"]);
 
@@ -25,7 +25,7 @@ function discoverConventionSuites(projectRoot) {
     const basename = path.basename(filePath);
     const extension = path.extname(filePath);
 
-    if (DSL_EXTENSIONS.has(extension) && !HOOK_FILENAMES.has(basename)) {
+    if (DSL_EXTENSIONS.has(extension) && !isHookFilename(basename)) {
       suite.dslCaseFiles.push(filePath);
     } else if (isPytestFile(basename)) {
       suite.pythonTestFiles.push(filePath);
@@ -135,7 +135,7 @@ function discoverSuiteModels(projectRoot) {
     const basename = path.basename(filePath);
     const extension = path.extname(filePath);
 
-    if (DSL_EXTENSIONS.has(extension) && !HOOK_FILENAMES.has(basename)) {
+    if (DSL_EXTENSIONS.has(extension) && !isHookFilename(basename)) {
       suite.dslCaseFiles.push(filePath);
     } else if (isPytestFile(basename)) {
       suite.pythonTestFiles.push(filePath);
@@ -253,6 +253,10 @@ function sortSuiteTree(node) {
 
 function isPytestFile(basename) {
   return /^test_.*\.py$/.test(basename) || /^.*_test\.py$/.test(basename);
+}
+
+function isHookFilename(basename) {
+  return HOOK_FILENAME_PATTERN.test(basename);
 }
 
 function isGeneratedPath(filePath) {

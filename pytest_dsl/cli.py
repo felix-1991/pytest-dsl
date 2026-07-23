@@ -18,8 +18,10 @@ from pytest_dsl.core.parser import (
 from pytest_dsl.core.dsl_executor import DSLExecutor
 from pytest_dsl.core.yaml_loader import load_yaml_variables_from_args
 from pytest_dsl.core.auto_directory import (
-    SETUP_FILE_NAME, TEARDOWN_FILE_NAME, execute_hook_file
+    execute_directory_setup,
+    execute_directory_teardown,
 )
+from pytest_dsl.core.hook_files import is_hook_file
 from pytest_dsl.core.keyword_loader import load_all_keywords
 from pytest_dsl.core.keyword_utils import list_keywords as utils_list_keywords
 
@@ -267,8 +269,7 @@ def find_dsl_files(directory):
     dsl_files = []
     for root, _, files in os.walk(directory):
         for file in files:
-            if (file.endswith(('.dsl', '.auto')) and
-                    file not in [SETUP_FILE_NAME, TEARDOWN_FILE_NAME]):
+            if file.endswith(('.dsl', '.auto')) and not is_hook_file(file):
                 dsl_files.append(os.path.join(root, file))
     return dsl_files
 
@@ -343,10 +344,8 @@ def run_dsl_tests(args):
         # 执行目录中的所有DSL文件
         print(f"执行目录: {path}")
 
-        # 先执行目录的setup文件（如果存在）
-        setup_file = os.path.join(path, SETUP_FILE_NAME)
-        if os.path.exists(setup_file):
-            execute_hook_file(Path(setup_file), True, path)
+        # 先按数字顺序执行目录的setup文件（如果存在）
+        execute_directory_setup(path)
 
         # 查找并执行所有DSL文件
         dsl_files = find_dsl_files(path)
@@ -363,10 +362,8 @@ def run_dsl_tests(args):
             if not success:
                 failures += 1
 
-        # 最后执行目录的teardown文件（如果存在）
-        teardown_file = os.path.join(path, TEARDOWN_FILE_NAME)
-        if os.path.exists(teardown_file):
-            execute_hook_file(Path(teardown_file), False, path)
+        # 最后按反向顺序执行目录的teardown文件（如果存在）
+        execute_directory_teardown(path)
 
         # 如果有失败的测试，返回非零退出码
         if failures > 0:

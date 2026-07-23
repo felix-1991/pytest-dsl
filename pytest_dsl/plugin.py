@@ -24,6 +24,7 @@ class DslLifecycleState:
     def __init__(self):
         self.item_chains = {}
         self.remaining_counts = Counter()
+        self.setup_started = set()
         self.setup_executed = set()
         self.teardown_executed = set()
 
@@ -120,6 +121,7 @@ def pytest_collection_modifyitems(config, items):
     state = _get_lifecycle_state(config)
     state.item_chains.clear()
     state.remaining_counts.clear()
+    state.setup_started.clear()
     state.setup_executed.clear()
     state.teardown_executed.clear()
 
@@ -149,6 +151,7 @@ def pytest_runtest_setup(item):
     for directory in chain:
         if directory in state.setup_executed:
             continue
+        state.setup_started.add(directory)
         auto_directory.execute_directory_setup(directory)
         state.setup_executed.add(directory)
 
@@ -173,7 +176,7 @@ def pytest_sessionfinish(session, exitstatus):
     open_directories = [
         directory
         for directory in state.remaining_counts
-        if directory not in state.teardown_executed
+        if directory in state.setup_started and directory not in state.teardown_executed
     ]
     for directory in sorted(open_directories, key=lambda path: len(path.parts), reverse=True):
         _execute_teardown_once(state, directory)

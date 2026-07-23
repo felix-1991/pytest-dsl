@@ -17,6 +17,7 @@ from pytest_dsl.core.dsl_executor import DSLExecutor
 from pytest_dsl.core.dsl_executor_utils import read_file, execute_dsl_file, extract_metadata_from_ast
 from pytest_dsl.core.lexer import get_lexer
 from pytest_dsl.core.parser import get_parser
+from pytest_dsl.core.hook_files import discover_hook_files
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -62,39 +63,37 @@ def discover_hook_chain(hook_root: Union[str, Path], case_path: Union[str, Path]
 
 
 def find_setup_file(directory: Union[str, Path]) -> Optional[Path]:
-    """查找目录级setup文件。"""
-    path = Path(directory)
-    for name in [SETUP_DSL_FILE_NAME, SETUP_FILE_NAME]:
-        candidate = path / name
-        if candidate.exists():
-            return candidate
-    return None
+    """查找第一个目录级setup文件（兼容旧调用方）。"""
+    setup_files = find_setup_files(directory)
+    return setup_files[0] if setup_files else None
+
+
+def find_setup_files(directory: Union[str, Path]) -> List[Path]:
+    """按执行顺序查找目录级setup文件。"""
+    return discover_hook_files(directory, "setup")
 
 
 def find_teardown_file(directory: Union[str, Path]) -> Optional[Path]:
-    """查找目录级teardown文件。"""
-    path = Path(directory)
-    for name in [TEARDOWN_DSL_FILE_NAME, TEARDOWN_FILE_NAME]:
-        candidate = path / name
-        if candidate.exists():
-            return candidate
-    return None
+    """查找第一个目录级teardown文件（兼容旧调用方）。"""
+    teardown_files = find_teardown_files(directory)
+    return teardown_files[0] if teardown_files else None
+
+
+def find_teardown_files(directory: Union[str, Path]) -> List[Path]:
+    """按执行顺序查找目录级teardown文件。"""
+    return discover_hook_files(directory, "teardown")
 
 
 def execute_directory_setup(directory: Union[str, Path]) -> None:
-    """执行目录级setup文件（如果存在）。"""
+    """按顺序执行目录级setup文件（如果存在）。"""
     path = Path(directory).resolve()
-    setup_file = find_setup_file(path)
-    if setup_file:
-        execute_hook_file(setup_file, True, str(path))
+    execute_hook_files(find_setup_files(path), True, str(path))
 
 
 def execute_directory_teardown(directory: Union[str, Path]) -> None:
-    """执行目录级teardown文件（如果存在）。"""
+    """按反向顺序执行目录级teardown文件（如果存在）。"""
     path = Path(directory).resolve()
-    teardown_file = find_teardown_file(path)
-    if teardown_file:
-        execute_hook_file(teardown_file, False, str(path))
+    execute_hook_files(find_teardown_files(path), False, str(path))
 
 
 def get_lock_file_path(dir_path: str, is_setup: bool) -> str:
@@ -112,13 +111,26 @@ def get_lock_file_path(dir_path: str, is_setup: bool) -> str:
 
 
 def execute_hook_file(file_path: Path, is_setup: bool, dir_path_str: str) -> None:
-    """执行setup或teardown钩子文件
+    """执行单个setup或teardown钩子文件（兼容旧调用方）。"""
+    execute_hook_files([file_path], is_setup, dir_path_str)
+
+
+def execute_hook_files(
+    file_paths: Iterable[Path],
+    is_setup: bool,
+    dir_path_str: str,
+) -> None:
+    """将一个目录的有序hook文件作为一个执行单元运行。
 
     Args:
-        file_path: 钩子文件路径
+        file_paths: 已按执行顺序排列的钩子文件路径
         is_setup: 是否为setup钩子
         dir_path_str: 目录路径字符串
     """
+    paths = [Path(file_path) for file_path in file_paths]
+    if not paths:
+        return
+
     hook_type = "Setup" if is_setup else "Teardown"
     executed_set = _setup_executed if is_setup else _teardown_executed
     lock_file = get_lock_file_path(dir_path_str, is_setup)
@@ -131,9 +143,15 @@ def execute_hook_file(file_path: Path, is_setup: bool, dir_path_str: str) -> Non
     # 使用filelock获取锁并执行
     with FileLock(lock_file):
         if dir_path_str not in executed_set:  # 再次检查，防止在获取锁期间被其他进程执行
-            logger.info(f"Running {hook_type.lower()} for directory: {dir_path_str}")
-            if file_path.exists():
-                execute_dsl_file(str(file_path))
+            logger.info(
+                "Running %s files for directory %s: %s",
+                hook_type.lower(),
+                dir_path_str,
+                ", ".join(path.name for path in paths),
+            )
+            for file_path in paths:
+                if file_path.exists():
+                    execute_dsl_file(str(file_path))
             # 标记为已执行
             executed_set.add(dir_path_str)
             # 创建标记文件，用于跨进程共享执行状态

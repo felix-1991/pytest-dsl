@@ -32,10 +32,13 @@ def record(line):
 
 
 def pytest_configure(config):
-    def fake_execute_hook_file(file_path, is_setup, dir_path_str):
+    def fake_execute_hook_files(file_paths, is_setup, dir_path_str):
         hook_type = "setup" if is_setup else "teardown"
         directory = Path(dir_path_str).name or "tests"
-        record(f"{{hook_type}}:{{directory}}")
+        for file_path in file_paths:
+            hook_name = Path(file_path).stem
+            suffix = "" if hook_name == hook_type else f":{{hook_name}}"
+            record(f"{{hook_type}}:{{directory}}{{suffix}}")
 
     def fake_execute_dsl_file(file_path, executor=None):
         case_name = Path(file_path).stem
@@ -43,7 +46,7 @@ def pytest_configure(config):
         if EXIT_CASE == case_name:
             pytest.exit("stop early")
 
-    auto_directory.execute_hook_file = fake_execute_hook_file
+    auto_directory.execute_hook_files = fake_execute_hook_files
     dsl_collector.execute_dsl_file = fake_execute_dsl_file
 """
     )
@@ -77,6 +80,32 @@ def test_native_dsl_hooks_follow_nested_directory_scope_once(pytester):
     ]
 
 
+def test_native_dsl_hooks_support_numbered_files_in_numeric_order(pytester):
+    log_path = pytester.path / "order.log"
+    install_fake_runtime_logger(pytester, log_path)
+
+    write_file(pytester.path, "tests/setup.dsl")
+    write_file(pytester.path, "tests/setup_10_database.dsl")
+    write_file(pytester.path, "tests/setup_2_environment.dsl")
+    write_file(pytester.path, "tests/teardown.dsl")
+    write_file(pytester.path, "tests/teardown_10_database.dsl")
+    write_file(pytester.path, "tests/teardown_2_environment.dsl")
+    write_file(pytester.path, "tests/case.dsl", '[打印], 内容: "case"\n')
+
+    result = pytester.runpytest("tests", "-q")
+
+    result.assert_outcomes(passed=1)
+    assert log_path.read_text(encoding="utf-8").splitlines() == [
+        "setup:tests",
+        "setup:tests:setup_2_environment",
+        "setup:tests:setup_10_database",
+        "case:case",
+        "teardown:tests:teardown_10_database",
+        "teardown:tests:teardown_2_environment",
+        "teardown:tests",
+    ]
+
+
 def test_plain_pytest_items_do_not_trigger_dsl_hooks(pytester):
     log_path = pytester.path / "order.log"
     install_fake_runtime_logger(pytester, log_path)
@@ -102,6 +131,20 @@ def test_plain_pytest_item():
 
     result.assert_outcomes(passed=1)
     assert log_path.read_text(encoding="utf-8").splitlines() == ["plain:pytest"]
+
+
+def test_collect_only_does_not_execute_directory_hooks(pytester):
+    log_path = pytester.path / "order.log"
+    install_fake_runtime_logger(pytester, log_path)
+
+    write_file(pytester.path, "tests/setup.dsl")
+    write_file(pytester.path, "tests/teardown.dsl")
+    write_file(pytester.path, "tests/case.dsl", '[打印], 内容: "case"\n')
+
+    result = pytester.runpytest("tests", "--collect-only", "-q")
+
+    result.stdout.fnmatch_lines(["tests/case.dsl::case"])
+    assert not log_path.exists()
 
 
 def test_sessionfinish_closes_native_dsl_hook_scopes_after_early_exit(pytester):

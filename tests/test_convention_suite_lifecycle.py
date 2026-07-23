@@ -22,14 +22,17 @@ LOG_PATH = Path({str(log_path)!r})
 
 
 def pytest_configure(config):
-    def fake_execute_hook_file(file_path, is_setup, dir_path_str):
+    def fake_execute_hook_files(file_paths, is_setup, dir_path_str):
         hook_type = "setup" if is_setup else "teardown"
         directory = Path(dir_path_str).name or "tests"
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         with LOG_PATH.open("a", encoding="utf-8") as stream:
-            stream.write(f"{{hook_type}}:{{directory}}\\n")
+            for file_path in file_paths:
+                hook_name = Path(file_path).stem
+                suffix = "" if hook_name == hook_type else f":{{hook_name}}"
+                stream.write(f"{{hook_type}}:{{directory}}{{suffix}}\\n")
 
-    auto_directory.execute_hook_file = fake_execute_hook_file
+    auto_directory.execute_hook_files = fake_execute_hook_files
 """
     )
 

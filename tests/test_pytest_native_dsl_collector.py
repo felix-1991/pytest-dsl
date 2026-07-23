@@ -34,7 +34,9 @@ def test_collect_only_uses_stable_dsl_nodeid(pytester):
 
 def test_hook_files_are_not_collected_as_cases(pytester):
     write_file(pytester.path, "tests/setup.dsl", '[打印], 内容: "setup"\n')
+    write_file(pytester.path, "tests/setup_01_environment.dsl", '[打印], 内容: "setup"\n')
     write_file(pytester.path, "tests/teardown.dsl", '[打印], 内容: "teardown"\n')
+    write_file(pytester.path, "tests/teardown_01_environment.auto", '[打印], 内容: "teardown"\n')
     write_file(pytester.path, "tests/case.auto", '[打印], 内容: "case"\n')
 
     result = run_pytest_dsl(pytester, "tests", "--collect-only", "-q")
@@ -42,7 +44,9 @@ def test_hook_files_are_not_collected_as_cases(pytester):
     output = result.stdout.str()
     assert "tests/case.auto::case" in output
     assert "tests/setup.dsl::setup" not in output
+    assert "setup_01_environment" not in output
     assert "tests/teardown.dsl::teardown" not in output
+    assert "teardown_01_environment" not in output
 
 
 def test_directory_collects_dsl_and_plain_pytest_items(pytester):

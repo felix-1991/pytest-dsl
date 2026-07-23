@@ -15,6 +15,7 @@ from pytest_dsl.core.dsl_executor_utils import (
     extract_metadata_from_ast,
 )
 from pytest_dsl.core.lexer import get_lexer
+from pytest_dsl.core.hook_files import is_hook_file
 from pytest_dsl.core.parser import (
     format_parse_errors,
     parse_with_error_handling,
@@ -22,17 +23,11 @@ from pytest_dsl.core.parser import (
 
 
 DSL_SUFFIXES = {".dsl", ".auto"}
-HOOK_FILES = {
-    "setup.dsl",
-    "setup.auto",
-    "teardown.dsl",
-    "teardown.auto",
-}
 
 
 def is_dsl_case_file(path: Path) -> bool:
     """Return True for executable DSL case files."""
-    return path.suffix in DSL_SUFFIXES and path.name not in HOOK_FILES
+    return path.suffix in DSL_SUFFIXES and not is_hook_file(path)
 
 
 def find_tests_root(case_path: Path) -> Path:

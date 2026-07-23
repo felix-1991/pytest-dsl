@@ -125,10 +125,37 @@ def test_data_driven_test(self, test_data):
 
 ### Setup 和 Teardown 支持
 
-`auto_dsl` 装饰器自动识别并处理钩子文件：
+`auto_dsl` 装饰器和原生 pytest 收集器会自动识别并处理目录钩子文件：
 
-- `setup.dsl` 或 `setup.auto` - 类级别的前置操作
-- `teardown.dsl` 或 `teardown.auto` - 类级别的后置操作
+- `setup.dsl` 或 `setup.auto` - 兼容原有的前置操作，最先执行
+- `setup_<顺序>.dsl` - 多文件前置操作，按数字从小到大执行
+- `setup_<顺序>_<名称>.dsl` - 推荐的可读命名格式
+- `teardown.dsl`、`teardown_<顺序>.dsl` - 按 setup 的相反顺序执行
+
+`.auto` 扩展名也支持相同的编号约定。顺序按数字比较，因此
+`setup_2.dsl` 会先于 `setup_10.dsl`。相同数字再按完整文件名排序。
+
+```text
+tests/
+├── setup.dsl
+├── setup_10_environment.dsl
+├── setup_20_database.dsl
+├── teardown_20_database.dsl
+├── teardown_10_environment.dsl
+└── teardown.dsl
+```
+
+上述目录的执行顺序为：
+
+```text
+setup.dsl
+setup_10_environment.dsl
+setup_20_database.dsl
+测试用例
+teardown_20_database.dsl
+teardown_10_environment.dsl
+teardown.dsl
+```
 
 ```dsl
 # tests/setup.dsl

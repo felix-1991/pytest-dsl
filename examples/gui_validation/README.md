@@ -70,6 +70,23 @@ npm start --prefix electron-gui
 
 Studio 构建页使用 pytest 原生收集和 `--alluredir`；内嵌实时报告需要本机存在 Allure 3 CLI。Studio 是可选辅助工具，CLI 和 pytest 集成不依赖它。
 
+## 验收多文件 setup 顺序
+
+`tests/setup_order_validation/` 用于验收目录 hook 的命名约定和数字顺序。它会自动验证：
+
+- `setup.dsl` 最先执行；
+- `setup_2_environment.dsl` 先于 `setup_10_database.dsl`；
+- 测试用例在全部 setup 之后执行；
+- teardown 按 `10 → 2 → teardown.dsl` 的相反顺序执行。
+
+在 Studio 构建页选择 `setup_order_validation` 目录运行，或者在项目根目录执行：
+
+```bash
+python -m pytest examples/gui_validation/tests/setup_order_validation -q -s
+```
+
+控制台应依次显示 `[顺序验收] 1/7` 到 `[顺序验收] 7/7`，测试结果为 `1 passed`。
+
 ### 配置运行环境
 
 打包版 Studio 不会内置 Python 或 Allure。运行 DSL、调试和构建报告都依赖本机或项目内已安装的 Python 解释器；实时报告与 HTML 报告导出依赖外部 Allure 3 CLI。

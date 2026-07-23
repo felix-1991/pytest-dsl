@@ -2,6 +2,7 @@
 @description: "使用一个内置 HTTP请求 关键字完成请求、捕获、断言和变量传递"
 @tags: ["api", "http", "quickstart"]
 
+
 [HTTP请求], 客户端: "local_api", 配置: '''
     method: GET
     url: /api/users/${api_demo.user_id}
