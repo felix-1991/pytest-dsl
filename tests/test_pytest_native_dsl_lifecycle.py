@@ -52,6 +52,36 @@ def pytest_configure(config):
     )
 
 
+def install_xdist_runtime_logger(pytester, log_path: Path) -> None:
+    pytester.makeconftest(
+        f"""
+from pathlib import Path
+
+from pytest_dsl.core import auto_directory
+from pytest_dsl.core import dsl_collector
+
+LOG_PATH = Path({str(log_path)!r})
+
+
+def record(line):
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with LOG_PATH.open("a", encoding="utf-8") as stream:
+        stream.write(f"{{line}}\\n")
+
+
+def pytest_configure(config):
+    def fake_hook_file(file_path, executor=None):
+        record(f"hook:{{Path(file_path).stem}}")
+
+    def fake_case_file(file_path, executor=None):
+        record(f"case:{{Path(file_path).stem}}")
+
+    auto_directory.execute_dsl_file = fake_hook_file
+    dsl_collector.execute_dsl_file = fake_case_file
+"""
+    )
+
+
 def test_native_dsl_hooks_follow_nested_directory_scope_once(pytester):
     log_path = pytester.path / "order.log"
     install_fake_runtime_logger(pytester, log_path)
@@ -80,14 +110,16 @@ def test_native_dsl_hooks_follow_nested_directory_scope_once(pytester):
     ]
 
 
-def test_native_dsl_hooks_support_numbered_files_in_numeric_order(pytester):
+def test_native_dsl_hooks_support_named_and_numbered_files(pytester):
     log_path = pytester.path / "order.log"
     install_fake_runtime_logger(pytester, log_path)
 
     write_file(pytester.path, "tests/setup.dsl")
+    write_file(pytester.path, "tests/setup_前置打开debug开关.dsl")
     write_file(pytester.path, "tests/setup_10_database.dsl")
     write_file(pytester.path, "tests/setup_2_environment.dsl")
     write_file(pytester.path, "tests/teardown.dsl")
+    write_file(pytester.path, "tests/teardown_关闭debug开关.dsl")
     write_file(pytester.path, "tests/teardown_10_database.dsl")
     write_file(pytester.path, "tests/teardown_2_environment.dsl")
     write_file(pytester.path, "tests/case.dsl", '[打印], 内容: "case"\n')
@@ -97,11 +129,13 @@ def test_native_dsl_hooks_support_numbered_files_in_numeric_order(pytester):
     result.assert_outcomes(passed=1)
     assert log_path.read_text(encoding="utf-8").splitlines() == [
         "setup:tests",
+        "setup:tests:setup_前置打开debug开关",
         "setup:tests:setup_2_environment",
         "setup:tests:setup_10_database",
         "case:case",
         "teardown:tests:teardown_10_database",
         "teardown:tests:teardown_2_environment",
+        "teardown:tests:teardown_关闭debug开关",
         "teardown:tests",
     ]
 
@@ -171,3 +205,37 @@ def test_sessionfinish_closes_native_dsl_hook_scopes_after_early_exit(pytester):
         "teardown:api",
         "teardown:tests",
     ]
+
+
+def test_xdist_executes_directory_setup_and_teardown_once_globally(pytester):
+    __import__("pytest").importorskip("xdist")
+    log_path = pytester.path / "xdist-order.log"
+    install_xdist_runtime_logger(pytester, log_path)
+
+    write_file(pytester.path, "tests/setup.dsl")
+    write_file(pytester.path, "tests/teardown.dsl")
+    for index in range(4):
+        write_file(
+            pytester.path,
+            f"tests/case_{index}.dsl",
+            f'[打印], 内容: "case {index}"\n',
+        )
+
+    result = pytester.runpytest("tests", "-n", "2", "-q")
+
+    result.assert_outcomes(passed=4)
+    lines = log_path.read_text(encoding="utf-8").splitlines()
+    assert lines.count("hook:setup") == 1
+    assert lines.count("hook:teardown") == 1
+    assert sorted(line for line in lines if line.startswith("case:")) == [
+        "case:case_0",
+        "case:case_1",
+        "case:case_2",
+        "case:case_3",
+    ]
+    assert lines.index("hook:setup") < min(
+        index for index, line in enumerate(lines) if line.startswith("case:")
+    )
+    assert lines.index("hook:teardown") > max(
+        index for index, line in enumerate(lines) if line.startswith("case:")
+    )

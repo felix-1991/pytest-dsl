@@ -24,11 +24,13 @@ def suite_by_id(suites):
 def test_discovers_first_level_suites_and_excludes_hook_files(tmp_path):
     write_file(tmp_path, "tests/setup.dsl")
     write_file(tmp_path, "tests/setup_10_environment.dsl")
+    write_file(tmp_path, "tests/setup_前置打开debug开关.dsl")
     write_file(tmp_path, "tests/teardown.auto")
     write_file(tmp_path, "tests/root_case.dsl")
     write_file(tmp_path, "tests/test_smoke.py")
     write_file(tmp_path, "tests/api/setup.dsl")
     write_file(tmp_path, "tests/api/setup_20_database.auto")
+    write_file(tmp_path, "tests/api/teardown_关闭debug开关.auto")
     write_file(tmp_path, "tests/api/auth/login.dsl")
     write_file(tmp_path, "tests/api/auth/logout.auto")
     write_file(tmp_path, "tests/api/auth/teardown.dsl")

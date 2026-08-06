@@ -102,12 +102,14 @@ test("project snapshots include convention suite metadata and ignore generated f
   const root = makeTempProject();
   writeFile(root, "tests/setup.dsl", "[打印], 内容: \"setup\"\n");
   writeFile(root, "tests/setup_10_environment.dsl", "[打印], 内容: \"setup\"\n");
+  writeFile(root, "tests/setup_前置打开debug开关.dsl", "[打印], 内容: \"setup\"\n");
   writeFile(root, "tests/root_case.dsl", "[打印], 内容: \"root\"\n");
   writeFile(root, "tests/test_smoke.py", "def test_smoke():\n    pass\n");
   writeFile(root, "tests/api/auth/login.dsl", "[打印], 内容: \"login\"\n");
   writeFile(root, "tests/api/auth/logout.auto", "[打印], 内容: \"logout\"\n");
   writeFile(root, "tests/api/auth/teardown.dsl", "[打印], 内容: \"teardown\"\n");
   writeFile(root, "tests/api/auth/teardown_10_environment.auto", "[打印], 内容: \"teardown\"\n");
+  writeFile(root, "tests/api/auth/teardown_关闭debug开关.dsl", "[打印], 内容: \"teardown\"\n");
   writeFile(root, "tests/api/test_contract.py", "def test_contract():\n    pass\n");
   writeFile(root, "tests/ui/pages/dashboard.dsl", "[打印], 内容: \"dashboard\"\n");
   writeFile(root, "tests/api/auth/.pytest-dsl-generated/test_dsl_cases.py", "def test_generated():\n    pass\n");

@@ -1,9 +1,150 @@
 import importlib
 import sys
 import types
+from pathlib import Path
 
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.core.plugin_discovery import load_plugin_keywords, scan_local_keywords
+
+
+def test_scan_local_keywords_supports_project_package_imports(
+    tmp_path,
+    monkeypatch,
+):
+    original_sys_path = sys.path.copy()
+    original_keywords = keyword_manager._keywords.copy()
+    module_prefixes = ("keywords", "business")
+    original_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name in module_prefixes or name.startswith(
+            tuple(f"{prefix}." for prefix in module_prefixes)
+        )
+    }
+
+    business_dir = tmp_path / "business"
+    keywords_dir = tmp_path / "keywords"
+    business_dir.mkdir()
+    keywords_dir.mkdir()
+    (business_dir / "__init__.py").write_text("", encoding="utf-8")
+    (business_dir / "service.py").write_text(
+        "def helper():\n    return 'project helper'\n",
+        encoding="utf-8",
+    )
+    (keywords_dir / "__init__.py").write_text("", encoding="utf-8")
+    (keywords_dir / "project_keywords.py").write_text(
+        "\n".join(
+            [
+                "from business.service import helper",
+                "from pytest_dsl.core.keyword_manager import keyword_manager",
+                "",
+                "@keyword_manager.register('项目包导入关键字', [])",
+                "def project_package_keyword():",
+                "    return helper()",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        for name in list(sys.modules):
+            if name in module_prefixes or name.startswith(
+                tuple(f"{prefix}." for prefix in module_prefixes)
+            ):
+                sys.modules.pop(name)
+
+        monkeypatch.chdir(tmp_path)
+        project_root = Path.cwd()
+        sys.path[:] = [
+            path
+            for path in sys.path
+            if path not in {str(project_root), str(project_root / "keywords"), ""}
+        ]
+        assert str(project_root) not in sys.path
+        assert str(project_root / "keywords") not in sys.path
+        importlib.invalidate_caches()
+
+        scan_local_keywords()
+
+        assert keyword_manager.execute("项目包导入关键字") == "project helper"
+        assert sys.path.index(str(project_root)) < sys.path.index(
+            str(project_root / "keywords")
+        )
+    finally:
+        sys.path[:] = original_sys_path
+        keyword_manager._keywords.clear()
+        keyword_manager._keywords.update(original_keywords)
+        for name in list(sys.modules):
+            if name in module_prefixes or name.startswith(
+                tuple(f"{prefix}." for prefix in module_prefixes)
+            ):
+                sys.modules.pop(name)
+        sys.modules.update(original_modules)
+
+
+def test_scan_local_keywords_keeps_sibling_module_import_compatibility(
+    tmp_path,
+    monkeypatch,
+):
+    original_sys_path = sys.path.copy()
+    original_keywords = keyword_manager._keywords.copy()
+    module_names = {"keywords", "legacy_keyword_helper"}
+    original_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name in module_names or name.startswith("keywords.")
+    }
+
+    keywords_dir = tmp_path / "keywords"
+    keywords_dir.mkdir()
+    (keywords_dir / "__init__.py").write_text("", encoding="utf-8")
+    (keywords_dir / "legacy_keyword_helper.py").write_text(
+        "def helper():\n    return 'legacy helper'\n",
+        encoding="utf-8",
+    )
+    (keywords_dir / "legacy_keywords.py").write_text(
+        "\n".join(
+            [
+                "from legacy_keyword_helper import helper",
+                "from pytest_dsl.core.keyword_manager import keyword_manager",
+                "",
+                "@keyword_manager.register('旧式同级模块导入关键字', [])",
+                "def legacy_sibling_keyword():",
+                "    return helper()",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        for name in list(sys.modules):
+            if name in module_names or name.startswith("keywords."):
+                sys.modules.pop(name)
+
+        monkeypatch.chdir(tmp_path)
+        project_root = Path.cwd()
+        sys.path[:] = [
+            path
+            for path in sys.path
+            if path not in {str(project_root), str(project_root / "keywords"), ""}
+        ]
+        assert str(project_root) not in sys.path
+        assert str(project_root / "keywords") not in sys.path
+        importlib.invalidate_caches()
+
+        scan_local_keywords()
+
+        assert keyword_manager.execute("旧式同级模块导入关键字") == "legacy helper"
+    finally:
+        sys.path[:] = original_sys_path
+        keyword_manager._keywords.clear()
+        keyword_manager._keywords.update(original_keywords)
+        for name in list(sys.modules):
+            if name in module_names or name.startswith("keywords."):
+                sys.modules.pop(name)
+        sys.modules.update(original_modules)
 
 
 def test_scan_local_keywords_continues_after_subpackage_import_error(

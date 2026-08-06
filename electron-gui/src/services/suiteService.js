@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 
 const ROOT_SUITE_ID = "__root__";
 const GENERATED_DIR_NAME = ".pytest-dsl-generated";
-const HOOK_FILENAME_PATTERN = /^(setup|teardown)(?:_\d+(?:_.+)?)?\.(dsl|auto)$/;
+const HOOK_FILENAME_PATTERN = /^(setup|teardown)(?:_(?:\d+(?:_.+)?|(?!\d+(?:_|$)).+))?\.(dsl|auto)$/;
 const DSL_EXTENSIONS = new Set([".dsl", ".auto"]);
 const HELPER_DIRS = new Set(["_support", "_data"]);
 

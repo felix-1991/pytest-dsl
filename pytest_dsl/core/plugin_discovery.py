@@ -183,9 +183,19 @@ def scan_local_keywords() -> None:
         if keywords_dir.exists() and keywords_dir.is_dir():
             print_verbose(f"发现项目关键字目录: {keywords_dir}")
 
-            # 将keywords目录添加到Python路径中，以便能够导入
-            if str(keywords_dir) not in sys.path:
-                sys.path.insert(0, str(keywords_dir))
+            project_root_path = str(project_root)
+            keywords_dir_path = str(keywords_dir)
+
+            # 导入 keywords 包和项目内其他包时，Python 需要以项目根目录
+            # 作为导入根。keywords 目录仍保留为兼容路径，以支持旧的
+            # 顶层关键字模块之间使用 ``import sibling_module`` 的方式。
+            # 项目根目录必须排在兼容路径之前，避免同名模块遮蔽
+            # 项目级的包。
+            if keywords_dir_path not in sys.path:
+                sys.path.insert(0, keywords_dir_path)
+            if project_root_path in sys.path:
+                sys.path.remove(project_root_path)
+            sys.path.insert(0, project_root_path)
             
             # 首先尝试作为包导入整个keywords目录
             if (keywords_dir / '__init__.py').exists():

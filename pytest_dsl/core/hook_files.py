@@ -12,7 +12,10 @@ HookKind = Literal["setup", "teardown"]
 
 _HOOK_FILE_RE = re.compile(
     r"^(?P<kind>setup|teardown)"
-    r"(?:_(?P<order>\d+)(?:_(?P<label>.+))?)?"
+    r"(?:_(?:"
+    r"(?P<order>\d+)(?:_(?P<ordered_label>.+))?"
+    r"|(?P<named_label>(?!\d+(?:_|$)).+)"
+    r"))?"
     r"\.(?P<extension>dsl|auto)$"
 )
 
@@ -30,7 +33,7 @@ class HookFile:
     @property
     def legacy(self) -> bool:
         """Whether this is the unnumbered legacy hook filename."""
-        return self.order is None
+        return self.order is None and self.label is None
 
 
 def parse_hook_file(path: str | Path) -> HookFile | None:
@@ -41,11 +44,12 @@ def parse_hook_file(path: str | Path) -> HookFile | None:
         return None
 
     order_text = match.group("order")
+    label = match.group("ordered_label") or match.group("named_label")
     return HookFile(
         path=candidate,
         kind=match.group("kind"),
         order=int(order_text) if order_text is not None else None,
-        label=match.group("label"),
+        label=label,
         extension=match.group("extension"),
     )
 
@@ -58,9 +62,10 @@ def is_hook_file(path: str | Path) -> bool:
 def discover_hook_files(directory: str | Path, kind: HookKind) -> list[Path]:
     """Discover hook files in their execution order for one directory.
 
-    Legacy ``setup.dsl`` runs before numbered setup files. Numbered setup files
-    run by ascending numeric order and filename. Teardown uses the exact reverse
-    order so cleanup follows stack semantics.
+    Legacy ``setup.dsl`` runs first. Named hooks without an explicit order use
+    order zero, while numbered hooks run by ascending numeric order and
+    filename. Teardown uses the exact reverse order so cleanup follows stack
+    semantics.
 
     When the same stem exists as both ``.dsl`` and ``.auto``, the ``.dsl`` file
     wins for compatibility with native pytest-dsl collection.

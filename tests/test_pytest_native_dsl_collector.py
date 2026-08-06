@@ -35,8 +35,10 @@ def test_collect_only_uses_stable_dsl_nodeid(pytester):
 def test_hook_files_are_not_collected_as_cases(pytester):
     write_file(pytester.path, "tests/setup.dsl", '[打印], 内容: "setup"\n')
     write_file(pytester.path, "tests/setup_01_environment.dsl", '[打印], 内容: "setup"\n')
+    write_file(pytester.path, "tests/setup_前置打开debug开关.dsl", '[打印], 内容: "setup"\n')
     write_file(pytester.path, "tests/teardown.dsl", '[打印], 内容: "teardown"\n')
     write_file(pytester.path, "tests/teardown_01_environment.auto", '[打印], 内容: "teardown"\n')
+    write_file(pytester.path, "tests/teardown_关闭debug开关.dsl", '[打印], 内容: "teardown"\n')
     write_file(pytester.path, "tests/case.auto", '[打印], 内容: "case"\n')
 
     result = run_pytest_dsl(pytester, "tests", "--collect-only", "-q")
@@ -45,8 +47,10 @@ def test_hook_files_are_not_collected_as_cases(pytester):
     assert "tests/case.auto::case" in output
     assert "tests/setup.dsl::setup" not in output
     assert "setup_01_environment" not in output
+    assert "setup_前置打开debug开关" not in output
     assert "tests/teardown.dsl::teardown" not in output
     assert "teardown_01_environment" not in output
+    assert "teardown_关闭debug开关" not in output
 
 
 def test_directory_collects_dsl_and_plain_pytest_items(pytester):
@@ -133,3 +137,34 @@ def test_explicit_dsl_file_outside_tests_directory_still_runs(pytester):
     result = run_pytest_dsl(pytester, "examples/example.dsl", "-q")
 
     result.assert_outcomes(passed=1)
+
+
+def test_dsl_tags_are_native_pytest_markers(pytester):
+    write_file(
+        pytester.path,
+        "tests/smoke.dsl",
+        '@tags: [BVT, "串行"]\n\n[打印], 内容: "smoke"\n',
+    )
+    write_file(
+        pytester.path,
+        "tests/regression.dsl",
+        '@tags: [regression]\n\n[打印], 内容: "regression"\n',
+    )
+
+    result = run_pytest_dsl(pytester, "tests", "-m", "BVT", "--strict-markers", "-q")
+
+    result.assert_outcomes(passed=1, deselected=1)
+    assert "PytestUnknownMarkWarning" not in result.stdout.str()
+
+
+def test_unicode_dsl_tag_can_be_selected_with_marker_expression(pytester):
+    write_file(
+        pytester.path,
+        "tests/serial.dsl",
+        '@tags: ["串行"]\n\n[打印], 内容: "serial"\n',
+    )
+    write_file(pytester.path, "tests/parallel.dsl", '[打印], 内容: "parallel"\n')
+
+    result = run_pytest_dsl(pytester, "tests", "-m", "串行", "-q")
+
+    result.assert_outcomes(passed=1, deselected=1)

@@ -75,7 +75,9 @@ class DslFile(pytest.File):
         case_name = case_path.stem
 
         try:
-            data_cases = load_data_cases(case_path)
+            ast = load_case_ast(case_path)
+            data_cases = load_data_cases(case_path, ast=ast)
+            tags = extract_tags_from_ast(ast)
         except Exception as exc:
             raise self.CollectError(str(exc)) from exc
 
@@ -88,6 +90,7 @@ class DslFile(pytest.File):
                     tests_root=tests_root,
                     test_data=test_data,
                     data_index=index,
+                    tags=tags,
                 )
             return
 
@@ -96,6 +99,7 @@ class DslFile(pytest.File):
             name=case_name,
             case_path=case_path,
             tests_root=tests_root,
+            tags=tags,
         )
 
 
@@ -109,6 +113,7 @@ class DslItem(pytest.Item):
         tests_root: Path,
         test_data: dict[str, Any] | None = None,
         data_index: int | None = None,
+        tags: list[str] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -116,11 +121,20 @@ class DslItem(pytest.Item):
         self.tests_root = Path(tests_root).resolve()
         self.test_data = test_data
         self.data_index = data_index
+        self.tags = tuple(dict.fromkeys(tags or []))
         self._pytest_dsl_case = {
             "case_path": str(self.case_path),
             "hook_root": str(self.tests_root),
             "suite_id": suite_id_for(self.tests_root, self.case_path),
+            "tags": list(self.tags),
         }
+        registered_tags = getattr(self.config, "_pytest_dsl_registered_tags", set())
+        for tag in self.tags:
+            if tag not in registered_tags:
+                self.config.addinivalue_line("markers", f"{tag}: generated from DSL @tags")
+                registered_tags.add(tag)
+            self.add_marker(tag)
+        self.config._pytest_dsl_registered_tags = registered_tags
         self._obj = self._make_function_proxy()
 
     @property
@@ -157,8 +171,8 @@ class DslItem(pytest.Item):
         return self.case_path, 0, self.name
 
 
-def load_data_cases(case_path: Path) -> list[tuple[int, dict[str, Any]]]:
-    """Load @data rows for collection without executing the DSL body."""
+def load_case_ast(case_path: Path):
+    """Parse one DSL case for collection-time metadata."""
     content = case_path.read_text(encoding="utf-8")
     ast, errors = parse_with_error_handling(content, lexer=get_lexer())
     if errors:
@@ -166,6 +180,24 @@ def load_data_cases(case_path: Path) -> list[tuple[int, dict[str, Any]]]:
         raise ValueError(f"DSL解析失败:\n{message}")
     if ast is None:
         raise ValueError(f"DSL解析失败: {case_path}")
+    return ast
+
+
+def extract_tags_from_ast(ast) -> list[str]:
+    """Extract ordered, non-empty @tags values from a parsed DSL AST."""
+    for child in ast.children:
+        if child.type != "Metadata":
+            continue
+        for item in child.children:
+            if item.type == "@tags":
+                return [str(tag.value) for tag in item.value if str(tag.value)]
+    return []
+
+
+def load_data_cases(case_path: Path, ast=None) -> list[tuple[int, dict[str, Any]]]:
+    """Load @data rows for collection without executing the DSL body."""
+    if ast is None:
+        ast = load_case_ast(case_path)
 
     data_source, _test_title = extract_metadata_from_ast(ast)
     if not data_source:
