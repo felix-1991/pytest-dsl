@@ -263,3 +263,37 @@ api|[打印], 内容: "hello", 步骤名称: "远程自定义打印步骤"
     DSLExecutor(enable_hooks=False).execute_from_content(content)
 
     assert "远程自定义打印步骤" in step_titles
+
+
+def test_remote_assignment_in_loop_attaches_execution_error_once(monkeypatch):
+    attachments = []
+
+    def record_attachment(body, name=None, attachment_type=None):
+        attachments.append((name, body))
+
+    monkeypatch.setattr("allure.attach", record_attachment)
+    monkeypatch.setattr(
+        "pytest_dsl.remote.keyword_client.remote_keyword_manager."
+        "execute_remote_keyword_with_outcome",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("remote timeout")),
+    )
+
+    content = """
+@name: "远程循环异常去重测试"
+
+for i in range(0, 1) do
+    now = api|[获取当前时间]
+end
+"""
+
+    with pytest.raises(Exception, match="remote timeout"):
+        DSLExecutor(
+            enable_hooks=False,
+            enable_tracking=False,
+        ).execute_from_content(content)
+
+    execution_errors = [
+        body for name, body in attachments if name == "DSL执行异常"
+    ]
+    assert len(execution_errors) == 1

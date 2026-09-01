@@ -1,6 +1,15 @@
 """XML-RPC serialization boundary tests."""
 
-from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+import socket
+import threading
+import time
+
+import pytest
+
+from pytest_dsl.core.serialization_utils import (
+    XMLRPCCallError,
+    XMLRPCSerializer,
+)
 from pytest_dsl.remote.keyword_server import RemoteKeywordServer
 
 
@@ -177,6 +186,150 @@ def test_safe_xmlrpc_call_preserves_complete_response_body_string():
     )
 
 
+def test_safe_xmlrpc_timeout_reports_stage_elapsed_and_effective_timeout():
+    class FakeTransport:
+        def __init__(self):
+            self.timeout = 600.0
+            self.effective_timeout = 600.0
+            self.closed = False
+
+        def get_configured_timeout(self):
+            return self.timeout
+
+        def get_effective_timeout(self):
+            return self.effective_timeout
+
+        def set_timeout(self, timeout):
+            self.timeout = timeout
+            self.effective_timeout = timeout
+
+        def close(self):
+            self.closed = True
+
+    class TimeoutProxy:
+        def __init__(self):
+            self._ServerProxy__transport = FakeTransport()
+
+        def run_keyword(self):
+            raise socket.timeout("timed out")
+
+    proxy = TimeoutProxy()
+
+    with pytest.raises(XMLRPCCallError) as exc_info:
+        XMLRPCSerializer.safe_xmlrpc_call(
+            proxy,
+            "run_keyword",
+            _rpc_context="alias=windows;phase=keyword.execute",
+            _rpc_timeout=30.0,
+        )
+
+    error = exc_info.value
+    assert error.category == "timeout"
+    assert error.method_name == "run_keyword"
+    assert error.elapsed_seconds >= 0
+    assert error.configured_timeout == 30.0
+    assert error.effective_timeout == 30.0
+    assert "phase=keyword.execute" in str(error)
+    assert proxy._ServerProxy__transport.closed is True
+    assert proxy._ServerProxy__transport.timeout == 600.0
+
+
+def test_safe_xmlrpc_timeout_exposes_configured_effective_mismatch():
+    class MismatchedTransport:
+        def get_configured_timeout(self):
+            return 600.0
+
+        def get_effective_timeout(self):
+            return 120.0
+
+        def close(self):
+            pass
+
+    class TimeoutProxy:
+        _ServerProxy__transport = MismatchedTransport()
+
+        def run_keyword(self):
+            raise socket.timeout("timed out")
+
+    with pytest.raises(XMLRPCCallError) as exc_info:
+        XMLRPCSerializer.safe_xmlrpc_call(
+            TimeoutProxy(), "run_keyword",
+            _rpc_context="alias=windows;phase=keyword.execute")
+
+    error = exc_info.value
+    assert error.configured_timeout == 600.0
+    assert error.effective_timeout == 120.0
+    assert "configured_timeout=600.0s" in str(error)
+    assert "effective_timeout=120.0s" in str(error)
+
+
+def test_remote_client_serializes_calls_on_shared_server_proxy():
+    class ConcurrentProxy:
+        def __init__(self):
+            self.active = 0
+            self.max_active = 0
+            self.guard = threading.Lock()
+
+        def ping(self, value):
+            with self.guard:
+                self.active += 1
+                self.max_active = max(self.max_active, self.active)
+            time.sleep(0.01)
+            with self.guard:
+                self.active -= 1
+            return value
+
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    proxy = ConcurrentProxy()
+    client = RemoteKeywordClient(url="http://remote", alias="remote")
+    client.server = proxy
+    results = []
+
+    threads = [
+        threading.Thread(
+            target=lambda item=i: results.append(
+                client._rpc_call("ping", item, phase="test.concurrent")))
+        for i in range(6)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sorted(results) == list(range(6))
+    assert proxy.max_active == 1
+
+
+def test_timeout_transport_updates_an_already_open_socket():
+    from pytest_dsl.remote.keyword_client import TimeoutTransport
+
+    class FakeSocket:
+        def __init__(self):
+            self.timeout = 120.0
+
+        def settimeout(self, timeout):
+            self.timeout = timeout
+
+        def gettimeout(self):
+            return self.timeout
+
+    class FakeConnection:
+        def __init__(self):
+            self.timeout = 120.0
+            self.sock = FakeSocket()
+
+    transport = TimeoutTransport(timeout=600.0)
+    connection = FakeConnection()
+    transport._connection = ("remote", connection)
+
+    transport.set_timeout(30.0)
+
+    assert connection.timeout == 30.0
+    assert connection.sock.gettimeout() == 30.0
+    assert transport.get_effective_timeout() == 30.0
+
+
 def test_convert_to_serializable_preserves_large_strings_within_payload_limit():
     long_text = "x" * LONG_STRING_LENGTH
 
@@ -331,6 +484,42 @@ def test_realtime_sync_hook_result_is_xmlrpc_safe():
     }
 
 
+def test_realtime_sync_failure_blocks_keyword_by_default():
+    class FailingSyncProxy:
+        def sync_variables_from_client(self, variables, api_key=None):
+            raise socket.timeout("sync timed out")
+
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    client = RemoteKeywordClient(url="http://remote", alias="remote")
+    client.server = FailingSyncProxy()
+    client.sync_config["sync_timeout"] = 0.1
+
+    with pytest.raises(RuntimeError, match="执行远程关键字前同步上下文失败"):
+        client._sync_context_variables_before_execution(
+            _FakeContext(), request_id="client-request")
+
+
+def test_realtime_sync_warn_policy_preserves_legacy_best_effort(capsys):
+    class FailingSyncProxy:
+        def sync_variables_from_client(self, variables, api_key=None):
+            raise socket.timeout("sync timed out")
+
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    client = RemoteKeywordClient(
+        url="http://remote",
+        alias="remote",
+        sync_config={"realtime_sync_failure_policy": "warn"},
+    )
+    client.server = FailingSyncProxy()
+
+    result = client._sync_context_variables_before_execution(_FakeContext())
+
+    assert result is False
+    assert "调用远程变量同步接口失败" in capsys.readouterr().out
+
+
 def test_remote_keyword_call_args_are_xmlrpc_safe():
     from pytest_dsl.remote.keyword_client import RemoteKeywordClient
 
@@ -351,3 +540,52 @@ def test_remote_keyword_call_args_are_xmlrpc_safe():
     assert fake_server.received_args == {
         "version": "__bigint__:20260518160022"
     }
+
+
+def test_remote_keyword_outcome_contains_client_stage_timings():
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    fake_server = _FakeRemoteKeywordServerProxy()
+    client = RemoteKeywordClient(url="http://remote", alias="remote")
+    client.server = fake_server
+    client.param_mappings = {}
+    client.keyword_cache = {}
+
+    outcome = client._execute_remote_keyword_with_outcome(
+        name="远程阶段耗时测试")
+
+    client_rpc = outcome.diagnostics["client_rpc"]
+    assert client_rpc["client_request_id"]
+    assert client_rpc["context_sync_elapsed_ms"] >= 0
+    assert client_rpc["keyword_rpc_elapsed_ms"] >= 0
+    assert client_rpc["total_elapsed_ms"] >= 0
+
+
+def test_capable_remote_server_receives_client_request_id():
+    class MetadataProxy:
+        def __init__(self):
+            self.metadata = None
+
+        def run_keyword_with_metadata(self, name, args_dict, metadata,
+                                      api_key=None):
+            self.metadata = metadata
+            return {
+                "status": "PASS",
+                "return": "ok",
+                "diagnostics": {
+                    "request_id": metadata["client_request_id"],
+                },
+            }
+
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    proxy = MetadataProxy()
+    client = RemoteKeywordClient(url="http://remote", alias="remote")
+    client.server = proxy
+    client._server_capabilities = {"request_metadata": True}
+
+    outcome = client._execute_remote_keyword_with_outcome(name="metadata")
+
+    request_id = outcome.diagnostics["client_rpc"]["client_request_id"]
+    assert proxy.metadata == {"client_request_id": request_id}
+    assert outcome.diagnostics["request_id"] == request_id

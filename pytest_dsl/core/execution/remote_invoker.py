@@ -2,7 +2,11 @@
 
 import allure
 
-from pytest_dsl.core.execution.exceptions import DSLExecutionError
+from pytest_dsl.core.execution.exceptions import (
+    DSLExecutionError,
+    is_exception_reported,
+    mark_exception_reported,
+)
 from pytest_dsl.core.reporting import (
     format_keyword_arguments,
     is_verbose,
@@ -30,6 +34,19 @@ def _format_remote_diagnostics(diagnostics, fallback_traceback=None,
     elapsed_ms = diagnostics.get("elapsed_ms")
     if elapsed_ms is not None:
         lines.append(f"elapsed_ms: {elapsed_ms}")
+
+    client_rpc = diagnostics.get("client_rpc") or {}
+    if client_rpc:
+        lines.append(f"client_request_id: "
+                     f"{client_rpc.get('client_request_id', '')}")
+        lines.append(
+            "context_sync_elapsed_ms: "
+            f"{client_rpc.get('context_sync_elapsed_ms', 0)}")
+        lines.append(
+            "keyword_rpc_elapsed_ms: "
+            f"{client_rpc.get('keyword_rpc_elapsed_ms', 0)}")
+        lines.append(
+            f"client_total_elapsed_ms: {client_rpc.get('total_elapsed_ms', 0)}")
 
     diagnostic_error = diagnostics.get("error") or error_text
     if diagnostic_error:
@@ -137,9 +154,19 @@ class RemoteKeywordInvoker:
                     if not final_variables:
                         continue
 
-                    result = XMLRPCSerializer.safe_xmlrpc_call(
-                        client.server, 'sync_variables_from_client',
-                        final_variables, client.api_key)
+                    rpc_call = getattr(client, '_rpc_call', None)
+                    if callable(rpc_call):
+                        result = rpc_call(
+                            'sync_variables_from_client',
+                            final_variables,
+                            client.api_key,
+                            phase='variable.change',
+                            timeout=client.sync_config.get('sync_timeout'),
+                        )
+                    else:
+                        result = XMLRPCSerializer.safe_xmlrpc_call(
+                            client.server, 'sync_variables_from_client',
+                            final_variables, client.api_key)
 
                     if result.get('status') == 'success':
                         ok_aliases.append(alias)
@@ -230,6 +257,15 @@ class RemoteKeywordInvoker:
                     name=attachment_name,
                     attachment_type=allure.attachment_type.TEXT,
                 )
+                client_rpc = diagnostics.get('client_rpc') or {}
+                if client_rpc:
+                    allure.attach(
+                        _format_remote_diagnostics({
+                            'client_rpc': client_rpc,
+                        }),
+                        name="远程RPC阶段耗时",
+                        attachment_type=allure.attachment_type.TEXT,
+                    )
                 if diagnostics_has_output(diagnostics):
                     allure.attach(
                         _format_remote_diagnostics(diagnostics),
@@ -260,6 +296,7 @@ class RemoteKeywordInvoker:
                         name="远程关键字失败诊断",
                         attachment_type=allure.attachment_type.TEXT,
                     )
+                mark_exception_reported(e)
                 raise
 
     def handle_assignment_keyword_call(self, node):
@@ -301,14 +338,17 @@ class RemoteKeywordInvoker:
                     for capture_var, capture_value in captures.items():
                         self.notify_variable_changed(capture_var, capture_value)
             except Exception as e:
-                error_details = (f"执行AssignmentRemoteKeywordCall节点: {str(e)}"
-                                 f"{line_info}\n"
-                                 f"上下文: 执行AssignmentRemoteKeywordCall节点")
-                allure.attach(
-                    error_details,
-                    name="DSL执行异常",
-                    attachment_type=allure.attachment_type.TEXT,
-                )
+                if not is_exception_reported(e):
+                    error_details = (
+                        f"执行AssignmentRemoteKeywordCall节点: {str(e)}"
+                        f"{line_info}\n"
+                        f"上下文: 执行AssignmentRemoteKeywordCall节点")
+                    allure.attach(
+                        error_details,
+                        name="DSL执行异常",
+                        attachment_type=allure.attachment_type.TEXT,
+                    )
+                    mark_exception_reported(e)
                 raise
 
     def _apply_remote_result_captures(self, result):

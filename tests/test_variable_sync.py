@@ -124,6 +124,25 @@ class TestVariableTransfer:
         assert server.shared_variables['g_client_var1'] == 'client_value1'
         assert server.shared_variables['g_client_var2'] == 'client_value2'
 
+    def test_server_sync_batches_global_file_update(self, monkeypatch):
+        server = RemoteKeywordServer()
+        calls = []
+
+        monkeypatch.setattr(
+            global_context,
+            'set_variables',
+            lambda values, attach=True: calls.append((values, attach)),
+        )
+
+        result = server.sync_variables_from_client({
+            'g_first': 1,
+            'g_second': 2,
+            'local_only': 3,
+        })
+
+        assert result['status'] == 'success'
+        assert calls == [({'g_first': 1, 'g_second': 2}, False)]
+
     def test_api_key_authentication(self):
         """测试API密钥认证"""
         server = RemoteKeywordServer(api_key='test_key')

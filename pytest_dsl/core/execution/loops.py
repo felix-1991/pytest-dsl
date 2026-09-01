@@ -6,6 +6,8 @@ from pytest_dsl.core.execution.exceptions import (
     BreakException,
     ContinueException,
     ReturnException,
+    is_exception_reported,
+    mark_exception_reported,
 )
 from pytest_dsl.core.reporting import preview_value
 
@@ -45,8 +47,6 @@ class LoopHandlers:
 
                 for item in loop_items:
                     executor.state.set_local_variable(var_name, item)
-                    executor._notify_remote_servers_variable_changed(
-                        var_name, item)
 
                     try:
                         self._execute_loop_iteration(
@@ -72,7 +72,7 @@ class LoopHandlers:
             except (BreakException, ContinueException, ReturnException):
                 raise
             except Exception as e:
-                self._attach_loop_error("ForRangeLoop", str(e), line_info)
+                self._attach_loop_error("ForRangeLoop", e, line_info)
                 raise
 
     def handle_for_item_loop(self, node):
@@ -107,8 +107,6 @@ class LoopHandlers:
 
                 for item in collection:
                     executor.state.set_local_variable(var_name, item)
-                    executor._notify_remote_servers_variable_changed(
-                        var_name, item)
 
                     try:
                         self._execute_loop_iteration(
@@ -134,7 +132,7 @@ class LoopHandlers:
             except (BreakException, ContinueException, ReturnException):
                 raise
             except Exception as e:
-                self._attach_loop_error("ForItemLoop", str(e), line_info)
+                self._attach_loop_error("ForItemLoop", e, line_info)
                 raise
 
     def handle_for_key_value_loop(self, node):
@@ -167,10 +165,6 @@ class LoopHandlers:
                 for key, value in collection.items():
                     executor.state.set_local_variable(key_var, key)
                     executor.state.set_local_variable(value_var, value)
-                    executor._notify_remote_servers_variable_changed(
-                        key_var, key)
-                    executor._notify_remote_servers_variable_changed(
-                        value_var, value)
 
                     try:
                         self._execute_loop_iteration(
@@ -198,7 +192,7 @@ class LoopHandlers:
             except (BreakException, ContinueException, ReturnException):
                 raise
             except Exception as e:
-                self._attach_loop_error("ForKeyValueLoop", str(e), line_info)
+                self._attach_loop_error("ForKeyValueLoop", e, line_info)
                 raise
 
     def _execute_loop_iteration(self, statements_node, line_info, node_type,
@@ -228,24 +222,29 @@ class LoopHandlers:
                 )
                 raise e
             except Exception as e:
-                error_details = (f"循环执行异常 ({step_label}): "
-                                 f"{str(e)}{line_info}\n"
-                                 f"上下文: 执行{node_type}节点")
-                allure.attach(
-                    error_details,
-                    name="DSL执行异常",
-                    attachment_type=allure.attachment_type.TEXT,
-                )
+                if not is_exception_reported(e):
+                    error_details = (f"循环执行异常 ({step_label}): "
+                                     f"{str(e)}{line_info}\n"
+                                     f"上下文: 执行{node_type}节点")
+                    allure.attach(
+                        error_details,
+                        name="DSL执行异常",
+                        attachment_type=allure.attachment_type.TEXT,
+                    )
+                    mark_exception_reported(e)
                 raise
 
-    def _attach_loop_error(self, node_type, error_text, line_info):
-        error_details = (f"执行{node_type}节点: {error_text}{line_info}\n"
+    def _attach_loop_error(self, node_type, error, line_info):
+        if is_exception_reported(error):
+            return
+        error_details = (f"执行{node_type}节点: {str(error)}{line_info}\n"
                          f"上下文: 执行{node_type}节点")
         allure.attach(
             error_details,
             name="DSL执行异常",
             attachment_type=allure.attachment_type.TEXT,
         )
+        mark_exception_reported(error)
 
 
 class _LoopBreak(Exception):

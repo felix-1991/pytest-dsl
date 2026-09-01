@@ -9,7 +9,34 @@
 import datetime
 import sys
 import base64
+import time
 from typing import Any, Dict, List, Optional
+
+
+class XMLRPCCallError(Exception):
+    """Structured XML-RPC transport/call failure."""
+
+    def __init__(self, message: str, *, method_name: str,
+                 category: str, elapsed_seconds: float,
+                 configured_timeout=None, effective_timeout=None,
+                 call_context: str = None, original_exception=None):
+        self.method_name = method_name
+        self.category = category
+        self.elapsed_seconds = elapsed_seconds
+        self.configured_timeout = configured_timeout
+        self.effective_timeout = effective_timeout
+        self.call_context = call_context
+        self.original_exception = original_exception
+
+        details = [f"method={method_name}",
+                   f"elapsed={elapsed_seconds:.3f}s"]
+        if configured_timeout is not None:
+            details.append(f"configured_timeout={configured_timeout}s")
+        if effective_timeout is not None:
+            details.append(f"effective_timeout={effective_timeout}s")
+        if call_context:
+            details.append(f"context={call_context}")
+        super().__init__(f"{message} ({', '.join(details)})")
 
 
 class XMLRPCSerializer:
@@ -459,8 +486,9 @@ class XMLRPCSerializer:
             return False, f"序列化错误: {type(e).__name__}: {str(e)}"
 
     @staticmethod
-    def safe_xmlrpc_call(server_proxy, method_name: str, *args, **kwargs):
-        """安全的XML-RPC调用，包含错误处理和重试机制
+    def safe_xmlrpc_call(server_proxy, method_name: str, *args,
+                         _rpc_context=None, _rpc_timeout=None, **kwargs):
+        """安全的XML-RPC调用，包含序列化、计时和结构化错误处理。
 
         Args:
             server_proxy: XML-RPC服务器代理
@@ -474,6 +502,61 @@ class XMLRPCSerializer:
         import xmlrpc.client
         import socket
         import http.client
+
+        transport = getattr(server_proxy, '_ServerProxy__transport', None)
+        configured_timeout = None
+        effective_timeout = None
+        original_timeout = None
+
+        if transport is not None:
+            get_timeout = getattr(transport, 'get_configured_timeout', None)
+            if callable(get_timeout):
+                configured_timeout = get_timeout()
+                original_timeout = configured_timeout
+            if _rpc_timeout is not None:
+                set_timeout = getattr(transport, 'set_timeout', None)
+                if callable(set_timeout):
+                    set_timeout(_rpc_timeout)
+                    configured_timeout = _rpc_timeout
+
+        started_at = time.monotonic()
+
+        def _elapsed():
+            return time.monotonic() - started_at
+
+        def _effective_timeout():
+            if transport is None:
+                return None
+            getter = getattr(transport, 'get_effective_timeout', None)
+            if callable(getter):
+                return getter()
+            return configured_timeout
+
+        def _discard_connection():
+            if transport is None:
+                return
+            close = getattr(transport, 'close', None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
+
+        def _raise(message, category, error):
+            nonlocal effective_timeout
+            effective_timeout = _effective_timeout()
+            if category in {'timeout', 'network', 'http', 'protocol'}:
+                _discard_connection()
+            raise XMLRPCCallError(
+                message,
+                method_name=method_name,
+                category=category,
+                elapsed_seconds=_elapsed(),
+                configured_timeout=configured_timeout,
+                effective_timeout=effective_timeout,
+                call_context=_rpc_context,
+                original_exception=error,
+            ) from error
 
         try:
             # 获取方法
@@ -506,20 +589,30 @@ class XMLRPCSerializer:
             result = method(*converted_args, **converted_kwargs)
             return XMLRPCSerializer.restore_bigints(result)
 
+        except XMLRPCCallError:
+            raise
         except xmlrpc.client.ProtocolError as e:
-            raise Exception(f"XML-RPC协议错误: {e.errcode} {e.errmsg}")
+            _raise(f"XML-RPC协议错误: {e.errcode} {e.errmsg}", 'protocol', e)
         except xmlrpc.client.Fault as e:
-            raise Exception(f"XML-RPC服务器错误: {e.faultCode} {e.faultString}")
-        except socket.timeout:
-            raise Exception("XML-RPC调用超时")
+            _raise(f"XML-RPC服务器错误: {e.faultCode} {e.faultString}",
+                   'server_fault', e)
+        except socket.timeout as e:
+            _raise("XML-RPC调用超时", 'timeout', e)
         except socket.error as e:
-            raise Exception(f"网络连接错误: {str(e)}")
+            _raise(f"网络连接错误: {str(e)}", 'network', e)
         except http.client.HTTPException as e:
-            raise Exception(f"HTTP错误: {str(e)}")
+            _raise(f"HTTP错误: {str(e)}", 'http', e)
         except UnicodeError as e:
-            raise Exception(f"编码错误: {str(e)}")
+            _raise(f"编码错误: {str(e)}", 'encoding', e)
         except Exception as e:
-            raise Exception(f"XML-RPC调用失败: {type(e).__name__}: {str(e)}")
+            _raise(f"XML-RPC调用失败: {type(e).__name__}: {str(e)}",
+                   'call', e)
+        finally:
+            if (_rpc_timeout is not None and transport is not None and
+                    original_timeout is not None):
+                set_timeout = getattr(transport, 'set_timeout', None)
+                if callable(set_timeout):
+                    set_timeout(original_timeout)
 
 
 # 创建全局序列化器实例，方便直接使用

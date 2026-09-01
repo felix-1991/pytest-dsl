@@ -131,10 +131,12 @@ remote_servers:
     url: "http://server1:8270/"
     alias: "server1"
     api_key: "your_api_key"
-    timeout: 60
+    timeout: 600
     sync_config:
       sync_global_vars: true
       sync_yaml_vars: true
+      sync_timeout: 30
+      realtime_sync_failure_policy: fail
 
   backup_server:
     url: "http://server2:8270/"
@@ -438,12 +440,22 @@ remote_servers:
   slow_server:
     url: "http://slow-server:8270/"
     alias: "slow_server"
-    timeout: 60  # 增加超时时间
+    timeout: 600  # 关键字执行/普通RPC超时时间
+    sync_config:
+      sync_timeout: 30
+      realtime_sync_failure_policy: fail
 ```
 
 说明：
 - `remote_servers.*.timeout` 会用于远程 XML-RPC 调用超时控制。
-- 未配置时默认超时为 60 秒。
+- 未配置时默认关键字调用超时为 600 秒。
+- `sync_config.sync_timeout` 单独控制执行前的上下文同步，默认不超过 30 秒。
+- `sync_config.realtime_sync_failure_policy` 默认为 `fail`。同步失败时阻止关键字执行，避免远端使用过期变量。需要兼容旧版“尽力同步”行为时可显式设置为 `warn`。
+- 超时错误会同时显示 `elapsed`、`configured_timeout`、`effective_timeout`、调用阶段和客户端请求 ID。新客户端与新服务端会通过能力探测传递同一个请求 ID，便于对照两端日志；连接旧服务端时自动回退兼容协议。传输异常后客户端会丢弃旧连接，下一次调用重新建连。
+
+远端全局变量文件锁默认最多等待 30 秒，可通过环境变量
+`PYTEST_DSL_GLOBAL_LOCK_TIMEOUT` 调整。超过该时间会明确返回同步失败，
+不会让请求无限等待。
 
 #### Q: 返回“服务器繁忙：并发请求已达上限”
 

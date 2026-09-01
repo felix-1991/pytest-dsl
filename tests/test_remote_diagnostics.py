@@ -193,6 +193,20 @@ def test_run_keyword_response_with_diagnostics_is_xmlrpc_safe(monkeypatch):
     assert valid, error
 
 
+def test_run_keyword_metadata_preserves_client_request_id():
+    server = make_server()
+
+    response = server.run_keyword_with_metadata(
+        "远程诊断失败测试",
+        {"label": "request-id"},
+        {"client_request_id": "client-req-123"},
+    )
+
+    assert response["status"] == "FAIL"
+    assert response["diagnostics"]["request_id"] == "client-req-123"
+    assert server.get_server_capabilities()["request_metadata"] is True
+
+
 def test_dsl_remote_keyword_roundtrip_through_xmlrpc_service(monkeypatch):
     force_large_diagnostics_thread_id(monkeypatch)
     remote_keyword_manager.clients.clear()

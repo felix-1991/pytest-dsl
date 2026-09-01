@@ -17,9 +17,18 @@ class GlobalContext:
         self._storage_file = os.path.join(
             self._storage_dir, "global_vars.json")
         self._lock_file = os.path.join(self._storage_dir, "global_vars.lock")
+        try:
+            self._lock_timeout = float(os.getenv(
+                "PYTEST_DSL_GLOBAL_LOCK_TIMEOUT", "30"))
+        except (TypeError, ValueError):
+            self._lock_timeout = 30.0
 
         # 初始化变量提供者（延迟加载，避免循环导入）
         self._yaml_provider = None
+
+    def _lock(self):
+        """Create a bounded lock so remote requests cannot wait forever."""
+        return FileLock(self._lock_file, timeout=self._lock_timeout)
 
     def _get_yaml_provider(self):
         """延迟获取YAML变量提供者，避免循环导入"""
@@ -34,7 +43,7 @@ class GlobalContext:
 
     def set_variable(self, name: str, value: Any) -> None:
         """设置全局变量"""
-        with FileLock(self._lock_file):
+        with self._lock():
             variables = self._load_variables()
             variables[name] = value
             self._save_variables(variables)
@@ -45,6 +54,27 @@ class GlobalContext:
             attachment_type=allure.attachment_type.TEXT
         )
 
+    def set_variables(self, values: Dict[str, Any], attach: bool = True) -> None:
+        """Set multiple variables with one lock acquisition and one file write."""
+        if not values:
+            return
+
+        with self._lock():
+            variables = self._load_variables()
+            variables.update(values)
+            self._save_variables(variables)
+
+        if attach:
+            names = list(values.keys())
+            preview = ", ".join(names[:20])
+            if len(names) > 20:
+                preview += ", ..."
+            allure.attach(
+                f"批量设置全局变量: {len(values)} 项\n变量: {preview}",
+                name="全局变量批量设置",
+                attachment_type=allure.attachment_type.TEXT,
+            )
+
     def get_variable(self, name: str) -> Any:
         """获取全局变量，优先从YAML变量中获取"""
         # 首先尝试从YAML变量中获取（通过变量提供者）
@@ -54,7 +84,7 @@ class GlobalContext:
             return yaml_value
 
         # 如果YAML中没有，则从全局变量存储中获取
-        with FileLock(self._lock_file):
+        with self._lock():
             variables = self._load_variables()
             return variables.get(name)
 
@@ -66,13 +96,13 @@ class GlobalContext:
             return True
 
         # 然后检查全局变量存储
-        with FileLock(self._lock_file):
+        with self._lock():
             variables = self._load_variables()
             return name in variables
 
     def delete_variable(self, name: str) -> None:
         """删除全局变量（仅删除存储的变量，不影响YAML变量）"""
-        with FileLock(self._lock_file):
+        with self._lock():
             variables = self._load_variables()
             if name in variables:
                 del variables[name]
@@ -86,7 +116,7 @@ class GlobalContext:
 
     def clear_all(self) -> None:
         """清除所有全局变量（包括YAML变量）"""
-        with FileLock(self._lock_file):
+        with self._lock():
             self._save_variables({})
 
         # 清除YAML变量（通过变量提供者）
@@ -112,8 +142,17 @@ class GlobalContext:
 
     def _save_variables(self, variables: Dict[str, Any]) -> None:
         """保存变量到文件"""
-        with open(self._storage_file, 'w', encoding='utf-8') as f:
-            json.dump(variables, f, ensure_ascii=False, indent=2)
+        fd, temp_path = tempfile.mkstemp(
+            prefix="global_vars_", suffix=".json", dir=self._storage_dir)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(variables, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_path, self._storage_file)
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
 
 
 class _EmptyProvider:

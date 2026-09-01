@@ -3,6 +3,9 @@ from functools import partial
 import logging
 import difflib
 import os
+import threading
+import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict
 
@@ -58,7 +61,35 @@ class _TimeoutMixin:
         conn = super().make_connection(host)
         if self._timeout is not None:
             conn.timeout = self._timeout
+            # HTTPConnection.timeout does not update an already-open socket.
+            # ServerProxy may reuse a persistent connection, so update both.
+            if getattr(conn, 'sock', None) is not None:
+                conn.sock.settimeout(self._timeout)
+        self._effective_timeout = (
+            conn.sock.gettimeout()
+            if getattr(conn, 'sock', None) is not None
+            else conn.timeout
+        )
         return conn
+
+    def set_timeout(self, timeout):
+        self._timeout = float(timeout) if timeout is not None else None
+        self._effective_timeout = self._timeout
+        connection = getattr(self, '_connection', None)
+        conn = connection[1] if connection and len(connection) > 1 else None
+        if conn is not None:
+            conn.timeout = self._timeout
+            if getattr(conn, 'sock', None) is not None:
+                conn.sock.settimeout(self._timeout)
+                self._effective_timeout = conn.sock.gettimeout()
+            else:
+                self._effective_timeout = conn.timeout
+
+    def get_configured_timeout(self):
+        return self._timeout
+
+    def get_effective_timeout(self):
+        return getattr(self, '_effective_timeout', self._timeout)
 
 
 class TimeoutTransport(_TimeoutMixin, xmlrpc.client.Transport):
@@ -94,6 +125,8 @@ class RemoteKeywordClient:
         self.url = url
         self.timeout = float(timeout) if timeout is not None else 600.0
         self.server = _create_server_proxy(url, self.timeout)
+        self._rpc_lock = threading.RLock()
+        self._server_capabilities = {}
         self.keyword_cache = {}
         self.param_mappings = {}  # 存储每个关键字的参数映射
         self.api_key = api_key
@@ -101,22 +134,64 @@ class RemoteKeywordClient:
             'https://', '').split(':')[0]
 
         # 变量传递配置（简化版）
-        self.sync_config = sync_config or {
+        default_sync_config = {
             'sync_global_vars': True,   # 连接时传递全局变量（g_开头）
             'sync_yaml_vars': True,     # 连接时传递YAML配置变量
             'yaml_sync_keys': None,     # 指定要同步的YAML键列表，None表示同步所有（除了排除的）
             'yaml_exclude_patterns': [  # 排除包含这些模式的YAML变量
                 'private', 'remote_servers'  # 排除远程服务器配置避免循环
-            ]
+            ],
+            # 实时同步是关键字执行的一部分；默认失败即阻断，避免远端使用旧变量。
+            'realtime_sync_failure_policy': 'fail',
+            # 同步应快速完成，不应占用关键字本身的长执行超时。
+            'sync_timeout': min(self.timeout, 30.0),
         }
+        self.sync_config = default_sync_config
+        if sync_config:
+            self.sync_config.update(sync_config)
+
+    def _get_rpc_lock(self):
+        lock = getattr(self, '_rpc_lock', None)
+        if lock is None:
+            lock = threading.RLock()
+            self._rpc_lock = lock
+        return lock
+
+    def _rpc_call(self, method_name, *args, phase=None, timeout=None,
+                  request_id=None):
+        """Serialize access to ServerProxy and add call-stage diagnostics."""
+        from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+
+        context_parts = [f"alias={self.alias}", f"phase={phase or method_name}"]
+        if request_id:
+            context_parts.append(f"client_request_id={request_id}")
+        with self._get_rpc_lock():
+            return XMLRPCSerializer.safe_xmlrpc_call(
+                self.server,
+                method_name,
+                *args,
+                _rpc_context=';'.join(context_parts),
+                _rpc_timeout=timeout,
+            )
 
     def connect(self):
         """连接到远程服务器并获取可用关键字"""
         try:
             _print_verbose(f"远程连接: 开始连接 {self.alias} ({self.url})")
-            from pytest_dsl.core.serialization_utils import XMLRPCSerializer
-            keyword_names = XMLRPCSerializer.safe_xmlrpc_call(
-                self.server, 'get_keyword_names')
+            keyword_names = self._rpc_call(
+                'get_keyword_names', phase='connect.keyword_names')
+            try:
+                capabilities = self._rpc_call(
+                    'get_server_capabilities',
+                    phase='connect.server_capabilities')
+                if isinstance(capabilities, dict):
+                    self._server_capabilities = capabilities
+            except Exception as exc:
+                # Older servers do not expose capabilities. Keep the legacy
+                # run_keyword signature instead of sending unsupported args.
+                self._server_capabilities = {}
+                _print_verbose(
+                    f"远程连接: {self.alias} 使用兼容协议: {exc}")
             _print_verbose(
                 f"远程连接: {self.alias} 加载关键字 {len(keyword_names)} 个")
             for name in keyword_names:
@@ -141,11 +216,11 @@ class RemoteKeywordClient:
         """注册远程关键字到本地关键字管理器"""
         # 获取关键字参数信息
         try:
-            from pytest_dsl.core.serialization_utils import XMLRPCSerializer
             contract = {}
             try:
-                contract = XMLRPCSerializer.safe_xmlrpc_call(
-                    self.server, 'get_keyword_contract', name)
+                contract = self._rpc_call(
+                    'get_keyword_contract', name,
+                    phase='connect.keyword_contract')
             except Exception as e:
                 _print_verbose(
                     f"远程关键字: {name} 契约获取失败，回退旧接口: {e}")
@@ -161,15 +236,18 @@ class RemoteKeywordClient:
                 returns = contract.get('returns')
                 param_names = [param['name'] for param in param_details]
             else:
-                param_names = XMLRPCSerializer.safe_xmlrpc_call(
-                    self.server, 'get_keyword_arguments', name)
-                doc = XMLRPCSerializer.safe_xmlrpc_call(
-                    self.server, 'get_keyword_documentation', name)
+                param_names = self._rpc_call(
+                    'get_keyword_arguments', name,
+                    phase='connect.keyword_arguments')
+                doc = self._rpc_call(
+                    'get_keyword_documentation', name,
+                    phase='connect.keyword_documentation')
 
                 # 尝试获取参数详细信息（包括默认值）
                 try:
-                    param_details = XMLRPCSerializer.safe_xmlrpc_call(
-                        self.server, 'get_keyword_parameter_details', name)
+                    param_details = self._rpc_call(
+                        'get_keyword_parameter_details', name,
+                        phase='connect.keyword_parameter_details')
                 except Exception as e:
                     _print_verbose(
                         f"远程关键字: {name} 参数详情获取失败，使用基础参数: {e}")
@@ -271,9 +349,14 @@ class RemoteKeywordClient:
     def _execute_remote_keyword_impl(self, return_outcome=False, **kwargs):
         """执行远程关键字"""
         name = kwargs.pop('name')
+        client_request_id = uuid.uuid4().hex
+        call_started_at = time.monotonic()
 
         # 在执行前同步最新的上下文变量
-        self._sync_context_variables_before_execution(kwargs.get('context'))
+        self._sync_context_variables_before_execution(
+            kwargs.get('context'), request_id=client_request_id)
+        context_sync_elapsed_ms = (
+            time.monotonic() - call_started_at) * 1000
 
         # 移除context参数，因为它不能被序列化
         if 'context' in kwargs:
@@ -358,23 +441,48 @@ class RemoteKeywordClient:
 
         # 执行远程调用
         # 检查是否需要传递API密钥
-        from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+        keyword_started_at = time.monotonic()
         try:
-            if self.api_key:
-                result = XMLRPCSerializer.safe_xmlrpc_call(
-                    self.server, 'run_keyword', name, mapped_kwargs, self.api_key)
+            capabilities = getattr(self, '_server_capabilities', {}) or {}
+            if capabilities.get('request_metadata'):
+                result = self._rpc_call(
+                    'run_keyword_with_metadata',
+                    name,
+                    mapped_kwargs,
+                    {'client_request_id': client_request_id},
+                    self.api_key,
+                    phase='keyword.execute', request_id=client_request_id)
+            elif self.api_key:
+                result = self._rpc_call(
+                    'run_keyword', name, mapped_kwargs, self.api_key,
+                    phase='keyword.execute', request_id=client_request_id)
             else:
-                result = XMLRPCSerializer.safe_xmlrpc_call(
-                    self.server, 'run_keyword', name, mapped_kwargs)
+                result = self._rpc_call(
+                    'run_keyword', name, mapped_kwargs,
+                    phase='keyword.execute', request_id=client_request_id)
         except Exception as e:
             raise Exception(
                 "远程关键字调用失败: "
-                f"{self.alias}|{name} ({self.url}, timeout={self.timeout}s): {e}"
+                f"{self.alias}|{name} ({self.url}, "
+                f"client_request_id={client_request_id}, "
+                f"context_sync_elapsed="
+                f"{context_sync_elapsed_ms / 1000:.3f}s): {e}"
             ) from e
 
         _print_verbose(f"远程调用: 结果 {result}")
 
-        diagnostics = result.get('diagnostics', {}) if isinstance(result, dict) else {}
+        diagnostics = (
+            dict(result.get('diagnostics', {}) or {})
+            if isinstance(result, dict) else {}
+        )
+        diagnostics['client_rpc'] = {
+            'client_request_id': client_request_id,
+            'context_sync_elapsed_ms': round(context_sync_elapsed_ms, 3),
+            'keyword_rpc_elapsed_ms': round(
+                (time.monotonic() - keyword_started_at) * 1000, 3),
+            'total_elapsed_ms': round(
+                (time.monotonic() - call_started_at) * 1000, 3),
+        }
 
         if result['status'] == 'PASS':
             return_data = result['return']
@@ -587,7 +695,8 @@ class RemoteKeywordClient:
         except Exception:
             return None
 
-    def _sync_context_variables_before_execution(self, context):
+    def _sync_context_variables_before_execution(self, context,
+                                                  request_id=None):
         """在执行远程关键字前同步最新的上下文变量
 
         Args:
@@ -622,24 +731,44 @@ class RemoteKeywordClient:
             if variables_to_sync:
                 # 调用远程服务器的变量同步接口
                 try:
-                    from pytest_dsl.core.serialization_utils import XMLRPCSerializer
-                    result = XMLRPCSerializer.safe_xmlrpc_call(
-                        self.server, 'sync_variables_from_client',
-                        variables_to_sync, self.api_key)
+                    sync_timeout = self.sync_config.get('sync_timeout')
+                    result = self._rpc_call(
+                        'sync_variables_from_client',
+                        variables_to_sync,
+                        self.api_key,
+                        phase='context.sync',
+                        timeout=sync_timeout,
+                        request_id=request_id,
+                    )
                     if result.get('status') == 'success':
                         _print_verbose(
                             f"✅ 同步变量 {len(variables_to_sync)} 项 -> {self.alias}"
                         )
                     else:
-                        print(f"❌ 实时同步变量失败: {result.get('error', '未知错误')}")
+                        raise RuntimeError(
+                            f"远程变量同步失败: {self.alias}: "
+                            f"{result.get('error', '未知错误')}"
+                        )
                 except Exception as e:
-                    print(f"❌ 调用远程变量同步接口失败: {str(e)}")
+                    policy = self.sync_config.get(
+                        'realtime_sync_failure_policy', 'fail')
+                    if str(policy).lower() == 'warn':
+                        print(f"❌ 调用远程变量同步接口失败: {str(e)}")
+                        return False
+                    raise RuntimeError(
+                        f"执行远程关键字前同步上下文失败: {e}"
+                    ) from e
             else:
                 _print_verbose("远程同步: 没有需要同步的变量")
+            return True
 
         except Exception as e:
+            if str(self.sync_config.get(
+                    'realtime_sync_failure_policy', 'fail')).lower() != 'warn':
+                raise
             logger.warning(f"实时变量同步失败: {str(e)}")
             print(f"❌ 实时变量同步失败: {str(e)}")
+            return False
 
     def _collect_context_variables(self, context):
         """从TestContext收集所有变量（包括外部提供者变量）
@@ -685,11 +814,13 @@ class RemoteKeywordClient:
 
                 if serializable_variables:
                     try:
-                        # 使用安全的XML-RPC调用
-                        from pytest_dsl.core.serialization_utils import XMLRPCSerializer
-                        result = XMLRPCSerializer.safe_xmlrpc_call(
-                            self.server, 'sync_variables_from_client',
-                            serializable_variables, self.api_key)
+                        result = self._rpc_call(
+                            'sync_variables_from_client',
+                            serializable_variables,
+                            self.api_key,
+                            phase='connect.initial_sync',
+                            timeout=self.sync_config.get('sync_timeout'),
+                        )
 
                         if result.get('status') == 'success':
                             _print_verbose(

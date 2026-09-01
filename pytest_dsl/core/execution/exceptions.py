@@ -27,6 +27,8 @@ class DSLExecutionError(Exception):
         self.line_number = line_number
         self.node_type = node_type
         self.original_exception = original_exception
+        self._pytest_dsl_allure_reported = is_exception_reported(
+            original_exception)
 
         error_parts = [message]
         if line_number:
@@ -41,3 +43,19 @@ class DSLExecutionError(Exception):
                 error_parts.append(f"原因: {original_text}")
 
         super().__init__(" \n ".join(error_parts))
+
+
+def is_exception_reported(error: Exception) -> bool:
+    """Whether an inner execution layer already attached this error."""
+    return bool(error and getattr(
+        error, '_pytest_dsl_allure_reported', False))
+
+
+def mark_exception_reported(error: Exception) -> None:
+    """Mark an exception to prevent duplicate nested Allure attachments."""
+    if error is None:
+        return
+    try:
+        error._pytest_dsl_allure_reported = True
+    except Exception:
+        pass

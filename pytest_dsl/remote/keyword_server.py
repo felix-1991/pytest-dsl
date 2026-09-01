@@ -45,6 +45,7 @@ class RemoteKeywordServer:
 
         # 变量存储
         self.shared_variables = {}  # 存储共享变量
+        self._variables_lock = threading.RLock()
 
         # 注册内置关键字
         self._register_builtin_keywords()
@@ -166,6 +167,8 @@ class RemoteKeywordServer:
         # 注册核心方法
         self.server.register_function(self.get_keyword_names)
         self.server.register_function(self.run_keyword)
+        self.server.register_function(self.run_keyword_with_metadata)
+        self.server.register_function(self.get_server_capabilities)
         self.server.register_function(self.get_keyword_arguments)
         self.server.register_function(self.get_keyword_parameter_details)
         self.server.register_function(self.get_keyword_documentation)
@@ -202,11 +205,38 @@ class RemoteKeywordServer:
             return True
         return api_key == self.api_key
 
+    def _get_variables_lock(self):
+        """Return the variable lock, including for lightweight test instances."""
+        lock = getattr(self, '_variables_lock', None)
+        if lock is None:
+            lock = threading.RLock()
+            self._variables_lock = lock
+        return lock
+
     def get_keyword_names(self):
         """获取所有可用的关键字名称"""
         return list(keyword_manager._keywords.keys())
 
-    def run_keyword(self, name, args_dict, api_key=None):
+    def get_server_capabilities(self):
+        """Describe optional protocol features for compatible clients."""
+        return {
+            'protocol_version': 2,
+            'request_metadata': True,
+            'client_request_id': True,
+        }
+
+    def run_keyword_with_metadata(self, name, args_dict,
+                                  request_metadata=None, api_key=None):
+        """Run a keyword with client-generated request metadata."""
+        return self.run_keyword(
+            name,
+            args_dict,
+            api_key=api_key,
+            request_metadata=request_metadata,
+        )
+
+    def run_keyword(self, name, args_dict, api_key=None,
+                    request_metadata=None):
         """执行关键字并返回结果
 
         Args:
@@ -248,7 +278,10 @@ class RemoteKeywordServer:
         pythoncom_module = None
         capture = None
         try:
-            with RemoteExecutionCapture(name) as capture:
+            request_metadata = (
+                request_metadata if isinstance(request_metadata, dict) else {})
+            request_id = request_metadata.get('client_request_id')
+            with RemoteExecutionCapture(name, request_id=request_id) as capture:
                 # WMI 基于 COM，线程化服务端中每个工作线程都要独立初始化 COM。
                 if platform.system().lower() == 'windows':
                     try:
@@ -571,15 +604,20 @@ class RemoteKeywordServer:
 
             variables = XMLRPCSerializer.restore_bigints(variables)
 
-            global_count = 0
-            for name, value in variables.items():
-                self.shared_variables[name] = value
-                yaml_vars._variables[name] = value
-                if name.startswith('g_'):
-                    global_context.set_variable(name, value)
-                    global_count += 1
+            global_variables = {
+                name: value for name, value in variables.items()
+                if name.startswith('g_')
+            }
+            with self._get_variables_lock():
+                self.shared_variables.update(variables)
+                yaml_vars._variables.update(variables)
+                # One lock acquisition and one atomic file replacement instead
+                # of rewriting the complete global store once per variable.
+                global_context.set_variables(global_variables, attach=False)
 
-                if is_verbose():
+            global_count = len(global_variables)
+            if is_verbose():
+                for name, value in variables.items():
                     print(f"同步变量: {name} = {preview_value(value)}")
 
             if is_verbose():
