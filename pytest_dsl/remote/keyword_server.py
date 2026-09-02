@@ -9,6 +9,7 @@ import threading
 import time
 import socketserver
 import platform
+import os
 
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.core.reporting import (
@@ -46,6 +47,16 @@ class RemoteKeywordServer:
         # 变量存储
         self.shared_variables = {}  # 存储共享变量
         self._variables_lock = threading.RLock()
+        try:
+            self._sync_lock_timeout = float(os.getenv(
+                'PYTEST_DSL_SYNC_LOCK_TIMEOUT', '10'))
+        except (TypeError, ValueError):
+            self._sync_lock_timeout = 10.0
+        try:
+            self._sync_file_lock_timeout = float(os.getenv(
+                'PYTEST_DSL_SYNC_FILE_LOCK_TIMEOUT', '20'))
+        except (TypeError, ValueError):
+            self._sync_file_lock_timeout = 20.0
 
         # 注册内置关键字
         self._register_builtin_keywords()
@@ -177,6 +188,8 @@ class RemoteKeywordServer:
 
         # 注册变量同步方法
         self.server.register_function(self.sync_variables_from_client)
+        self.server.register_function(
+            self.sync_variables_from_client_with_metadata)
         self.server.register_function(self.get_variables_for_client)
         self.server.register_function(self.set_shared_variable)
         self.server.register_function(self.get_shared_variable)
@@ -220,9 +233,11 @@ class RemoteKeywordServer:
     def get_server_capabilities(self):
         """Describe optional protocol features for compatible clients."""
         return {
-            'protocol_version': 2,
+            'protocol_version': 3,
             'request_metadata': True,
             'client_request_id': True,
+            'sync_request_metadata': True,
+            'bounded_variable_sync': True,
         }
 
     def run_keyword_with_metadata(self, name, args_dict,
@@ -580,6 +595,64 @@ class RemoteKeywordServer:
             return False
 
     def sync_variables_from_client(self, variables, api_key=None):
+        """Compatibility endpoint for clients without sync metadata."""
+        return self._sync_variables_from_client(
+            variables, api_key=api_key, request_metadata=None)
+
+    def sync_variables_from_client_with_metadata(
+            self, variables, request_metadata=None, api_key=None):
+        """Synchronize variables with a client request ID and RPC budget."""
+        return self._sync_variables_from_client(
+            variables,
+            api_key=api_key,
+            request_metadata=request_metadata,
+        )
+
+    def _get_sync_lock_timeout(self):
+        timeout = getattr(self, '_sync_lock_timeout', None)
+        if timeout is None:
+            try:
+                timeout = float(os.getenv(
+                    'PYTEST_DSL_SYNC_LOCK_TIMEOUT', '10'))
+            except (TypeError, ValueError):
+                timeout = 10.0
+            self._sync_lock_timeout = timeout
+        return max(0.0, float(timeout))
+
+    def _get_sync_file_lock_timeout(self):
+        timeout = getattr(self, '_sync_file_lock_timeout', None)
+        if timeout is None:
+            try:
+                timeout = float(os.getenv(
+                    'PYTEST_DSL_SYNC_FILE_LOCK_TIMEOUT', '20'))
+            except (TypeError, ValueError):
+                timeout = 20.0
+            self._sync_file_lock_timeout = timeout
+        return max(0.0, float(timeout))
+
+    @staticmethod
+    def _sync_deadline(started_at, request_metadata):
+        metadata = (
+            request_metadata if isinstance(request_metadata, dict) else {})
+        try:
+            rpc_timeout = float(metadata.get('sync_timeout_seconds'))
+        except (TypeError, ValueError):
+            return None, None
+        if rpc_timeout <= 0:
+            return started_at, rpc_timeout
+
+        # Keep time for response serialization and network delivery.
+        response_reserve = min(2.0, max(0.1, rpc_timeout * 0.1))
+        return started_at + max(0.0, rpc_timeout - response_reserve), rpc_timeout
+
+    @staticmethod
+    def _remaining_sync_budget(deadline, maximum):
+        if deadline is None:
+            return max(0.0, float(maximum))
+        return max(0.0, min(float(maximum), deadline - time.monotonic()))
+
+    def _sync_variables_from_client(self, variables, api_key=None,
+                                    request_metadata=None):
         """接收客户端同步的变量
 
         Args:
@@ -589,13 +662,46 @@ class RemoteKeywordServer:
         Returns:
             dict: 同步结果
         """
-        # 验证API密钥
-        if self.api_key and not self.authenticate(api_key):
+        started_at = time.monotonic()
+        metadata = (
+            request_metadata if isinstance(request_metadata, dict) else {})
+        request_id = metadata.get('client_request_id')
+        deadline, rpc_timeout = self._sync_deadline(started_at, metadata)
+        diagnostics = {
+            'request_id': request_id or '',
+            'stage': 'authenticate',
+            'variable_count': len(variables) if isinstance(variables, dict) else 0,
+            'global_variable_count': 0,
+            'lock_wait_ms': 0.0,
+            'global_write_ms': 0.0,
+        }
+        if rpc_timeout is not None:
+            diagnostics['sync_timeout_seconds'] = rpc_timeout
+
+        def finish_diagnostics(stage):
+            diagnostics['stage'] = stage
+            diagnostics['elapsed_ms'] = round(
+                (time.monotonic() - started_at) * 1000, 3)
+            return diagnostics
+
+        def error_response(code, message, stage):
             return {
                 'status': 'error',
-                'error': '认证失败：无效的API密钥'
+                'error_code': code,
+                'error': message,
+                'diagnostics': finish_diagnostics(stage),
             }
 
+        # 验证API密钥
+        if self.api_key and not self.authenticate(api_key):
+            return error_response(
+                'authentication_failed',
+                '认证失败：无效的API密钥',
+                'authenticate',
+            )
+
+        variable_lock = None
+        variable_lock_acquired = False
         try:
             # 将所有同步的变量注入到 shared/yaml_vars/global_context，默认只输出摘要避免刷屏
             from pytest_dsl.core.yaml_vars import yaml_vars
@@ -608,12 +714,62 @@ class RemoteKeywordServer:
                 name: value for name, value in variables.items()
                 if name.startswith('g_')
             }
-            with self._get_variables_lock():
-                self.shared_variables.update(variables)
-                yaml_vars._variables.update(variables)
-                # One lock acquisition and one atomic file replacement instead
-                # of rewriting the complete global store once per variable.
-                global_context.set_variables(global_variables, attach=False)
+            diagnostics['global_variable_count'] = len(global_variables)
+
+            variable_lock = self._get_variables_lock()
+            lock_wait_started = time.monotonic()
+            lock_timeout = self._remaining_sync_budget(
+                deadline, self._get_sync_lock_timeout())
+            variable_lock_acquired = variable_lock.acquire(
+                timeout=lock_timeout)
+            diagnostics['lock_wait_ms'] = round(
+                (time.monotonic() - lock_wait_started) * 1000, 3)
+            if not variable_lock_acquired:
+                return error_response(
+                    'sync_lock_timeout',
+                    f'等待变量同步锁超时（timeout={lock_timeout:.3f}s）',
+                    'variables_lock',
+                )
+
+            if global_variables:
+                file_lock_timeout = self._remaining_sync_budget(
+                    deadline,
+                    min(global_context._lock_timeout,
+                        self._get_sync_file_lock_timeout()),
+                )
+                if file_lock_timeout <= 0:
+                    return error_response(
+                        'sync_deadline_exceeded',
+                        '变量同步预算已耗尽，未开始写入全局变量',
+                        'global_file_lock',
+                    )
+                global_write_started = time.monotonic()
+                try:
+                    # One lock acquisition and at most one atomic replacement.
+                    global_context.set_variables(
+                        global_variables,
+                        attach=False,
+                        lock_timeout=file_lock_timeout,
+                    )
+                except Exception as exc:
+                    from filelock import Timeout as FileLockTimeout
+                    if isinstance(exc, FileLockTimeout):
+                        diagnostics['global_write_ms'] = round(
+                            (time.monotonic() - global_write_started) * 1000,
+                            3,
+                        )
+                        return error_response(
+                            'global_file_lock_timeout',
+                            '等待全局变量文件锁超时'
+                            f'（timeout={file_lock_timeout:.3f}s）',
+                            'global_file_lock',
+                        )
+                    raise
+                diagnostics['global_write_ms'] = round(
+                    (time.monotonic() - global_write_started) * 1000, 3)
+
+            self.shared_variables.update(variables)
+            yaml_vars._variables.update(variables)
 
             global_count = len(global_variables)
             if is_verbose():
@@ -629,13 +785,18 @@ class RemoteKeywordServer:
 
             return {
                 'status': 'success',
-                'message': f'成功同步 {len(variables)} 个变量，全部实现无缝访问'
+                'message': f'成功同步 {len(variables)} 个变量，全部实现无缝访问',
+                'diagnostics': finish_diagnostics('complete'),
             }
         except Exception as e:
-            return {
-                'status': 'error',
-                'error': f'同步变量失败: {str(e)}'
-            }
+            return error_response(
+                'sync_failed',
+                f'同步变量失败: {str(e)}',
+                diagnostics.get('stage', 'sync'),
+            )
+        finally:
+            if variable_lock_acquired and variable_lock is not None:
+                variable_lock.release()
 
     def get_variables_for_client(self, api_key=None):
         """获取要发送给客户端的变量

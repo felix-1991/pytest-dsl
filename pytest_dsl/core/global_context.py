@@ -26,9 +26,14 @@ class GlobalContext:
         # 初始化变量提供者（延迟加载，避免循环导入）
         self._yaml_provider = None
 
-    def _lock(self):
-        """Create a bounded lock so remote requests cannot wait forever."""
-        return FileLock(self._lock_file, timeout=self._lock_timeout)
+    def _lock(self, timeout: Optional[float] = None):
+        """Create a bounded lock so callers cannot wait forever.
+
+        A caller-specific timeout lets an outer RPC deadline reserve enough
+        time to serialize and return a structured error response.
+        """
+        effective_timeout = self._lock_timeout if timeout is None else timeout
+        return FileLock(self._lock_file, timeout=effective_timeout)
 
     def _get_yaml_provider(self):
         """延迟获取YAML变量提供者，避免循环导入"""
@@ -54,13 +59,24 @@ class GlobalContext:
             attachment_type=allure.attachment_type.TEXT
         )
 
-    def set_variables(self, values: Dict[str, Any], attach: bool = True) -> None:
-        """Set multiple variables with one lock acquisition and one file write."""
-        if not values:
-            return
+    def set_variables(self, values: Dict[str, Any], attach: bool = True,
+                      lock_timeout: Optional[float] = None) -> bool:
+        """Set multiple variables with one bounded lock and at most one write.
 
-        with self._lock():
+        Returns ``True`` when the persisted values changed. Repeated remote
+        context synchronization can therefore avoid an unnecessary fsync.
+        """
+        if not values:
+            return False
+
+        with self._lock(timeout=lock_timeout):
             variables = self._load_variables()
+            changed = any(
+                name not in variables or variables[name] != value
+                for name, value in values.items()
+            )
+            if not changed:
+                return False
             variables.update(values)
             self._save_variables(variables)
 
@@ -74,6 +90,7 @@ class GlobalContext:
                 name="全局变量批量设置",
                 attachment_type=allure.attachment_type.TEXT,
             )
+        return True
 
     def get_variable(self, name: str) -> Any:
         """获取全局变量，优先从YAML变量中获取"""

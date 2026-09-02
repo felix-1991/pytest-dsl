@@ -58,11 +58,15 @@ def start_minimal_xmlrpc_keyword_server(server, port):
         ("127.0.0.1", port), allow_none=True)
     xmlrpc_server.register_function(server.get_keyword_names)
     xmlrpc_server.register_function(server.run_keyword)
+    xmlrpc_server.register_function(server.run_keyword_with_metadata)
+    xmlrpc_server.register_function(server.get_server_capabilities)
     xmlrpc_server.register_function(server.get_keyword_arguments)
     xmlrpc_server.register_function(server.get_keyword_parameter_details)
     xmlrpc_server.register_function(server.get_keyword_documentation)
     xmlrpc_server.register_function(server.get_keyword_contract)
     xmlrpc_server.register_function(server.sync_variables_from_client)
+    xmlrpc_server.register_function(
+        server.sync_variables_from_client_with_metadata)
     thread = threading.Thread(target=xmlrpc_server.serve_forever, daemon=True)
     thread.start()
     return xmlrpc_server, thread
@@ -205,6 +209,8 @@ def test_run_keyword_metadata_preserves_client_request_id():
     assert response["status"] == "FAIL"
     assert response["diagnostics"]["request_id"] == "client-req-123"
     assert server.get_server_capabilities()["request_metadata"] is True
+    assert server.get_server_capabilities()["sync_request_metadata"] is True
+    assert server.get_server_capabilities()["protocol_version"] == 3
 
 
 def test_dsl_remote_keyword_roundtrip_through_xmlrpc_service(monkeypatch):

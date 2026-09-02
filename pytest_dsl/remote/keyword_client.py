@@ -174,6 +174,35 @@ class RemoteKeywordClient:
                 _rpc_timeout=timeout,
             )
 
+    def _sync_variables(self, variables, *, phase, timeout=None,
+                        request_id=None):
+        """Synchronize variables using the newest mutually supported API."""
+        request_id = request_id or uuid.uuid4().hex
+        capabilities = getattr(self, '_server_capabilities', {}) or {}
+        if capabilities.get('sync_request_metadata'):
+            metadata = {'client_request_id': request_id}
+            if timeout is not None:
+                metadata['sync_timeout_seconds'] = float(timeout)
+            return self._rpc_call(
+                'sync_variables_from_client_with_metadata',
+                variables,
+                metadata,
+                self.api_key,
+                phase=phase,
+                timeout=timeout,
+                request_id=request_id,
+            )
+
+        # Compatibility path for 0.36.0 and 0.36.1 servers.
+        return self._rpc_call(
+            'sync_variables_from_client',
+            variables,
+            self.api_key,
+            phase=phase,
+            timeout=timeout,
+            request_id=request_id,
+        )
+
     def connect(self):
         """连接到远程服务器并获取可用关键字"""
         try:
@@ -353,7 +382,7 @@ class RemoteKeywordClient:
         call_started_at = time.monotonic()
 
         # 在执行前同步最新的上下文变量
-        self._sync_context_variables_before_execution(
+        context_sync_result = self._sync_context_variables_before_execution(
             kwargs.get('context'), request_id=client_request_id)
         context_sync_elapsed_ms = (
             time.monotonic() - call_started_at) * 1000
@@ -483,6 +512,11 @@ class RemoteKeywordClient:
             'total_elapsed_ms': round(
                 (time.monotonic() - call_started_at) * 1000, 3),
         }
+        if isinstance(context_sync_result, dict):
+            sync_diagnostics = context_sync_result.get('diagnostics')
+            if isinstance(sync_diagnostics, dict):
+                diagnostics['client_rpc'][
+                    'context_sync_server'] = sync_diagnostics
 
         if result['status'] == 'PASS':
             return_data = result['return']
@@ -732,10 +766,8 @@ class RemoteKeywordClient:
                 # 调用远程服务器的变量同步接口
                 try:
                     sync_timeout = self.sync_config.get('sync_timeout')
-                    result = self._rpc_call(
-                        'sync_variables_from_client',
+                    result = self._sync_variables(
                         variables_to_sync,
-                        self.api_key,
                         phase='context.sync',
                         timeout=sync_timeout,
                         request_id=request_id,
@@ -745,9 +777,23 @@ class RemoteKeywordClient:
                             f"✅ 同步变量 {len(variables_to_sync)} 项 -> {self.alias}"
                         )
                     else:
+                        error_code = result.get('error_code')
+                        server_diagnostics = result.get('diagnostics') or {}
+                        diagnostic_parts = []
+                        if error_code:
+                            diagnostic_parts.append(f"error_code={error_code}")
+                        for key in ('request_id', 'stage', 'elapsed_ms',
+                                    'lock_wait_ms', 'global_write_ms'):
+                            value = server_diagnostics.get(key)
+                            if value not in (None, ''):
+                                diagnostic_parts.append(f"{key}={value}")
+                        diagnostic_text = (
+                            f" ({', '.join(diagnostic_parts)})"
+                            if diagnostic_parts else '')
                         raise RuntimeError(
                             f"远程变量同步失败: {self.alias}: "
                             f"{result.get('error', '未知错误')}"
+                            f"{diagnostic_text}"
                         )
                 except Exception as e:
                     policy = self.sync_config.get(
@@ -760,7 +806,7 @@ class RemoteKeywordClient:
                     ) from e
             else:
                 _print_verbose("远程同步: 没有需要同步的变量")
-            return True
+            return result if variables_to_sync else True
 
         except Exception as e:
             if str(self.sync_config.get(
@@ -814,10 +860,8 @@ class RemoteKeywordClient:
 
                 if serializable_variables:
                     try:
-                        result = self._rpc_call(
-                            'sync_variables_from_client',
+                        result = self._sync_variables(
                             serializable_variables,
-                            self.api_key,
                             phase='connect.initial_sync',
                             timeout=self.sync_config.get('sync_timeout'),
                         )
@@ -852,13 +896,10 @@ class RemoteKeywordClient:
             # 由于GlobalContext使用文件存储，我们需要直接读取
             import json
             import os
-            from filelock import FileLock
-
             storage_file = global_context._storage_file
-            lock_file = global_context._lock_file
 
             if os.path.exists(storage_file):
-                with FileLock(lock_file):
+                with global_context._lock():
                     with open(storage_file, 'r', encoding='utf-8') as f:
                         stored_vars = json.load(f)
                         # 只同步g_开头的全局变量

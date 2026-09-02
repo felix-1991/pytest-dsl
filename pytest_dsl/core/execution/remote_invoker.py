@@ -47,6 +47,16 @@ def _format_remote_diagnostics(diagnostics, fallback_traceback=None,
             f"{client_rpc.get('keyword_rpc_elapsed_ms', 0)}")
         lines.append(
             f"client_total_elapsed_ms: {client_rpc.get('total_elapsed_ms', 0)}")
+        context_sync_server = client_rpc.get('context_sync_server') or {}
+        if context_sync_server:
+            lines.append(
+                "context_sync_server_stage: "
+                f"{context_sync_server.get('stage', '')}")
+            for key in ('elapsed_ms', 'lock_wait_ms', 'global_write_ms',
+                        'variable_count', 'global_variable_count'):
+                value = context_sync_server.get(key)
+                if value is not None:
+                    lines.append(f"context_sync_server_{key}: {value}")
 
     diagnostic_error = diagnostics.get("error") or error_text
     if diagnostic_error:
@@ -154,12 +164,10 @@ class RemoteKeywordInvoker:
                     if not final_variables:
                         continue
 
-                    rpc_call = getattr(client, '_rpc_call', None)
-                    if callable(rpc_call):
-                        result = rpc_call(
-                            'sync_variables_from_client',
+                    sync_variables = getattr(client, '_sync_variables', None)
+                    if callable(sync_variables):
+                        result = sync_variables(
                             final_variables,
-                            client.api_key,
                             phase='variable.change',
                             timeout=client.sync_config.get('sync_timeout'),
                         )

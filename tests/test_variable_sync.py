@@ -3,6 +3,7 @@
 """
 
 import pytest
+import threading
 from unittest.mock import Mock, patch
 
 from pytest_dsl.remote.keyword_client import RemoteKeywordClient, RemoteKeywordManager
@@ -131,7 +132,8 @@ class TestVariableTransfer:
         monkeypatch.setattr(
             global_context,
             'set_variables',
-            lambda values, attach=True: calls.append((values, attach)),
+            lambda values, attach=True, lock_timeout=None: calls.append(
+                (values, attach, lock_timeout)),
         )
 
         result = server.sync_variables_from_client({
@@ -141,7 +143,114 @@ class TestVariableTransfer:
         })
 
         assert result['status'] == 'success'
-        assert calls == [({'g_first': 1, 'g_second': 2}, False)]
+        assert len(calls) == 1
+        assert calls[0][0:2] == (
+            {'g_first': 1, 'g_second': 2}, False)
+        assert calls[0][2] == 20.0
+
+    def test_server_sync_metadata_returns_request_id_and_timings(self):
+        server = RemoteKeywordServer.__new__(RemoteKeywordServer)
+        server.api_key = None
+        server.shared_variables = {}
+        server._variables_lock = threading.RLock()
+        server._sync_lock_timeout = 0.1
+
+        result = server.sync_variables_from_client_with_metadata(
+            {'local_only': 1},
+            {
+                'client_request_id': 'sync-request-123',
+                'sync_timeout_seconds': 1.0,
+            },
+        )
+
+        assert result['status'] == 'success'
+        diagnostics = result['diagnostics']
+        assert diagnostics['request_id'] == 'sync-request-123'
+        assert diagnostics['stage'] == 'complete'
+        assert diagnostics['sync_timeout_seconds'] == 1.0
+        assert diagnostics['variable_count'] == 1
+        assert diagnostics['elapsed_ms'] >= 0
+
+    def test_server_sync_returns_structured_error_when_variable_lock_busy(self):
+        class BusyLock:
+            def __init__(self):
+                self.timeout = None
+
+            def acquire(self, timeout):
+                self.timeout = timeout
+                return False
+
+            def release(self):
+                raise AssertionError('unacquired lock must not be released')
+
+        server = RemoteKeywordServer.__new__(RemoteKeywordServer)
+        server.api_key = None
+        server.shared_variables = {}
+        server._variables_lock = BusyLock()
+        server._sync_lock_timeout = 10.0
+
+        result = server.sync_variables_from_client_with_metadata(
+            {'local_only': 1},
+            {
+                'client_request_id': 'busy-request',
+                'sync_timeout_seconds': 0.5,
+            },
+        )
+
+        assert result['status'] == 'error'
+        assert result['error_code'] == 'sync_lock_timeout'
+        assert result['diagnostics']['stage'] == 'variables_lock'
+        # The server reserves 0.1s for serializing and returning the response.
+        assert 0 < server._variables_lock.timeout <= 0.4
+
+    def test_server_file_lock_budget_is_shorter_than_rpc_timeout(
+            self, monkeypatch):
+        from filelock import Timeout as FileLockTimeout
+
+        server = RemoteKeywordServer.__new__(RemoteKeywordServer)
+        server.api_key = None
+        server.shared_variables = {}
+        server._variables_lock = threading.RLock()
+        server._sync_lock_timeout = 0.01
+        server._sync_file_lock_timeout = 20.0
+        observed = {}
+
+        def fail_file_lock(values, attach=True, lock_timeout=None):
+            observed['lock_timeout'] = lock_timeout
+            raise FileLockTimeout(global_context._lock_file)
+
+        monkeypatch.setattr(global_context, 'set_variables', fail_file_lock)
+
+        result = server.sync_variables_from_client_with_metadata(
+            {'g_value': 1},
+            {
+                'client_request_id': 'file-lock-request',
+                'sync_timeout_seconds': 0.5,
+            },
+        )
+
+        assert result['status'] == 'error'
+        assert result['error_code'] == 'global_file_lock_timeout'
+        assert result['diagnostics']['stage'] == 'global_file_lock'
+        assert 0 < observed['lock_timeout'] < 0.5
+
+    def test_repeated_global_values_skip_disk_rewrite(self, monkeypatch):
+        from contextlib import nullcontext
+        from pytest_dsl.core.global_context import GlobalContext
+
+        context = GlobalContext()
+        writes = []
+        monkeypatch.setattr(context, '_lock', lambda timeout=None: nullcontext())
+        monkeypatch.setattr(
+            context, '_load_variables', lambda: {'g_unchanged': 1})
+        monkeypatch.setattr(
+            context, '_save_variables', lambda values: writes.append(values))
+
+        changed = context.set_variables(
+            {'g_unchanged': 1}, attach=False, lock_timeout=0.1)
+
+        assert changed is False
+        assert writes == []
 
     def test_api_key_authentication(self):
         """测试API密钥认证"""

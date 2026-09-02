@@ -88,8 +88,7 @@ class GlobalContextVariableProvider(VariableProvider):
         # 为了避免重复，这里直接访问存储的变量
         try:
             # 直接从全局变量存储中获取，跳过YAML变量
-            from filelock import FileLock
-            with FileLock(self.global_context._lock_file):
+            with self.global_context._lock():
                 variables = self.global_context._load_variables()
                 return variables.get(key)
         except Exception:
@@ -98,8 +97,7 @@ class GlobalContextVariableProvider(VariableProvider):
     def has_variable(self, key: str) -> bool:
         """检查全局上下文中是否存在变量"""
         try:
-            from filelock import FileLock
-            with FileLock(self.global_context._lock_file):
+            with self.global_context._lock():
                 variables = self.global_context._load_variables()
                 return key in variables
         except Exception:
@@ -108,8 +106,7 @@ class GlobalContextVariableProvider(VariableProvider):
     def get_all_variables(self) -> Dict[str, Any]:
         """获取所有全局变量"""
         try:
-            from filelock import FileLock
-            with FileLock(self.global_context._lock_file):
+            with self.global_context._lock():
                 return self.global_context._load_variables()
         except Exception:
             return {}

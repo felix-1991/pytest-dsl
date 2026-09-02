@@ -451,11 +451,15 @@ remote_servers:
 - 未配置时默认关键字调用超时为 600 秒。
 - `sync_config.sync_timeout` 单独控制执行前的上下文同步，默认不超过 30 秒。
 - `sync_config.realtime_sync_failure_policy` 默认为 `fail`。同步失败时阻止关键字执行，避免远端使用过期变量。需要兼容旧版“尽力同步”行为时可显式设置为 `warn`。
-- 超时错误会同时显示 `elapsed`、`configured_timeout`、`effective_timeout`、调用阶段和客户端请求 ID。新客户端与新服务端会通过能力探测传递同一个请求 ID，便于对照两端日志；连接旧服务端时自动回退兼容协议。传输异常后客户端会丢弃旧连接，下一次调用重新建连。
+- 超时错误会同时显示 `elapsed`、`configured_timeout`、`effective_timeout`、调用阶段和客户端请求 ID。协议版本 3 会把请求 ID 和同步超时预算传到服务端，并返回进程锁等待、全局变量写入等阶段耗时；连接 0.36.0/0.36.1 服务端时自动回退兼容接口。传输异常后客户端会丢弃旧连接，下一次调用重新建连。
 
 远端全局变量文件锁默认最多等待 30 秒，可通过环境变量
-`PYTEST_DSL_GLOBAL_LOCK_TIMEOUT` 调整。超过该时间会明确返回同步失败，
-不会让请求无限等待。
+`PYTEST_DSL_GLOBAL_LOCK_TIMEOUT` 调整；进程内变量同步锁默认最多等待
+10 秒，可通过 `PYTEST_DSL_SYNC_LOCK_TIMEOUT` 调整；远程同步使用文件锁时最多
+等待 20 秒，可通过 `PYTEST_DSL_SYNC_FILE_LOCK_TIMEOUT` 调整。新协议还会根据
+客户端的 `sync_timeout` 动态缩短内部等待，为错误响应预留网络传输时间。超过
+内部预算会返回 `sync_lock_timeout`、`global_file_lock_timeout` 等结构化错误，
+不会让请求无限排队或在服务端刚返回错误时先触发客户端 socket timeout。
 
 #### Q: 返回“服务器繁忙：并发请求已达上限”
 

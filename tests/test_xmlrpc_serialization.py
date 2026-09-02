@@ -589,3 +589,104 @@ def test_capable_remote_server_receives_client_request_id():
     request_id = outcome.diagnostics["client_rpc"]["client_request_id"]
     assert proxy.metadata == {"client_request_id": request_id}
     assert outcome.diagnostics["request_id"] == request_id
+
+
+def test_capable_server_receives_sync_request_metadata():
+    class MetadataSyncProxy:
+        def __init__(self):
+            self.variables = None
+            self.metadata = None
+
+        def sync_variables_from_client_with_metadata(
+                self, variables, metadata, api_key=None):
+            self.variables = variables
+            self.metadata = metadata
+            return {
+                "status": "success",
+                "diagnostics": {
+                    "request_id": metadata["client_request_id"],
+                    "stage": "complete",
+                },
+            }
+
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    proxy = MetadataSyncProxy()
+    client = RemoteKeywordClient(url="http://remote", alias="remote")
+    client.server = proxy
+    client._server_capabilities = {"sync_request_metadata": True}
+
+    result = client._sync_variables(
+        {"version": 1},
+        phase="context.sync",
+        timeout=30.0,
+        request_id="sync-client-request",
+    )
+
+    assert result["status"] == "success"
+    assert proxy.variables == {"version": 1}
+    assert proxy.metadata == {
+        "client_request_id": "sync-client-request",
+        "sync_timeout_seconds": 30.0,
+    }
+
+
+def test_sync_falls_back_to_legacy_server_api():
+    class LegacySyncProxy:
+        def __init__(self):
+            self.variables = None
+
+        def sync_variables_from_client(self, variables, api_key=None):
+            self.variables = variables
+            return {"status": "success"}
+
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    proxy = LegacySyncProxy()
+    client = RemoteKeywordClient(url="http://remote", alias="remote")
+    client.server = proxy
+    client._server_capabilities = {"request_metadata": True}
+
+    result = client._sync_variables(
+        {"version": 1},
+        phase="context.sync",
+        timeout=30.0,
+        request_id="legacy-request",
+    )
+
+    assert result["status"] == "success"
+    assert proxy.variables == {"version": 1}
+
+
+def test_structured_sync_failure_is_exposed_to_dsl_caller():
+    class BusySyncProxy:
+        def sync_variables_from_client_with_metadata(
+                self, variables, metadata, api_key=None):
+            return {
+                "status": "error",
+                "error_code": "sync_lock_timeout",
+                "error": "等待变量同步锁超时",
+                "diagnostics": {
+                    "request_id": metadata["client_request_id"],
+                    "stage": "variables_lock",
+                    "elapsed_ms": 10.0,
+                    "lock_wait_ms": 9.5,
+                    "global_write_ms": 0.0,
+                },
+            }
+
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    client = RemoteKeywordClient(url="http://remote", alias="remote")
+    client.server = BusySyncProxy()
+    client._server_capabilities = {"sync_request_metadata": True}
+
+    with pytest.raises(RuntimeError) as exc_info:
+        client._sync_context_variables_before_execution(
+            _FakeContext(), request_id="structured-error-request")
+
+    message = str(exc_info.value)
+    assert "error_code=sync_lock_timeout" in message
+    assert "request_id=structured-error-request" in message
+    assert "stage=variables_lock" in message
+    assert "lock_wait_ms=9.5" in message
