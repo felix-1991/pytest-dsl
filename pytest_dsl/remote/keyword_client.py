@@ -1,8 +1,10 @@
 import xmlrpc.client
 from functools import partial
 import logging
+import math
 import difflib
 import os
+import random
 import threading
 import time
 import uuid
@@ -53,12 +55,33 @@ class RemoteKeywordExecutionError(Exception):
 class _TimeoutMixin:
     """为xmlrpc transport注入连接超时。"""
 
-    def __init__(self, *args, timeout=None, **kwargs):
+    def __init__(self, *args, timeout=None, connect_timeout=5.0, **kwargs):
         self._timeout = timeout
+        self._connect_timeout = connect_timeout
         super().__init__(*args, **kwargs)
 
     def make_connection(self, host):
         conn = super().make_connection(host)
+        # Bound TCP establishment separately from waiting for a keyword result.
+        # HTTP and HTTPS both use this factory; leave HTTPS wrapping to stdlib.
+        if (hasattr(conn, '_create_connection') and
+                getattr(conn, '_dsl_socket_factory', None)
+                is not conn._create_connection):
+            create_socket = conn._create_connection
+
+            def connect(address, timeout=None, *args, **kwargs):
+                read_timeout = self._timeout
+                connect_timeout = self._connect_timeout
+                if read_timeout is not None:
+                    connect_timeout = min(connect_timeout, read_timeout)
+                self._effective_timeout = connect_timeout
+                sock = create_socket(address, connect_timeout, *args, **kwargs)
+                sock.settimeout(read_timeout)
+                self._effective_timeout = read_timeout
+                return sock
+
+            conn._create_connection = connect
+            conn._dsl_socket_factory = connect
         if self._timeout is not None:
             conn.timeout = self._timeout
             # HTTPConnection.timeout does not update an already-open socket.
@@ -71,6 +94,9 @@ class _TimeoutMixin:
             else conn.timeout
         )
         return conn
+
+    def set_connect_timeout(self, timeout):
+        self._connect_timeout = float(timeout)
 
     def set_timeout(self, timeout):
         self._timeout = float(timeout) if timeout is not None else None
@@ -145,6 +171,15 @@ class RemoteKeywordClient:
             'realtime_sync_failure_policy': 'fail',
             # 同步应快速完成，不应占用关键字本身的长执行超时。
             'sync_timeout': min(self.timeout, 30.0),
+            'sync_attempt_timeout': 10.0,
+            'connect_timeout': 5.0,
+            # 变量同步是幂等覆盖操作，可以对瞬时传输错误做有限重试。
+            # 这里的次数指首次调用失败后的额外重试次数。
+            'sync_retry_count': 2,
+            'sync_retry_interval': 0.2,
+            'sync_retry_backoff': 2.0,
+            'sync_retry_max_interval': 1.0,
+            'sync_retry_jitter': 0.1,
         }
         self.sync_config = default_sync_config
         if sync_config:
@@ -166,6 +201,11 @@ class RemoteKeywordClient:
         if request_id:
             context_parts.append(f"client_request_id={request_id}")
         with self._get_rpc_lock():
+            transport = getattr(self.server, '_ServerProxy__transport', None)
+            set_connect_timeout = getattr(transport, 'set_connect_timeout', None)
+            if callable(set_connect_timeout):
+                set_connect_timeout(self._positive_timeout(
+                    self.sync_config.get('connect_timeout'), 5.0))
             return XMLRPCSerializer.safe_xmlrpc_call(
                 self.server,
                 method_name,
@@ -174,10 +214,17 @@ class RemoteKeywordClient:
                 _rpc_timeout=timeout,
             )
 
-    def _sync_variables(self, variables, *, phase, timeout=None,
-                        request_id=None):
-        """Synchronize variables using the newest mutually supported API."""
-        request_id = request_id or uuid.uuid4().hex
+    @staticmethod
+    def _positive_timeout(value, default):
+        try:
+            value = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return default
+        return value if math.isfinite(value) and value > 0 else default
+
+    def _sync_variables_once(self, variables, *, phase, timeout=None,
+                             request_id=None):
+        """Perform one variable-sync RPC using the negotiated API."""
         capabilities = getattr(self, '_server_capabilities', {}) or {}
         if capabilities.get('sync_request_metadata'):
             metadata = {'client_request_id': request_id}
@@ -202,6 +249,213 @@ class RemoteKeywordClient:
             timeout=timeout,
             request_id=request_id,
         )
+
+    @staticmethod
+    def _coerce_retry_number(value, default, *, integer=False,
+                             minimum=0.0, maximum=None):
+        """Normalize optional retry configuration without breaking startup."""
+        try:
+            converted = int(value) if integer else float(value)
+        except (TypeError, ValueError, OverflowError):
+            converted = default
+        normalized = max(int(minimum) if integer else minimum, converted)
+        if maximum is not None:
+            normalized = min(maximum, normalized)
+        return normalized
+
+    def _sync_retry_settings(self):
+        config = self.sync_config
+        return {
+            'count': self._coerce_retry_number(
+                config.get('sync_retry_count', 2), 2,
+                integer=True, minimum=0, maximum=10),
+            'interval': self._coerce_retry_number(
+                config.get('sync_retry_interval', 0.2), 0.2,
+                maximum=60.0),
+            'backoff': self._coerce_retry_number(
+                config.get('sync_retry_backoff', 2.0), 2.0,
+                minimum=1.0, maximum=10.0),
+            'max_interval': self._coerce_retry_number(
+                config.get('sync_retry_max_interval', 1.0), 1.0,
+                maximum=60.0),
+            'jitter': self._coerce_retry_number(
+                config.get('sync_retry_jitter', 0.1), 0.1,
+                maximum=10.0),
+        }
+
+    @staticmethod
+    def _is_retryable_sync_error(error):
+        """Only retry transport failures for the idempotent sync endpoint."""
+        from pytest_dsl.core.serialization_utils import XMLRPCCallError
+
+        return (
+            isinstance(error, XMLRPCCallError)
+            and error.category in {'network', 'timeout', 'http'}
+        )
+
+    def _replace_server_proxy(self):
+        """Drop all transport state and create a fresh XML-RPC proxy."""
+        with self._get_rpc_lock():
+            old_server = getattr(self, 'server', None)
+            transport = getattr(old_server, '_ServerProxy__transport', None)
+            close = getattr(transport, 'close', None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
+            self.server = _create_server_proxy(self.url, self.timeout)
+            # A restarted endpoint may run another protocol version. Until the
+            # post-recovery handshake succeeds, use the universally supported
+            # API.
+            self._server_capabilities = {}
+
+    def _refresh_server_capabilities_after_reconnect(self, timeout=None):
+        """Best-effort protocol handshake after a recovered sync call."""
+        try:
+            capabilities = self._rpc_call(
+                'get_server_capabilities',
+                phase='reconnect.server_capabilities',
+                timeout=timeout,
+            )
+            self._server_capabilities = (
+                capabilities if isinstance(capabilities, dict) else {})
+        except Exception as exc:
+            # Legacy servers do not implement this method. A failed optional
+            # handshake must not turn an already successful sync into failure.
+            self._server_capabilities = {}
+            _print_verbose(
+                f"远程重连: {self.alias} 能力协商失败，使用兼容协议: {exc}")
+
+    def _sync_variables(self, variables, *, phase, timeout=None,
+                        request_id=None):
+        """Synchronize variables with bounded transient-failure recovery."""
+        # Keep the full retry sequence ordered with other calls made through
+        # this client. Otherwise an older timed-out sync could retry after a
+        # newer sync and overwrite the newer context.
+        with self._get_rpc_lock():
+            return self._sync_variables_with_retry(
+                variables,
+                phase=phase,
+                timeout=timeout,
+                request_id=request_id,
+            )
+
+    def _sync_variables_with_retry(self, variables, *, phase, timeout=None,
+                                   request_id=None):
+        timeout = float(timeout) if timeout is not None else None
+        request_id = request_id or uuid.uuid4().hex
+        settings = self._sync_retry_settings()
+        total_attempts = settings['count'] + 1
+        started_at = time.monotonic()
+        deadline = (
+            started_at + timeout
+            if timeout is not None and timeout >= 0 else None
+        )
+        reconnected = False
+        attempt_timeout = self._positive_timeout(
+            self.sync_config.get('sync_attempt_timeout'), 10.0)
+
+        for attempt in range(1, total_attempts + 1):
+            if attempt == 1:
+                remaining = timeout
+            else:
+                remaining = (
+                    max(0.0, deadline - time.monotonic())
+                    if deadline is not None else timeout
+                )
+            if attempt > 1 and remaining is not None and remaining <= 0:
+                raise last_error
+
+            try:
+                result = self._sync_variables_once(
+                    variables,
+                    phase=f'{phase};attempt={attempt}/{total_attempts}',
+                    timeout=(min(attempt_timeout, remaining)
+                             if remaining is not None else attempt_timeout),
+                    request_id=request_id,
+                )
+                if isinstance(result, dict):
+                    result = dict(result)
+                    diagnostics = dict(result.get('diagnostics') or {})
+                    diagnostics['client_sync_attempts'] = attempt
+                    diagnostics['client_reconnected'] = reconnected
+                    result['diagnostics'] = diagnostics
+                return result
+            except Exception as exc:
+                last_error = exc
+                if (attempt >= total_attempts or
+                        not self._is_retryable_sync_error(exc)):
+                    raise
+
+                delay = min(
+                    settings['max_interval'],
+                    settings['interval'] *
+                    (settings['backoff'] ** (attempt - 1)),
+                )
+                if settings['jitter']:
+                    delay += random.uniform(0.0, settings['jitter'])
+
+                if deadline is not None:
+                    remaining_before_retry = deadline - time.monotonic()
+                    if remaining_before_retry <= delay:
+                        raise
+
+                logger.warning(
+                    "远程变量同步发生瞬时传输错误，准备重试: "
+                    "%s (%s), attempt=%s/%s, delay=%.3fs",
+                    self.alias, phase, attempt, total_attempts, delay,
+                )
+                if delay > 0:
+                    time.sleep(delay)
+                self._replace_server_proxy()
+                reconnected = True
+                refresh_timeout = (
+                    max(0.0, deadline - time.monotonic())
+                    if deadline is not None else timeout
+                )
+                if refresh_timeout is None or refresh_timeout > 0:
+                    # Optional negotiation must leave time for the actual sync.
+                    self._refresh_server_capabilities_after_reconnect(
+                        timeout=(min(2.0, refresh_timeout / 2)
+                                 if refresh_timeout is not None else 2.0))
+
+        raise last_error
+
+    def wait_until_ready(self, timeout=120.0, probe_timeout=5.0, interval=1.0):
+        """Poll a read-only RPC on the controller, without syncing variables.
+
+        This checks the keyword service, not readiness of the tested business.
+        It never registers or executes remote keywords.
+        """
+        values = [float(timeout), float(probe_timeout), float(interval)]
+        if any(not math.isfinite(value) or value <= 0 for value in values):
+            raise ValueError('就绪等待的超时和间隔必须为有限正数')
+        timeout, probe_timeout, interval = values
+        deadline = time.monotonic() + timeout
+        last_error = None
+        with self._get_rpc_lock():
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(
+                        f'远程服务 {self.alias} 在 {timeout:g} 秒内未就绪'
+                    ) from last_error
+                try:
+                    names = self._rpc_call(
+                        'get_keyword_names', phase='readiness.probe',
+                        timeout=min(probe_timeout, remaining))
+                    if not isinstance(names, (list, tuple)):
+                        raise ValueError('远程服务返回了无效的关键字列表')
+                    return True
+                except Exception as exc:
+                    if not self._is_retryable_sync_error(exc):
+                        raise
+                    last_error = exc
+                    self._replace_server_proxy()
+                    remaining = deadline - time.monotonic()
+                    if remaining > 0:
+                        time.sleep(min(interval, remaining))
 
     def connect(self):
         """连接到远程服务器并获取可用关键字"""

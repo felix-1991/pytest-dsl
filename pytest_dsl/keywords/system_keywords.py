@@ -72,6 +72,36 @@ def wait_seconds(**kwargs):
         )
 
 
+@keyword_manager.register('等待远程服务就绪', [
+    {'name': '服务地址', 'mapping': 'url', 'description': '远程XML-RPC服务URL'},
+    {'name': '超时', 'mapping': 'timeout', 'default': 120,
+     'description': '总等待秒数'},
+    {'name': '探测超时', 'mapping': 'probe_timeout', 'default': 5,
+     'description': '单次只读RPC探测超时秒数'},
+    {'name': '间隔', 'mapping': 'interval', 'default': 1,
+     'description': '探测失败后的等待秒数'},
+], category='系统/通用', tags=['远程', '等待'], returns='bool')
+def wait_remote_service_ready(**kwargs):
+    """在控制端调用；不要加远程别名前缀。无需先注册远程执行机。"""
+    from urllib.parse import urlsplit
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    url = kwargs.get('url')
+    parsed = urlsplit(url or '')
+    if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+        raise ValueError('服务地址必须是有效的HTTP或HTTPS URL')
+    client = RemoteKeywordClient(url=url)
+    try:
+        return client.wait_until_ready(
+            timeout=kwargs.get('timeout', 120),
+            probe_timeout=kwargs.get('probe_timeout', 5),
+            interval=kwargs.get('interval', 1))
+    finally:
+        transport = getattr(client.server, '_ServerProxy__transport', None)
+        if transport is not None:
+            transport.close()
+
+
 @keyword_manager.register('获取当前时间', [
     {'name': '格式', 'mapping': 'format',
      'description': '时间格式，例如 "%Y-%m-%d %H:%M:%S"', 'default': 'timestamp'},

@@ -29,6 +29,9 @@ class ThreadedXMLRPCServer(socketserver.ThreadingMixIn,
 
     daemon_threads = True
     allow_reuse_address = True
+    # socketserver.TCPServer defaults to 5, which is too small for bursts of
+    # short-lived HTTP/1.0 XML-RPC connections from parallel test workers.
+    request_queue_size = 128
 
 
 class RemoteKeywordServer:

@@ -510,7 +510,10 @@ def test_realtime_sync_warn_policy_preserves_legacy_best_effort(capsys):
     client = RemoteKeywordClient(
         url="http://remote",
         alias="remote",
-        sync_config={"realtime_sync_failure_policy": "warn"},
+        sync_config={
+            "realtime_sync_failure_policy": "warn",
+            "sync_retry_count": 0,
+        },
     )
     client.server = FailingSyncProxy()
 
@@ -627,7 +630,7 @@ def test_capable_server_receives_sync_request_metadata():
     assert proxy.variables == {"version": 1}
     assert proxy.metadata == {
         "client_request_id": "sync-client-request",
-        "sync_timeout_seconds": 30.0,
+        "sync_timeout_seconds": 10.0,
     }
 
 
@@ -656,6 +659,305 @@ def test_sync_falls_back_to_legacy_server_api():
 
     assert result["status"] == "success"
     assert proxy.variables == {"version": 1}
+
+
+def test_sync_retries_transient_network_error_and_refreshes_capabilities(
+    monkeypatch,
+):
+    class RefusingProxy:
+        def __init__(self):
+            self.calls = 0
+
+        def sync_variables_from_client_with_metadata(
+                self, variables, metadata, api_key=None):
+            self.calls += 1
+            raise ConnectionRefusedError(111, "Connection refused")
+
+    class RecoveredProxy:
+        def __init__(self):
+            self.sync_calls = 0
+            self.capability_calls = 0
+            self.metadata = None
+
+        def sync_variables_from_client_with_metadata(
+                self, variables, metadata, api_key=None):
+            self.sync_calls += 1
+            self.metadata = metadata
+            return {
+                "status": "success",
+                "diagnostics": {
+                    "request_id": metadata["client_request_id"],
+                },
+            }
+
+        def get_server_capabilities(self):
+            self.capability_calls += 1
+            return {
+                "protocol_version": 3,
+                "sync_request_metadata": True,
+            }
+
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    refusing_proxy = RefusingProxy()
+    recovered_proxy = RecoveredProxy()
+    client = RemoteKeywordClient(
+        url="http://remote",
+        alias="remote",
+        sync_config={
+            "sync_retry_count": 2,
+            "sync_retry_interval": 0,
+            "sync_retry_jitter": 0,
+        },
+    )
+    client.server = refusing_proxy
+    client._server_capabilities = {"sync_request_metadata": True}
+    replacements = []
+
+    def replace_proxy():
+        replacements.append(True)
+        client.server = recovered_proxy
+        client._server_capabilities = {}
+
+    monkeypatch.setattr(client, "_replace_server_proxy", replace_proxy)
+
+    result = client._sync_variables(
+        {"version": 1},
+        phase="context.sync",
+        timeout=1.0,
+        request_id="retry-request",
+    )
+
+    assert result["status"] == "success"
+    assert result["diagnostics"]["client_sync_attempts"] == 2
+    assert result["diagnostics"]["client_reconnected"] is True
+    assert refusing_proxy.calls == 1
+    assert recovered_proxy.sync_calls == 1
+    assert recovered_proxy.capability_calls == 1
+    assert recovered_proxy.metadata["client_request_id"] == "retry-request"
+    assert replacements == [True]
+    assert client._server_capabilities["sync_request_metadata"] is True
+
+
+def test_sync_retry_count_limits_permanent_transport_failure(monkeypatch):
+    class RefusingProxy:
+        def __init__(self):
+            self.calls = 0
+
+        def sync_variables_from_client(self, variables, api_key=None):
+            self.calls += 1
+            raise ConnectionRefusedError(111, "Connection refused")
+
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    proxy = RefusingProxy()
+    client = RemoteKeywordClient(
+        url="http://remote",
+        alias="remote",
+        sync_config={
+            "sync_retry_count": 2,
+            "sync_retry_interval": 0,
+            "sync_retry_jitter": 0,
+        },
+    )
+    client.server = proxy
+    replacements = []
+    monkeypatch.setattr(
+        client,
+        "_replace_server_proxy",
+        lambda: replacements.append(True),
+    )
+
+    with pytest.raises(XMLRPCCallError) as exc_info:
+        client._sync_variables(
+            {"version": 1}, phase="context.sync", timeout=1.0)
+
+    assert exc_info.value.category == "network"
+    assert proxy.calls == 3
+    assert replacements == [True, True]
+
+
+def test_sync_retry_sequence_does_not_allow_newer_sync_to_interleave(
+    monkeypatch,
+):
+    first_failure = threading.Event()
+
+    class OrderedProxy:
+        def __init__(self):
+            self.calls = []
+            self.failed_once = False
+
+        def sync_variables_from_client(self, variables, api_key=None):
+            version = variables["version"]
+            self.calls.append(version)
+            if version == 1 and not self.failed_once:
+                self.failed_once = True
+                first_failure.set()
+                raise ConnectionResetError(104, "Connection reset")
+            return {"status": "success"}
+
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    proxy = OrderedProxy()
+    client = RemoteKeywordClient(
+        url="http://remote",
+        alias="remote",
+        sync_config={
+            "sync_retry_count": 1,
+            "sync_retry_interval": 0.05,
+            "sync_retry_jitter": 0,
+        },
+    )
+    client.server = proxy
+    monkeypatch.setattr(client, "_replace_server_proxy", lambda: None)
+    monkeypatch.setattr(
+        client,
+        "_refresh_server_capabilities_after_reconnect",
+        lambda timeout=None: None,
+    )
+    results = []
+
+    first = threading.Thread(
+        target=lambda: results.append(client._sync_variables(
+            {"version": 1}, phase="context.sync", timeout=1.0)))
+    second = threading.Thread(
+        target=lambda: results.append(client._sync_variables(
+            {"version": 2}, phase="context.sync", timeout=1.0)))
+
+    first.start()
+    assert first_failure.wait(timeout=1)
+    second.start()
+    first.join(timeout=2)
+    second.join(timeout=2)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert proxy.calls == [1, 1, 2]
+    assert len(results) == 2
+
+
+def test_sync_retry_does_not_exceed_shared_timeout_budget(monkeypatch):
+    class RefusingProxy:
+        def __init__(self):
+            self.calls = 0
+
+        def sync_variables_from_client(self, variables, api_key=None):
+            self.calls += 1
+            raise ConnectionRefusedError(111, "Connection refused")
+
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    proxy = RefusingProxy()
+    client = RemoteKeywordClient(
+        url="http://remote",
+        alias="remote",
+        sync_config={
+            "sync_retry_count": 5,
+            "sync_retry_interval": 0.05,
+            "sync_retry_jitter": 0,
+        },
+    )
+    client.server = proxy
+    replacements = []
+    monkeypatch.setattr(
+        client,
+        "_replace_server_proxy",
+        lambda: replacements.append(True),
+    )
+
+    started_at = time.monotonic()
+    with pytest.raises(XMLRPCCallError):
+        client._sync_variables(
+            {"version": 1}, phase="context.sync", timeout=0.01)
+
+    assert time.monotonic() - started_at < 0.05
+    assert proxy.calls == 1
+    assert replacements == []
+
+
+def test_sync_retry_ignores_non_transport_server_fault(monkeypatch):
+    import xmlrpc.client
+
+    class FaultingProxy:
+        def __init__(self):
+            self.calls = 0
+
+        def sync_variables_from_client(self, variables, api_key=None):
+            self.calls += 1
+            raise xmlrpc.client.Fault(1, "invalid request")
+
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    proxy = FaultingProxy()
+    client = RemoteKeywordClient(
+        url="http://remote",
+        alias="remote",
+        sync_config={
+            "sync_retry_count": 2,
+            "sync_retry_interval": 0,
+            "sync_retry_jitter": 0,
+        },
+    )
+    client.server = proxy
+    replacements = []
+    monkeypatch.setattr(
+        client,
+        "_replace_server_proxy",
+        lambda: replacements.append(True),
+    )
+
+    with pytest.raises(XMLRPCCallError) as exc_info:
+        client._sync_variables(
+            {"version": 1}, phase="context.sync", timeout=1.0)
+
+    assert exc_info.value.category == "server_fault"
+    assert proxy.calls == 1
+    assert replacements == []
+
+
+def test_sync_retry_settings_normalize_invalid_and_excessive_values():
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    client = RemoteKeywordClient(
+        url="http://remote",
+        alias="remote",
+        sync_config={
+            "sync_retry_count": float("inf"),
+            "sync_retry_interval": -1,
+            "sync_retry_backoff": 999,
+            "sync_retry_max_interval": 999,
+            "sync_retry_jitter": "invalid",
+        },
+    )
+
+    assert client._sync_retry_settings() == {
+        "count": 2,
+        "interval": 0.0,
+        "backoff": 10.0,
+        "max_interval": 60.0,
+        "jitter": 0.1,
+    }
+
+
+def test_remote_keyword_transport_failure_is_not_automatically_retried():
+    class RefusingKeywordProxy:
+        def __init__(self):
+            self.calls = 0
+
+        def run_keyword(self, name, args_dict, api_key=None):
+            self.calls += 1
+            raise ConnectionRefusedError(111, "Connection refused")
+
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    proxy = RefusingKeywordProxy()
+    client = RemoteKeywordClient(url="http://remote", alias="remote")
+    client.server = proxy
+
+    with pytest.raises(Exception, match="远程关键字调用失败"):
+        client._execute_remote_keyword(name="有副作用的关键字")
+
+    assert proxy.calls == 1
 
 
 def test_structured_sync_failure_is_exposed_to_dsl_caller():

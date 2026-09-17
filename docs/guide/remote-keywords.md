@@ -135,7 +135,14 @@ remote_servers:
     sync_config:
       sync_global_vars: true
       sync_yaml_vars: true
-      sync_timeout: 30
+      sync_timeout: 30         # 同步恢复总预算
+      sync_attempt_timeout: 10 # 单次同步RPC的socket超时
+      connect_timeout: 5      # TCP建连超时，适用于该客户端所有RPC
+      sync_retry_count: 2
+      sync_retry_interval: 0.2
+      sync_retry_backoff: 2
+      sync_retry_max_interval: 1
+      sync_retry_jitter: 0.1
       realtime_sync_failure_policy: fail
 
   backup_server:
@@ -442,16 +449,34 @@ remote_servers:
     alias: "slow_server"
     timeout: 600  # 关键字执行/普通RPC超时时间
     sync_config:
-      sync_timeout: 30
+      sync_timeout: 30         # 同步恢复总预算
+      sync_attempt_timeout: 10 # 单次同步RPC的socket超时
+      connect_timeout: 5      # TCP建连超时，适用于该客户端所有RPC
+      sync_retry_count: 2      # 首次失败后额外重试 2 次
+      sync_retry_interval: 0.2 # 首次重试等待秒数
+      sync_retry_backoff: 2    # 后续等待时间的退避倍数
+      sync_retry_max_interval: 1
+      sync_retry_jitter: 0.1   # 随机抖动，避免并发客户端同时重试
       realtime_sync_failure_policy: fail
 ```
 
 说明：
 - `remote_servers.*.timeout` 会用于远程 XML-RPC 调用超时控制。
 - 未配置时默认关键字调用超时为 600 秒。
-- `sync_config.sync_timeout` 单独控制执行前的上下文同步，默认不超过 30 秒。
+- `sync_config.sync_timeout` 控制上下文同步的恢复总预算，默认不超过 30 秒。
+- `sync_config.sync_attempt_timeout` 默认 10 秒，每次同步使用它与剩余预算的较小值，避免首次超时吃完全部预算。发送给服务端的 `sync_timeout_seconds` 也是该次尝试的预算。
+- `sync_config.connect_timeout` 默认 5 秒，单独限制 TCP 建连，并受当次 RPC 超时约束；建连后恢复 RPC 的读写超时，因此不会把耗时业务关键字的响应等待缩短到 5 秒。该设置也用于 HTTPS 的 TCP 建连；TLS 握手仍受 RPC 超时控制。
+- 重连能力协商最多使用 2 秒且不超过剩余预算的一半，失败后使用兼容同步接口。
+- 上下文同步属于幂等覆盖操作。遇到连接拒绝、连接重置、网络超时或 HTTP
+  传输中断时，默认在首次失败后额外重试 2 次，并重建连接。等待间隔默认从
+  `0.2` 秒开始，按 `2` 倍退避，最大 `1` 秒，另加最多 `0.1` 秒随机抖动。
+  所有尝试、退避和重连能力协商共享同一个 `sync_timeout` 预算；次数或预算任一耗尽即失败。预算在各阶段边界检查，socket 超时不是强制取消整个 RPC 的墙钟截止时间。
+- `sync_retry_count: 0` 可以关闭同步重试；为避免错误配置制造重试风暴，该值最大
+  按 10 处理。认证失败、参数序列化失败、XML-RPC
+  服务端 Fault 和服务端返回的业务错误不会重试。普通远程关键字也不会被自动
+  重试，避免重复执行有副作用的操作。
 - `sync_config.realtime_sync_failure_policy` 默认为 `fail`。同步失败时阻止关键字执行，避免远端使用过期变量。需要兼容旧版“尽力同步”行为时可显式设置为 `warn`。
-- 超时错误会同时显示 `elapsed`、`configured_timeout`、`effective_timeout`、调用阶段和客户端请求 ID。协议版本 3 会把请求 ID 和同步超时预算传到服务端，并返回进程锁等待、全局变量写入等阶段耗时；连接 0.36.0/0.36.1 服务端时自动回退兼容接口。传输异常后客户端会丢弃旧连接，下一次调用重新建连。
+- 超时错误会同时显示 `elapsed`、`configured_timeout`、`effective_timeout`、调用阶段和客户端请求 ID。协议版本 3 会把请求 ID 和同步超时预算传到服务端，并返回进程锁等待、全局变量写入等阶段耗时；连接 0.36.0/0.36.1 服务端时自动回退兼容接口。传输异常后客户端会丢弃旧连接并在安全的同步重试中重新建连；恢复后重新协商服务端能力。诊断中的 `client_sync_attempts` 和 `client_reconnected` 可确认是否发生过自动恢复。
 
 远端全局变量文件锁默认最多等待 30 秒，可通过环境变量
 `PYTEST_DSL_GLOBAL_LOCK_TIMEOUT` 调整；进程内变量同步锁默认最多等待
@@ -499,3 +524,37 @@ pytest-dsl-server --host 0.0.0.0 --port 8270 --max-concurrency 20
 
 - **[环境配置管理](./configuration)** - 管理多环境的远程服务器配置
 - **[最佳实践](./best-practices)** - 学习分布式测试的最佳实践
+
+### 重启后从控制端等待服务恢复
+
+远程执行通道失联时，`windows|等待TCP端口` 自身也无法启动。请先在控制端调用本地关键字（不加 `windows|` 前缀）：
+
+```text
+# 放在触发重启之后、下一次远程调用之前
+[等待远程服务就绪], 服务地址: "http://10.74.106.165:8270/", 超时: 120, 探测超时: 5, 间隔: 1
+```
+
+该关键字直接对 URL 调用只读的 `get_keyword_names`，不要求先注册远程关键字，
+不进行变量同步，也不重放重启等业务操作。成功返回 `true`；到期抛出异常并保留最后一次连接错误。
+传输失败会重建连接后继续探测，服务端 Fault、无效响应等错误直接报错。
+此检查确认 XML-RPC 服务可响应，不验证业务服务就绪或 API 密钥权限；之后仍需正常同步并进行业务检查。
+
+对需要更长自动恢复窗口的执行机，可显式设置：
+
+```yaml
+remote_servers:
+  windows:
+    url: "http://10.74.106.165:8270/"
+    timeout: 600
+    sync_config:
+      connect_timeout: 5
+      sync_attempt_timeout: 10
+      sync_timeout: 120
+      sync_retry_count: 10
+      sync_retry_interval: 1
+      sync_retry_max_interval: 3
+      realtime_sync_failure_policy: fail
+```
+
+120 秒是预算上限，不保证一定持续尝试 120 秒；重试次数也会限制恢复窗口。
+普通业务关键字不加入框架同步重试循环，避免响应丢失时重复执行有副作用的操作。

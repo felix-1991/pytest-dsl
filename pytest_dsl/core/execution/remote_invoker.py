@@ -53,7 +53,8 @@ def _format_remote_diagnostics(diagnostics, fallback_traceback=None,
                 "context_sync_server_stage: "
                 f"{context_sync_server.get('stage', '')}")
             for key in ('elapsed_ms', 'lock_wait_ms', 'global_write_ms',
-                        'variable_count', 'global_variable_count'):
+                        'variable_count', 'global_variable_count',
+                        'client_sync_attempts', 'client_reconnected'):
                 value = context_sync_server.get(key)
                 if value is not None:
                     lines.append(f"context_sync_server_{key}: {value}")

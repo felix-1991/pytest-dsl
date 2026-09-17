@@ -213,6 +213,79 @@ def test_run_keyword_metadata_preserves_client_request_id():
     assert server.get_server_capabilities()["protocol_version"] == 3
 
 
+def test_threaded_xmlrpc_server_has_burst_connection_backlog():
+    assert ThreadedXMLRPCServer.request_queue_size == 128
+
+
+def test_remote_diagnostics_exposes_client_sync_recovery():
+    from pytest_dsl.core.execution.remote_invoker import (
+        _format_remote_diagnostics,
+    )
+
+    details = _format_remote_diagnostics({
+        "client_rpc": {
+            "context_sync_server": {
+                "stage": "complete",
+                "client_sync_attempts": 2,
+                "client_reconnected": True,
+            },
+        },
+    })
+
+    assert "context_sync_server_client_sync_attempts: 2" in details
+    assert "context_sync_server_client_reconnected: True" in details
+
+
+def test_variable_sync_recovers_after_listener_becomes_available(monkeypatch):
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    server = make_server()
+    port = get_available_local_port()
+    client = RemoteKeywordClient(
+        url=f"http://127.0.0.1:{port}/",
+        alias="restartable",
+        sync_config={
+            "sync_retry_count": 2,
+            "sync_retry_interval": 0,
+            "sync_retry_jitter": 0,
+        },
+    )
+    client._server_capabilities = {"sync_request_metadata": True}
+    original_replace = client._replace_server_proxy
+    started_server = {}
+
+    def start_listener_then_replace_proxy():
+        xmlrpc_server, thread = start_minimal_xmlrpc_keyword_server(
+            server, port)
+        started_server["server"] = xmlrpc_server
+        started_server["thread"] = thread
+        original_replace()
+
+    monkeypatch.setattr(
+        client,
+        "_replace_server_proxy",
+        start_listener_then_replace_proxy,
+    )
+
+    try:
+        result = client._sync_variables(
+            {"version": 1},
+            phase="context.sync",
+            timeout=2.0,
+            request_id="listener-recovery",
+        )
+
+        assert result["status"] == "success"
+        assert result["diagnostics"]["client_sync_attempts"] == 2
+        assert result["diagnostics"]["client_reconnected"] is True
+        assert server.shared_variables["version"] == 1
+        assert client._server_capabilities["protocol_version"] == 3
+    finally:
+        if started_server:
+            stop_xmlrpc_server(
+                started_server["server"], started_server["thread"])
+
+
 def test_dsl_remote_keyword_roundtrip_through_xmlrpc_service(monkeypatch):
     force_large_diagnostics_thread_id(monkeypatch)
     remote_keyword_manager.clients.clear()

@@ -9,6 +9,15 @@ remote_servers:
       enabled: true                    # 总开关
       sync_global_vars: true           # 同步全局变量（g_开头）
       sync_yaml_vars: true             # 同步YAML配置变量
+      sync_timeout: 30                 # 所有同步尝试共享的总预算（秒）
+      sync_attempt_timeout: 10         # 单次同步RPC超时，受剩余预算限制
+      connect_timeout: 5               # TCP连接超时，建连后恢复RPC读写超时
+      sync_retry_count: 2              # 首次失败后的额外重试次数
+      sync_retry_interval: 0.2         # 首次重试等待时间（秒）
+      sync_retry_backoff: 2            # 指数退避倍数
+      sync_retry_max_interval: 1       # 单次等待上限（秒）
+      sync_retry_jitter: 0.1           # 防止并发重试风暴的随机抖动（秒）
+      realtime_sync_failure_policy: fail
 
   server2:
     url: "http://localhost:8271/"
