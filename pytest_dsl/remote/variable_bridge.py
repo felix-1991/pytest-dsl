@@ -10,6 +10,7 @@ from pytest_dsl.remote.hook_manager import (register_startup_hook,
                                             register_before_keyword_hook)
 from pytest_dsl.core.yaml_vars import yaml_vars
 from pytest_dsl.core.global_context import global_context
+from pytest_dsl.core.request_variables import current_request_variables
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,8 @@ class VariableBridge:
         1. 原始YAML变量（服务器本地的）
         2. 客户端同步的变量
         """
+        if current_request_variables() is not None:
+            return self.original_yaml_get_variable(name)
         # 首先尝试从原始YAML变量获取
         original_value = self.original_yaml_get_variable(name)
         if original_value is not None:
@@ -77,6 +80,8 @@ class VariableBridge:
         1. 原始全局变量（包括YAML变量）
         2. 客户端同步的变量
         """
+        if current_request_variables() is not None:
+            return self.original_global_get_variable(name)
         try:
             # 首先尝试从原始全局上下文获取
             original_value = self.original_global_get_variable(name)
@@ -154,7 +159,9 @@ def get_synced_variable(name: str) -> Optional[Any]:
     Returns:
         变量值，如果不存在则返回None
     """
-    return variable_bridge.shared_variables.get(name)
+    request = current_request_variables()
+    variables = request.values if request is not None else variable_bridge.shared_variables
+    return variables.get(name)
 
 
 def list_synced_variables() -> dict:
@@ -163,6 +170,9 @@ def list_synced_variables() -> dict:
     Returns:
         同步变量字典的副本
     """
+    request = current_request_variables()
+    if request is not None:
+        return request.values.copy()
     return variable_bridge.shared_variables.copy()
 
 
@@ -175,7 +185,9 @@ def has_synced_variable(name: str) -> bool:
     Returns:
         是否存在该同步变量
     """
-    return name in variable_bridge.shared_variables
+    request = current_request_variables()
+    variables = request.values if request is not None else variable_bridge.shared_variables
+    return name in variables
 
 
 def get_all_accessible_variables() -> dict:
@@ -184,6 +196,9 @@ def get_all_accessible_variables() -> dict:
     Returns:
         所有可访问变量的字典
     """
+    request = current_request_variables()
+    if request is not None:
+        return yaml_vars.get_all_variables()
     all_vars = {}
     
     # 添加原始YAML变量
@@ -194,6 +209,6 @@ def get_all_accessible_variables() -> dict:
         logger.warning(f"获取原始YAML变量失败: {e}")
     
     # 添加同步变量（会覆盖同名的原始变量）
-    all_vars.update(variable_bridge.shared_variables)
+    all_vars.update(list_synced_variables())
     
     return all_vars

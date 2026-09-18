@@ -63,8 +63,6 @@ def pytest_configure(config):
         config: pytest配置对象
     """
 
-    # 加载YAML变量文件
-    load_yaml_variables(config)
     config.addinivalue_line(
         "markers",
         "pytest_dsl_case(case_path, suite_id, hook_root): generated DSL case metadata",
@@ -72,6 +70,11 @@ def pytest_configure(config):
     config._pytest_dsl_lifecycle_state = DslLifecycleState()
     state_dir = _configure_shared_lifecycle_dir(config)
     auto_directory.configure_hook_execution_state(state_dir)
+
+    config._pytest_dsl_previous_global_storage = global_context._storage_dir
+    global_context.configure_storage(state_dir / 'global_variables')
+    # Configure the run's global store before YAML may connect remote peers.
+    load_yaml_variables(config)
 
     # 确保全局变量存储目录存在
     os.makedirs(global_context._storage_dir, exist_ok=True)
@@ -213,6 +216,10 @@ def pytest_configure_node(node):
 
 def pytest_unconfigure(config):
     """Remove the per-run coordination directory after all session hooks finish."""
+    previous_storage = getattr(config, '_pytest_dsl_previous_global_storage', None)
+    if previous_storage is not None:
+        global_context.configure_storage(previous_storage)
+        del config._pytest_dsl_previous_global_storage
     if not getattr(config, "_pytest_dsl_owns_lifecycle_dir", False):
         return
     state_dir = getattr(config, "_pytest_dsl_lifecycle_dir", None)

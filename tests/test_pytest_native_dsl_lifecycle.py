@@ -4,6 +4,42 @@ from pathlib import Path
 pytest_plugins = ["pytester"]
 
 
+def test_global_variables_do_not_survive_a_new_pytest_session(pytester):
+    pytester.makepyfile(test_globals="""
+from pytest_dsl.core.global_context import global_context
+
+def test_fresh_session():
+    assert global_context.get_variable('g_session_leak') is None
+    global_context.set_variable('g_session_leak', 'old-run')
+""")
+    for _ in range(2):
+        result = pytester.runpytest('-p', 'pytest_dsl', '-q', 'test_globals.py')
+        result.assert_outcomes(passed=1)
+
+
+def test_xdist_workers_share_run_global_variables(pytester):
+    __import__('pytest').importorskip('xdist')
+    pytester.makepyfile(test_globals="""
+import time
+import pytest
+from pytest_dsl.core.global_context import global_context
+
+@pytest.mark.parametrize('worker_value', [0, 1])
+def test_shared(worker_value):
+    global_context.set_variable(f'g_worker_{worker_value}', worker_value)
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        values = global_context.get_stored_variables()
+        if 'g_worker_0' in values and 'g_worker_1' in values:
+            return
+        time.sleep(.02)
+    raise AssertionError('worker global variables were not shared')
+""")
+    result = pytester.runpytest_subprocess('-p', 'pytest_dsl', '-p', 'xdist',
+                                         '-n', '2', '-q', 'test_globals.py')
+    result.assert_outcomes(passed=2)
+
+
 def write_file(root: Path, relative_path: str, content: str = "") -> Path:
     target = root / relative_path
     target.parent.mkdir(parents=True, exist_ok=True)

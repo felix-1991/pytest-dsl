@@ -210,7 +210,7 @@ def test_run_keyword_metadata_preserves_client_request_id():
     assert response["diagnostics"]["request_id"] == "client-req-123"
     assert server.get_server_capabilities()["request_metadata"] is True
     assert server.get_server_capabilities()["sync_request_metadata"] is True
-    assert server.get_server_capabilities()["protocol_version"] == 3
+    assert server.get_server_capabilities()["protocol_version"] == 4
 
 
 def test_threaded_xmlrpc_server_has_burst_connection_backlog():
@@ -234,6 +234,44 @@ def test_remote_diagnostics_exposes_client_sync_recovery():
 
     assert "context_sync_server_client_sync_attempts: 2" in details
     assert "context_sync_server_client_reconnected: True" in details
+
+
+def test_request_context_isolated_over_real_xmlrpc(monkeypatch):
+    from pytest_dsl.core.context import TestContext
+    from pytest_dsl.core.yaml_vars import yaml_vars
+    from pytest_dsl.remote.keyword_client import RemoteKeywordClient
+
+    monkeypatch.setattr(yaml_vars, '_variables', {})
+    barrier = threading.Barrier(2)
+
+    @keyword_manager.register('网络请求上下文隔离测试', [])
+    def read(context):
+        if context.has('owner'):
+            barrier.wait(timeout=3)
+        return {'owner': context.get('owner'), 'yaml': yaml_vars.get_variable('owner')}
+
+    server = make_server()
+    port = get_available_local_port()
+    rpc_server, thread = start_minimal_xmlrpc_keyword_server(server, port)
+    try:
+        clients = [RemoteKeywordClient(url=f'http://127.0.0.1:{port}/') for _ in range(2)]
+        for client in clients:
+            client._server_capabilities = server.get_server_capabilities()
+        contexts = [TestContext(), TestContext()]
+        contexts[0].set('owner', 'A')
+        contexts[1].set('owner', 'B')
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(
+                lambda pair: pair[0]._execute_remote_keyword(
+                    name='网络请求上下文隔离测试', context=pair[1]),
+                zip(clients, contexts)))
+        assert results == [{'owner': 'A', 'yaml': 'A'}, {'owner': 'B', 'yaml': 'B'}]
+        assert clients[0]._execute_remote_keyword(
+            name='网络请求上下文隔离测试', context=TestContext()) == {'owner': None, 'yaml': None}
+        assert server.shared_variables == {}
+        assert yaml_vars._variables == {}
+    finally:
+        stop_xmlrpc_server(rpc_server, thread)
 
 
 def test_variable_sync_recovers_after_listener_becomes_available(monkeypatch):
@@ -279,7 +317,7 @@ def test_variable_sync_recovers_after_listener_becomes_available(monkeypatch):
         assert result["diagnostics"]["client_sync_attempts"] == 2
         assert result["diagnostics"]["client_reconnected"] is True
         assert server.shared_variables["version"] == 1
-        assert client._server_capabilities["protocol_version"] == 3
+        assert client._server_capabilities["protocol_version"] == 4
     finally:
         if started_server:
             stop_xmlrpc_server(

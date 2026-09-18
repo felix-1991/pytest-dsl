@@ -193,14 +193,26 @@ class RemoteKeywordClient:
         return lock
 
     def _rpc_call(self, method_name, *args, phase=None, timeout=None,
-                  request_id=None):
+                  request_id=None, lock_timeout=None, metrics=None):
         """Serialize access to ServerProxy and add call-stage diagnostics."""
         from pytest_dsl.core.serialization_utils import XMLRPCSerializer
 
         context_parts = [f"alias={self.alias}", f"phase={phase or method_name}"]
         if request_id:
             context_parts.append(f"client_request_id={request_id}")
-        with self._get_rpc_lock():
+        started_at = time.monotonic()
+        lock = self._get_rpc_lock()
+        wait_budget = (lock_timeout if lock_timeout is not None else
+                       timeout if timeout is not None else self.timeout)
+        if not lock.acquire(timeout=max(0.0, float(wait_budget))):
+            raise TimeoutError(f'等待远程客户端 RPC 锁超时: {self.alias} ({phase})')
+        try:
+            if metrics is not None:
+                metrics['client_lock_wait_ms'] = round((time.monotonic() - started_at) * 1000, 3)
+            if timeout is not None:
+                timeout = max(0.0, timeout - (time.monotonic() - started_at))
+                if timeout <= 0:
+                    raise TimeoutError(f'远程 RPC 预算耗尽: {self.alias} ({phase})')
             transport = getattr(self.server, '_ServerProxy__transport', None)
             set_connect_timeout = getattr(transport, 'set_connect_timeout', None)
             if callable(set_connect_timeout):
@@ -212,7 +224,10 @@ class RemoteKeywordClient:
                 *args,
                 _rpc_context=';'.join(context_parts),
                 _rpc_timeout=timeout,
+                _rpc_metrics=metrics,
             )
+        finally:
+            lock.release()
 
     @staticmethod
     def _positive_timeout(value, default):
@@ -333,13 +348,23 @@ class RemoteKeywordClient:
         # Keep the full retry sequence ordered with other calls made through
         # this client. Otherwise an older timed-out sync could retry after a
         # newer sync and overwrite the newer context.
-        with self._get_rpc_lock():
+        started_at = time.monotonic()
+        budget = self._positive_timeout(timeout, self.sync_config.get('sync_timeout', 30.0))
+        lock = self._get_rpc_lock()
+        if not lock.acquire(timeout=budget):
+            raise TimeoutError(f'等待远程变量同步锁超时: {self.alias}')
+        try:
+            remaining = budget - (time.monotonic() - started_at)
+            if remaining <= 0:
+                raise TimeoutError(f'远程变量同步锁等待已耗尽预算: {self.alias}')
             return self._sync_variables_with_retry(
                 variables,
                 phase=phase,
-                timeout=timeout,
+                timeout=remaining,
                 request_id=request_id,
             )
+        finally:
+            lock.release()
 
     def _sync_variables_with_retry(self, variables, *, phase, timeout=None,
                                    request_id=None):
@@ -635,9 +660,25 @@ class RemoteKeywordClient:
         client_request_id = uuid.uuid4().hex
         call_started_at = time.monotonic()
 
-        # 在执行前同步最新的上下文变量
-        context_sync_result = self._sync_context_variables_before_execution(
-            kwargs.get('context'), request_id=client_request_id)
+        capabilities = getattr(self, '_server_capabilities', {}) or {}
+        scoped_context = capabilities.get('request_scoped_context', False)
+        sync_budget = self._positive_timeout(
+            getattr(self, 'sync_config', {}).get('sync_timeout'), 30.0)
+        request_metadata = {'client_request_id': client_request_id}
+        if scoped_context:
+            global_names = set()
+            variables = self._prepare_context_variables(
+                kwargs.get('context'), global_names=global_names)
+            request_metadata['context_variables'] = variables
+            request_metadata['global_variable_names'] = sorted(global_names.intersection(variables))
+            context_sync_result = {'diagnostics': {
+                'mode': 'request', 'variable_count': len(variables),
+            }}
+            if time.monotonic() - call_started_at >= sync_budget:
+                raise TimeoutError('收集远程上下文已耗尽同步预算')
+        else:
+            context_sync_result = self._sync_context_variables_before_execution(
+                kwargs.get('context'), request_id=client_request_id)
         context_sync_elapsed_ms = (
             time.monotonic() - call_started_at) * 1000
 
@@ -725,16 +766,24 @@ class RemoteKeywordClient:
         # 执行远程调用
         # 检查是否需要传递API密钥
         keyword_started_at = time.monotonic()
+        rpc_metrics = {}
         try:
             capabilities = getattr(self, '_server_capabilities', {}) or {}
             if capabilities.get('request_metadata'):
+                lock_budget = sync_budget
+                if scoped_context:
+                    lock_budget -= time.monotonic() - call_started_at
+                    if lock_budget <= 0:
+                        raise TimeoutError('远程上下文准备已耗尽同步预算')
                 result = self._rpc_call(
                     'run_keyword_with_metadata',
                     name,
                     mapped_kwargs,
-                    {'client_request_id': client_request_id},
+                    request_metadata,
                     self.api_key,
-                    phase='keyword.execute', request_id=client_request_id)
+                    phase='keyword.execute', request_id=client_request_id,
+                    lock_timeout=lock_budget,
+                    metrics=rpc_metrics)
             elif self.api_key:
                 result = self._rpc_call(
                     'run_keyword', name, mapped_kwargs, self.api_key,
@@ -754,11 +803,15 @@ class RemoteKeywordClient:
 
         _print_verbose(f"远程调用: 结果 {result}")
 
+        if scoped_context:
+            self._apply_variable_effects(result.get('variable_effects') or {})
+
         diagnostics = (
             dict(result.get('diagnostics', {}) or {})
             if isinstance(result, dict) else {}
         )
         diagnostics['client_rpc'] = {
+            **rpc_metrics,
             'client_request_id': client_request_id,
             'context_sync_elapsed_ms': round(context_sync_elapsed_ms, 3),
             'keyword_rpc_elapsed_ms': round(
@@ -820,6 +873,13 @@ class RemoteKeywordClient:
                 timeout=self.timeout,
                 traceback_lines=traceback_lines,
                 diagnostics=diagnostics)
+
+    def _apply_variable_effects(self, effects):
+        """Explicit remote global writes belong to the caller's run."""
+        from pytest_dsl.core.global_context import global_context
+        global_context.set_variables(effects.get('set') or {}, attach=False)
+        for name in effects.get('deleted') or []:
+            global_context.delete_variable(name)
 
     def _process_return_data(self, return_data):
         """通用的返回数据处理方法
@@ -983,6 +1043,68 @@ class RemoteKeywordClient:
         except Exception:
             return None
 
+    def _prepare_context_variables(self, context, *, global_names=None):
+        """Apply the same source selection to every per-call snapshot."""
+        from pytest_dsl.core.context import TestContext
+        from pytest_dsl.core.variable_providers import (
+            GlobalContextVariableProvider, YAMLVariableProvider,
+            setup_context_with_default_providers,
+        )
+        from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+        from pytest_dsl.core.request_variables import current_request_variables
+
+        deadline = time.monotonic() + self._positive_timeout(
+            self.sync_config.get('sync_timeout'), 30.0)
+        known_globals = global_names if global_names is not None else set()
+        request = current_request_variables()
+        if request is not None:
+            known_globals.update(request.global_names)
+
+        if context is None:
+            context = TestContext()
+            setup_context_with_default_providers(context)
+        values = dict(self.sync_config.get('custom_variables') or {})
+        providers = getattr(context, '_external_providers', None)
+        if isinstance(providers, list):
+            for provider in reversed(providers):
+                if isinstance(provider, GlobalContextVariableProvider):
+                    if not self.sync_config.get('sync_global_vars', True):
+                        continue
+                if isinstance(provider, YAMLVariableProvider):
+                    if not self.sync_config.get('sync_yaml_vars', True):
+                        continue
+                if not hasattr(provider, 'get_all_variables'):
+                    continue
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError('收集远程上下文已耗尽同步预算')
+                if isinstance(provider, GlobalContextVariableProvider):
+                    external = provider.get_all_variables(lock_timeout=remaining)
+                    known_globals.update(external)
+                else:
+                    external = provider.get_all_variables()
+                if isinstance(provider, YAMLVariableProvider):
+                    keys = self.sync_config.get('yaml_sync_keys')
+                    if keys is not None:
+                        external = {k: v for k, v in external.items() if k in keys}
+                values.update(external)
+            values.update(context.get_local_variables())
+        else:
+            values.update(context.get_all_context_variables())
+        keys = self.sync_config.get('context_sync_keys')
+        if keys is not None:
+            values = {k: v for k, v in values.items() if k in keys}
+        if not self.sync_config.get('sync_global_vars', True):
+            values = {k: v for k, v in values.items()
+                      if not k.startswith('g_') and k not in known_globals}
+        patterns = self.sync_config.get('yaml_exclude_patterns', [])
+        filtered = XMLRPCSerializer.filter_variables(values, patterns)
+        filtered = self._apply_hook_filter(filtered, values, 'realtime')
+        filtered = XMLRPCSerializer.filter_variables(filtered, patterns)
+        if time.monotonic() >= deadline:
+            raise TimeoutError('序列化远程上下文已耗尽同步预算')
+        return filtered
+
     def _sync_context_variables_before_execution(self, context,
                                                   request_id=None):
         """在执行远程关键字前同步最新的上下文变量
@@ -994,32 +1116,17 @@ class RemoteKeywordClient:
             return
 
         try:
-            # 获取所有上下文变量
-            context_variables = context.get_all_context_variables()
-
-            if not context_variables:
-                _print_verbose("远程同步: 没有上下文变量需要同步")
-                return
-
-            # 使用统一的序列化工具进行变量过滤
-            from pytest_dsl.core.serialization_utils import XMLRPCSerializer
-            
-            # 扩展排除模式
-            exclude_patterns = self.sync_config.get('yaml_exclude_patterns', [
-                'remote_servers'
-            ])
-            
-            variables_to_sync = XMLRPCSerializer.filter_variables(
-                context_variables, exclude_patterns)
-
-            # 应用Hook过滤
-            variables_to_sync = self._apply_hook_filter(
-                variables_to_sync, context_variables, 'realtime')
+            started_at = time.monotonic()
+            variables_to_sync = self._prepare_context_variables(context)
 
             if variables_to_sync:
                 # 调用远程服务器的变量同步接口
                 try:
-                    sync_timeout = self.sync_config.get('sync_timeout')
+                    sync_timeout = self._positive_timeout(
+                        self.sync_config.get('sync_timeout'), 30.0)
+                    sync_timeout -= time.monotonic() - started_at
+                    if sync_timeout <= 0:
+                        raise TimeoutError('收集远程上下文已耗尽同步预算')
                     result = self._sync_variables(
                         variables_to_sync,
                         phase='context.sync',
@@ -1091,6 +1198,8 @@ class RemoteKeywordClient:
 
     def _send_initial_variables(self):
         """连接时发送初始变量到远程服务器"""
+        if (getattr(self, '_server_capabilities', {}) or {}).get('request_scoped_context'):
+            return
         try:
             variables_to_send = {}
 

@@ -874,8 +874,8 @@ class DSLExecutor:
             )
             setup_context_with_default_providers(self.test_context)
 
-            # 同步常用变量到context中，提高访问性能
-            self.test_context.sync_variables_from_external_sources()
+            # External providers stay live; copying globals into local state
+            # would let an old cached value overwrite a later update or delete.
         except ImportError as e:
             # 如果导入失败，记录警告但不影响正常功能
             print(f"警告：无法设置变量提供者: {e}")

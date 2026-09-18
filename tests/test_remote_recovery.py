@@ -222,7 +222,9 @@ def test_local_readiness_dsl_recovers_then_calls_real_read_only_service(monkeypa
         executor.execute_from_content(
             f'[等待远程服务就绪], 服务地址: "{url}", 超时: 2, 探测超时: 0.1, 间隔: 0.01')
         assert calls == ['get_keyword_names']
-        assert attempts == [0.1, 0.1]
+        assert len(attempts) == 2
+        # RPC lock acquisition now consumes part of each probe's budget.
+        assert all(0 < timeout <= 0.1 for timeout in attempts)
     finally:
         server.shutdown()
         server.server_close()

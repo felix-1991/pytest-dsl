@@ -2,6 +2,7 @@ import os
 import yaml
 from typing import Dict, Any, List, Optional
 from pathlib import Path
+from .request_variables import current_request_variables
 
 
 class YAMLVariableManager:
@@ -21,6 +22,12 @@ class YAMLVariableManager:
         Returns:
             bool: 变量是否存在
         """
+        request = current_request_variables()
+        if request is not None:
+            if name in request.deleted:
+                return False
+            if name in request.values:
+                return True
         # 首先检查本地变量
         if name in self._variables:
             return True
@@ -76,6 +83,12 @@ class YAMLVariableManager:
         Returns:
             变量值，如果不存在返回None
         """
+        request = current_request_variables()
+        if request is not None:
+            if name in request.deleted:
+                return None
+            if name in request.values:
+                return request.values[name]
         # 首先从本地变量获取
         if name in self._variables:
             return self._variables[name]
@@ -134,7 +147,13 @@ class YAMLVariableManager:
 
     def get_all_variables(self) -> Dict[str, Any]:
         """获取所有已加载的变量"""
-        return self._variables.copy()
+        values = self._variables.copy()
+        request = current_request_variables()
+        if request is not None:
+            values.update(request.values)
+            for name in request.deleted:
+                values.pop(name, None)
+        return values
 
     def get_loaded_files(self) -> List[str]:
         """获取已加载的文件列表"""

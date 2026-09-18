@@ -10,6 +10,7 @@ import time
 import socketserver
 import platform
 import os
+from contextlib import ExitStack
 
 from pytest_dsl.core.keyword_manager import keyword_manager
 from pytest_dsl.core.reporting import (
@@ -236,11 +237,12 @@ class RemoteKeywordServer:
     def get_server_capabilities(self):
         """Describe optional protocol features for compatible clients."""
         return {
-            'protocol_version': 3,
+            'protocol_version': 4,
             'request_metadata': True,
             'client_request_id': True,
             'sync_request_metadata': True,
             'bounded_variable_sync': True,
+            'request_scoped_context': True,
         }
 
     def run_keyword_with_metadata(self, name, args_dict,
@@ -295,11 +297,26 @@ class RemoteKeywordServer:
         com_initialized = False
         pythoncom_module = None
         capture = None
+        request_variables = None
         try:
             request_metadata = (
                 request_metadata if isinstance(request_metadata, dict) else {})
             request_id = request_metadata.get('client_request_id')
-            with RemoteExecutionCapture(name, request_id=request_id) as capture:
+            with RemoteExecutionCapture(name, request_id=request_id) as capture, ExitStack() as scopes:
+                from pytest_dsl.core.request_variables import RequestVariables
+                isolated = 'context_variables' in request_metadata
+                if isolated:
+                    values = request_metadata['context_variables']
+                    if not isinstance(values, dict):
+                        raise ValueError('context_variables 必须是字典')
+                else:
+                    # Legacy calls retain last-write-wins semantics, but never
+                    # inject client variables into server YAML configuration.
+                    with self._get_variables_lock():
+                        values = self.shared_variables.copy()
+                request_variables = scopes.enter_context(RequestVariables(
+                    XMLRPCSerializer.restore_bigints(values), isolated=isolated,
+                    global_names=request_metadata.get('global_variable_names') or ()))
                 # WMI 基于 COM，线程化服务端中每个工作线程都要独立初始化 COM。
                 if platform.system().lower() == 'windows':
                     try:
@@ -316,7 +333,6 @@ class RemoteKeywordServer:
                     args_dict = json.loads(args_dict) if isinstance(
                         args_dict, str) else {}
 
-                from pytest_dsl.core.serialization_utils import XMLRPCSerializer
                 args_dict = XMLRPCSerializer.restore_bigints(args_dict)
 
                 # 获取关键字信息
@@ -367,7 +383,7 @@ class RemoteKeywordServer:
                 before_context = hook_manager.execute_hooks(
                     HookType.BEFORE_KEYWORD_EXECUTION,
                     server=self,
-                    shared_variables=self.shared_variables,
+                    shared_variables=request_variables.values,
                     keyword_name=name,
                     keyword_args=exec_kwargs,
                     test_context=test_context
@@ -384,7 +400,7 @@ class RemoteKeywordServer:
                 after_context = hook_manager.execute_hooks(
                     HookType.AFTER_KEYWORD_EXECUTION,
                     server=self,
-                    shared_variables=self.shared_variables,
+                    shared_variables=request_variables.values,
                     keyword_name=name,
                     keyword_args=exec_kwargs,
                     keyword_result=result,
@@ -401,7 +417,9 @@ class RemoteKeywordServer:
                 return XMLRPCSerializer.convert_to_serializable({
                     'status': 'PASS',
                     'return': return_data,
-                    'diagnostics': capture.to_payload('PASS')
+                    'diagnostics': capture.to_payload('PASS'),
+                    **({'variable_effects': request_variables.effects()}
+                       if isolated else {}),
                 })
         except Exception as e:
             exc_type, exc_value, exc_tb = sys.exc_info()
@@ -417,7 +435,9 @@ class RemoteKeywordServer:
                 'status': 'FAIL',
                 'error': str(e),
                 'traceback': formatted_traceback,
-                'diagnostics': diagnostics
+                'diagnostics': diagnostics,
+                **({'variable_effects': request_variables.effects()}
+                   if request_variables is not None and request_variables.isolated else {}),
             })
         finally:
             if com_initialized and pythoncom_module is not None:
@@ -772,7 +792,6 @@ class RemoteKeywordServer:
                     (time.monotonic() - global_write_started) * 1000, 3)
 
             self.shared_variables.update(variables)
-            yaml_vars._variables.update(variables)
 
             global_count = len(global_variables)
             if is_verbose():

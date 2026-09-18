@@ -47,12 +47,15 @@ def _format_remote_diagnostics(diagnostics, fallback_traceback=None,
             f"{client_rpc.get('keyword_rpc_elapsed_ms', 0)}")
         lines.append(
             f"client_total_elapsed_ms: {client_rpc.get('total_elapsed_ms', 0)}")
+        for key in ('payload_bytes', 'serialization_elapsed_ms', 'client_lock_wait_ms'):
+            if key in client_rpc:
+                lines.append(f"{key}: {client_rpc[key]}")
         context_sync_server = client_rpc.get('context_sync_server') or {}
         if context_sync_server:
             lines.append(
                 "context_sync_server_stage: "
                 f"{context_sync_server.get('stage', '')}")
-            for key in ('elapsed_ms', 'lock_wait_ms', 'global_write_ms',
+            for key in ('mode', 'elapsed_ms', 'lock_wait_ms', 'global_write_ms',
                         'variable_count', 'global_variable_count',
                         'client_sync_attempts', 'client_reconnected'):
                 value = context_sync_server.get(key)
@@ -159,6 +162,11 @@ class RemoteKeywordInvoker:
             ok_aliases = []
             for alias, client in remote_keyword_manager.clients.items():
                 try:
+                    if (getattr(client, '_server_capabilities', {}) or {}).get(
+                            'request_scoped_context'):
+                        # New peers receive the current snapshot atomically
+                        # with their own next keyword call; no global broadcast.
+                        continue
                     final_variables = client._apply_hook_filter(
                         filtered_variables, variables_to_filter, 'change')
 

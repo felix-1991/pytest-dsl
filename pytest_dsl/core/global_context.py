@@ -4,19 +4,20 @@ import tempfile
 import allure
 from typing import Dict, Any, Optional
 from filelock import FileLock
+from .request_variables import current_request_variables
 
 
 class GlobalContext:
     """全局上下文管理器，支持多进程环境下的变量共享"""
 
-    def __init__(self):
-        # 使用临时目录存储全局变量
-        self._storage_dir = os.path.join(
-            tempfile.gettempdir(), "pytest_dsl_global_vars")
-        os.makedirs(self._storage_dir, exist_ok=True)
-        self._storage_file = os.path.join(
-            self._storage_dir, "global_vars.json")
-        self._lock_file = os.path.join(self._storage_dir, "global_vars.lock")
+    def __init__(self, storage_dir=None):
+        # Standalone runs start fresh. pytest points all xdist workers at the
+        # same session directory; embedders can explicitly share a directory.
+        self._owned_storage = None
+        if storage_dir is None:
+            self._owned_storage = tempfile.TemporaryDirectory(prefix='pytest-dsl-globals-')
+            storage_dir = self._owned_storage.name
+        self.configure_storage(storage_dir)
         try:
             self._lock_timeout = float(os.getenv(
                 "PYTEST_DSL_GLOBAL_LOCK_TIMEOUT", "30"))
@@ -25,6 +26,13 @@ class GlobalContext:
 
         # 初始化变量提供者（延迟加载，避免循环导入）
         self._yaml_provider = None
+
+    def configure_storage(self, storage_dir):
+        """Select a run-owned store before starting execution or worker RPCs."""
+        self._storage_dir = os.fspath(storage_dir)
+        os.makedirs(self._storage_dir, exist_ok=True)
+        self._storage_file = os.path.join(self._storage_dir, 'global_vars.json')
+        self._lock_file = os.path.join(self._storage_dir, 'global_vars.lock')
 
     def _lock(self, timeout: Optional[float] = None):
         """Create a bounded lock so callers cannot wait forever.
@@ -48,6 +56,11 @@ class GlobalContext:
 
     def set_variable(self, name: str, value: Any) -> None:
         """设置全局变量"""
+        request = current_request_variables()
+        if request is not None:
+            request.set(name, value)
+            if request.isolated:
+                return
         with self._lock():
             variables = self._load_variables()
             variables[name] = value
@@ -68,6 +81,15 @@ class GlobalContext:
         """
         if not values:
             return False
+
+        request = current_request_variables()
+        if request is not None:
+            changed = any(name not in request.values or request.values[name] != value
+                          for name, value in values.items())
+            for name, value in values.items():
+                request.set(name, value)
+            if request.isolated:
+                return changed
 
         with self._lock(timeout=lock_timeout):
             variables = self._load_variables()
@@ -94,6 +116,14 @@ class GlobalContext:
 
     def get_variable(self, name: str) -> Any:
         """获取全局变量，优先从YAML变量中获取"""
+        request = current_request_variables()
+        if request is not None:
+            if name in request.deleted:
+                return None
+            if name in request.values:
+                return request.values[name]
+            if request.isolated:
+                return self._get_yaml_provider().get_variable(name)
         # 首先尝试从YAML变量中获取（通过变量提供者）
         yaml_provider = self._get_yaml_provider()
         yaml_value = yaml_provider.get_variable(name)
@@ -107,6 +137,14 @@ class GlobalContext:
 
     def has_variable(self, name: str) -> bool:
         """检查全局变量是否存在（包括YAML变量）"""
+        request = current_request_variables()
+        if request is not None:
+            if name in request.deleted:
+                return False
+            if name in request.values:
+                return True
+            if request.isolated:
+                return self._get_yaml_provider().has_variable(name)
         # 首先检查YAML变量（通过变量提供者）
         yaml_provider = self._get_yaml_provider()
         if yaml_provider.has_variable(name):
@@ -119,6 +157,11 @@ class GlobalContext:
 
     def delete_variable(self, name: str) -> None:
         """删除全局变量（仅删除存储的变量，不影响YAML变量）"""
+        request = current_request_variables()
+        if request is not None:
+            request.delete(name)
+            if request.isolated:
+                return
         with self._lock():
             variables = self._load_variables()
             if name in variables:
@@ -133,6 +176,11 @@ class GlobalContext:
 
     def clear_all(self) -> None:
         """清除所有全局变量（包括YAML变量）"""
+        request = current_request_variables()
+        if request is not None and request.isolated:
+            for name in request.global_names:
+                request.delete(name)
+            return
         with self._lock():
             self._save_variables({})
 
@@ -146,6 +194,15 @@ class GlobalContext:
             name="全局变量清除",
             attachment_type=allure.attachment_type.TEXT
         )
+
+    def get_stored_variables(self, lock_timeout=None) -> Dict[str, Any]:
+        """Read the current global source without caching it in local context."""
+        request = current_request_variables()
+        if request is not None and request.isolated:
+            return {name: value for name, value in request.values.items()
+                    if name in request.global_names}
+        with self._lock(timeout=lock_timeout):
+            return self._load_variables()
 
     def _load_variables(self) -> Dict[str, Any]:
         """从文件加载变量"""

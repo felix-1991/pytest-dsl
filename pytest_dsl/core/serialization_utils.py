@@ -452,7 +452,7 @@ class XMLRPCSerializer:
         return filtered_variables
     
     @staticmethod
-    def validate_xmlrpc_data(data: Any) -> tuple[bool, str]:
+    def validate_xmlrpc_data(data: Any, metrics=None) -> tuple[bool, str]:
         """验证数据是否可以通过XML-RPC传输
 
         Args:
@@ -465,10 +465,13 @@ class XMLRPCSerializer:
             import xmlrpc.client
             # 尝试序列化数据
             serialized = xmlrpc.client.dumps((data,), allow_none=True)
+            size = len(serialized.encode('utf-8'))
+            if metrics is not None:
+                metrics['payload_bytes'] = metrics.get('payload_bytes', 0) + size
 
             # 检查序列化后的大小
-            if len(serialized) > 1024 * 1024 * 5:  # 5MB限制
-                return False, f"序列化数据过大: {len(serialized)} 字节"
+            if size > 1024 * 1024 * 5:  # 5MiB per-argument limit
+                return False, f"序列化数据过大: {size} 字节（上限 5 MiB）"
 
             # 尝试反序列化验证完整性
             xmlrpc.client.loads(serialized)
@@ -487,7 +490,8 @@ class XMLRPCSerializer:
 
     @staticmethod
     def safe_xmlrpc_call(server_proxy, method_name: str, *args,
-                         _rpc_context=None, _rpc_timeout=None, **kwargs):
+                         _rpc_context=None, _rpc_timeout=None,
+                         _rpc_metrics=None, **kwargs):
         """安全的XML-RPC调用，包含序列化、计时和结构化错误处理。
 
         Args:
@@ -576,15 +580,19 @@ class XMLRPCSerializer:
 
             # 验证转换后的参数
             for i, arg in enumerate(converted_args):
-                is_valid, error_msg = XMLRPCSerializer.validate_xmlrpc_data(arg)
+                is_valid, error_msg = XMLRPCSerializer.validate_xmlrpc_data(arg, _rpc_metrics)
                 if not is_valid:
                     raise ValueError(f"参数 {i} 无法序列化: {error_msg}")
 
             for key, value in converted_kwargs.items():
-                is_valid, error_msg = XMLRPCSerializer.validate_xmlrpc_data(value)
+                is_valid, error_msg = XMLRPCSerializer.validate_xmlrpc_data(value, _rpc_metrics)
                 if not is_valid:
                     raise ValueError(f"参数 '{key}' 无法序列化: {error_msg}")
 
+            if _rpc_metrics is not None:
+                _rpc_metrics['serialization_elapsed_ms'] = round(_elapsed() * 1000, 3)
+            if _rpc_timeout is not None and _elapsed() >= _rpc_timeout:
+                raise socket.timeout('序列化已耗尽 RPC 预算，未发送请求')
             # 执行调用（使用转换后的参数）
             result = method(*converted_args, **converted_kwargs)
             return XMLRPCSerializer.restore_bigints(result)

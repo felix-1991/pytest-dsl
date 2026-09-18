@@ -88,28 +88,40 @@ class GlobalContextVariableProvider(VariableProvider):
         # 为了避免重复，这里直接访问存储的变量
         try:
             # 直接从全局变量存储中获取，跳过YAML变量
-            with self.global_context._lock():
-                variables = self.global_context._load_variables()
-                return variables.get(key)
+            return self.global_context.get_stored_variables().get(key)
         except Exception:
             return None
 
     def has_variable(self, key: str) -> bool:
         """检查全局上下文中是否存在变量"""
         try:
-            with self.global_context._lock():
-                variables = self.global_context._load_variables()
-                return key in variables
+            return key in self.global_context.get_stored_variables()
         except Exception:
             return False
 
-    def get_all_variables(self) -> Dict[str, Any]:
+    def get_all_variables(self, lock_timeout=None) -> Dict[str, Any]:
         """获取所有全局变量"""
-        try:
-            with self.global_context._lock():
-                return self.global_context._load_variables()
-        except Exception:
-            return {}
+        # A failed read must not silently send an incomplete remote snapshot.
+        return self.global_context.get_stored_variables(lock_timeout=lock_timeout)
+
+
+class RequestVariableProvider(VariableProvider):
+    """Incoming remote inputs are context variables, not server YAML."""
+
+    def get_variable(self, key):
+        from .request_variables import current_request_variables
+        request = current_request_variables()
+        return request.values.get(key) if request is not None else None
+
+    def has_variable(self, key):
+        from .request_variables import current_request_variables
+        request = current_request_variables()
+        return request is not None and key in request.values
+
+    def get_all_variables(self):
+        from .request_variables import current_request_variables
+        request = current_request_variables()
+        return dict(request.values) if request is not None else {}
 
 
 class CompositeVariableProvider(VariableProvider):
@@ -176,12 +188,13 @@ class CompositeVariableProvider(VariableProvider):
 def create_default_variable_providers() -> list:
     """创建默认的变量提供者列表
 
-    按优先级排序：YAML变量 > 全局上下文变量
+    按优先级排序：当前远程请求 > YAML变量 > 全局上下文变量
 
     Returns:
         变量提供者列表
     """
     providers = [
+        RequestVariableProvider(),
         YAMLVariableProvider(),
         GlobalContextVariableProvider()
     ]

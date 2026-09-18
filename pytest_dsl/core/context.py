@@ -22,7 +22,8 @@ class TestContext:
         for provider in self._external_providers:
             if hasattr(provider, 'get_variable'):
                 value = provider.get_variable(key)
-                if value is not None:
+                if value is not None or (hasattr(provider, 'has_variable') and
+                                         provider.has_variable(key)):
                     return value
 
         # 3. 返回默认值
@@ -38,7 +39,8 @@ class TestContext:
         for provider in self._external_providers:
             if hasattr(provider, 'get_variable'):
                 value = provider.get_variable(key)
-                if value is not None:
+                if value is not None or (hasattr(provider, 'has_variable') and
+                                         provider.has_variable(key)):
                     return True
 
         return False
@@ -60,14 +62,11 @@ class TestContext:
         all_variables = {}
         
         # 1. 先添加外部提供者的变量
-        for provider in self._external_providers:
+        for provider in reversed(self._external_providers):
             if hasattr(provider, 'get_all_variables'):
-                try:
-                    external_vars = provider.get_all_variables()
-                    if isinstance(external_vars, dict):
-                        all_variables.update(external_vars)
-                except Exception as e:
-                    print(f"警告：获取外部变量提供者变量时发生错误: {e}")
+                external_vars = provider.get_all_variables()
+                if isinstance(external_vars, dict):
+                    all_variables.update(external_vars)
         
         # 2. 再添加本地变量（覆盖同名的外部变量）
         all_variables.update(self._data)

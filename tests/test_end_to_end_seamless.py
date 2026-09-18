@@ -110,17 +110,13 @@ def test_end_to_end_seamless_variable_passing():
         assert success, "客户端连接失败"
         print("✓ 客户端连接成功，变量已自动传递")
 
-        # 7. 验证变量传递（检查服务器端的共享变量）
+        # 7. 新协议在执行时发送请求快照，连接不再污染共享变量。
         shared_vars = server.shared_variables
-        print(f"✓ 服务器接收到 {len(shared_vars)} 个变量")
-
-        # 验证关键变量存在且无前缀
-        assert "g_base_url" in shared_vars
-        assert "g_test_env" in shared_vars
-        assert "g_test_session" in shared_vars
-        assert "http_clients" in shared_vars
-        assert "test_data" in shared_vars
-        assert "api_endpoints" in shared_vars
+        assert shared_vars == {}
+        snapshot = client._prepare_context_variables(None)
+        for name in ('g_base_url', 'g_test_env', 'g_test_session',
+                     'http_clients', 'test_data', 'api_endpoints'):
+            assert name in snapshot
 
         print("✓ 变量传递验证通过：关键变量存在，敏感信息已过滤")
 
