@@ -326,3 +326,88 @@ def test_scoped_call_normalizes_sync_timeout(configured_timeout, monkeypatch):
         return {'status': 'PASS', 'return': 'ok'}
     monkeypatch.setattr(client, '_rpc_call', rpc)
     assert client._execute_remote_keyword(name='read', context=Context()) == 'ok'
+
+
+@pytest.mark.parametrize('collection_cost,lock_cost,validation_cost', [
+    (0, 0, 0.5),       # Serialization alone exceeds the budget.
+    (0.5, 0, 0.125),   # Collection and serialization reach the exact deadline.
+    (0, 0.5, 0.125),   # Lock waiting must not reset the preparation budget.
+])
+def test_scoped_call_rejects_expired_budget_before_send(
+        collection_cost, lock_cost, validation_cost, monkeypatch):
+    from pytest_dsl.core.serialization_utils import XMLRPCCallError, XMLRPCSerializer
+
+    now = [100.0]
+    sent = []
+    released = []
+    client = RemoteKeywordClient(sync_config={'sync_timeout': 1})
+    client._server_capabilities = {'request_metadata': True, 'request_scoped_context': True}
+    client.server = SimpleNamespace(run_keyword_with_metadata=lambda *args: (
+        sent.append(args) or {'status': 'PASS', 'return': 'ok'}))
+    monkeypatch.setattr(time, 'monotonic', lambda: now[0])
+
+    def collect(*args, **kwargs):
+        now[0] += collection_cost
+        return {'owner': 'A'}
+
+    def acquire(timeout):
+        assert 0 < timeout <= 1 - collection_cost
+        now[0] += lock_cost
+        return True
+
+    validate = XMLRPCSerializer.validate_xmlrpc_data
+
+    def slow_validate(*args, **kwargs):
+        result = validate(*args, **kwargs)
+        now[0] += validation_cost
+        return result
+
+    monkeypatch.setattr(client, '_prepare_context_variables', collect)
+    monkeypatch.setattr(client, '_rpc_lock', SimpleNamespace(
+        acquire=acquire, release=lambda: released.append(True)))
+    monkeypatch.setattr(XMLRPCSerializer, 'validate_xmlrpc_data', slow_validate)
+    with pytest.raises(Exception, match='同步预算.*未发送请求') as exc_info:
+        client._execute_remote_keyword(name='read', context=Context())
+    assert isinstance(exc_info.value.__cause__, XMLRPCCallError)
+    assert exc_info.value.__cause__.category == 'timeout'
+    assert sent == []
+    assert released == [True]
+
+
+@pytest.mark.parametrize('scoped_context', [True, False])
+def test_preparation_budget_preserves_keyword_timeout(scoped_context, monkeypatch):
+    from pytest_dsl.core.serialization_utils import XMLRPCSerializer
+    from pytest_dsl.remote.keyword_client import TimeoutTransport
+
+    now = [100.0]
+    client = RemoteKeywordClient(sync_config={'sync_timeout': 1})
+    client._server_capabilities = {
+        'request_metadata': True, 'request_scoped_context': scoped_context,
+    }
+    transport = TimeoutTransport(timeout=600)
+    calls = []
+
+    def execute(*args):
+        assert transport.get_configured_timeout() == 600
+        calls.append(args)
+        now[0] += 60  # Business execution is allowed to exceed sync_timeout.
+        return {'status': 'PASS', 'return': 'ok'}
+
+    client.server = SimpleNamespace(
+        run_keyword_with_metadata=execute, _ServerProxy__transport=transport)
+    monkeypatch.setattr(time, 'monotonic', lambda: now[0])
+    monkeypatch.setattr(client, '_prepare_context_variables', lambda *a, **kw: {})
+    monkeypatch.setattr(client, '_sync_context_variables_before_execution',
+                        lambda *a, **kw: {})
+    validate = XMLRPCSerializer.validate_xmlrpc_data
+
+    def slow_validate(*args, **kwargs):
+        result = validate(*args, **kwargs)
+        # Legacy keyword calls do not use the new preparation deadline.
+        now[0] += 0.125 if scoped_context else 0.5
+        return result
+
+    monkeypatch.setattr(XMLRPCSerializer, 'validate_xmlrpc_data', slow_validate)
+    assert client._execute_remote_keyword(name='read', context=Context()) == 'ok'
+    assert len(calls) == 1
+    assert transport.get_configured_timeout() == 600

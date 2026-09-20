@@ -63,6 +63,37 @@ def test_sync_retries_after_a_full_attempt_timeout(clock, monkeypatch):
     assert clock[0] < 30
 
 
+@pytest.mark.parametrize('recover', [True, False])
+def test_default_sync_allows_three_extra_retries(clock, monkeypatch, recover):
+    client = RemoteKeywordClient(sync_config={'sync_retry_jitter': 0})
+    attempts = []
+
+    def sync(variables, **kwargs):
+        attempts.append((dict(variables), kwargs['request_id']))
+        if recover and len(attempts) == 4:
+            return {'status': 'success'}
+        raise XMLRPCCallError('transient', method_name='sync',
+                             category='timeout', elapsed_seconds=0)
+
+    monkeypatch.setattr(client, '_sync_variables_once', sync)
+    replace = Mock()
+    monkeypatch.setattr(client, '_replace_server_proxy', replace)
+    monkeypatch.setattr(client, '_refresh_server_capabilities_after_reconnect',
+                        lambda timeout: None)
+    if recover:
+        result = client._sync_variables({'version': 1}, phase='context.sync',
+                                        timeout=30, request_id='same-request')
+        assert result['diagnostics']['client_sync_attempts'] == 4
+        assert result['diagnostics']['client_reconnected'] is True
+    else:
+        with pytest.raises(XMLRPCCallError):
+            client._sync_variables({'version': 1}, phase='context.sync',
+                                   timeout=30, request_id='same-request')
+    assert attempts == [({'version': 1}, 'same-request')] * 4
+    assert replace.call_count == 3
+    assert clock[0] == pytest.approx(1.4)
+
+
 def test_slow_capability_handshake_leaves_budget_for_sync(clock, monkeypatch):
     client = RemoteKeywordClient(sync_config={'sync_retry_jitter': 0})
     calls = []

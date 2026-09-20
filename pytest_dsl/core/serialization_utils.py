@@ -19,7 +19,8 @@ class XMLRPCCallError(Exception):
     def __init__(self, message: str, *, method_name: str,
                  category: str, elapsed_seconds: float,
                  configured_timeout=None, effective_timeout=None,
-                 call_context: str = None, original_exception=None):
+                 call_context: str = None, original_exception=None,
+                 transport_diagnostics=None):
         self.method_name = method_name
         self.category = category
         self.elapsed_seconds = elapsed_seconds
@@ -27,6 +28,7 @@ class XMLRPCCallError(Exception):
         self.effective_timeout = effective_timeout
         self.call_context = call_context
         self.original_exception = original_exception
+        self.transport_diagnostics = dict(transport_diagnostics or {})
 
         details = [f"method={method_name}",
                    f"elapsed={elapsed_seconds:.3f}s"]
@@ -34,6 +36,10 @@ class XMLRPCCallError(Exception):
             details.append(f"configured_timeout={configured_timeout}s")
         if effective_timeout is not None:
             details.append(f"effective_timeout={effective_timeout}s")
+        if self.transport_diagnostics:
+            details.append(f"failure_stage={self.transport_diagnostics.get('transport_stage')}")
+            details.append(f"connect_attempts={self.transport_diagnostics.get('connect_attempts')}")
+            details.append(f"connect_elapsed_ms={self.transport_diagnostics.get('connect_elapsed_ms')}")
         if call_context:
             details.append(f"context={call_context}")
         super().__init__(f"{message} ({', '.join(details)})")
@@ -491,13 +497,16 @@ class XMLRPCSerializer:
     @staticmethod
     def safe_xmlrpc_call(server_proxy, method_name: str, *args,
                          _rpc_context=None, _rpc_timeout=None,
-                         _rpc_metrics=None, **kwargs):
+                         _rpc_metrics=None, _rpc_preparation_deadline=None,
+                         **kwargs):
         """安全的XML-RPC调用，包含序列化、计时和结构化错误处理。
 
         Args:
             server_proxy: XML-RPC服务器代理
             method_name: 方法名
             *args: 位置参数
+            _rpc_preparation_deadline: 本进程 monotonic 准备截止时间，
+                包含上游收集与锁等待，不改变远程关键字执行超时
             **kwargs: 关键字参数
 
         Returns:
@@ -546,9 +555,15 @@ class XMLRPCSerializer:
                 except Exception:
                     pass
 
+        def _transport_diagnostics():
+            getter = getattr(transport, 'get_call_diagnostics', None)
+            diagnostics = getter() if callable(getter) else None
+            return diagnostics if isinstance(diagnostics, dict) else {}
+
         def _raise(message, category, error):
             nonlocal effective_timeout
             effective_timeout = _effective_timeout()
+            diagnostics = _transport_diagnostics()
             if category in {'timeout', 'network', 'http', 'protocol'}:
                 _discard_connection()
             raise XMLRPCCallError(
@@ -560,6 +575,7 @@ class XMLRPCSerializer:
                 effective_timeout=effective_timeout,
                 call_context=_rpc_context,
                 original_exception=error,
+                transport_diagnostics=diagnostics,
             ) from error
 
         try:
@@ -591,6 +607,10 @@ class XMLRPCSerializer:
 
             if _rpc_metrics is not None:
                 _rpc_metrics['serialization_elapsed_ms'] = round(_elapsed() * 1000, 3)
+            if (_rpc_preparation_deadline is not None and
+                    time.monotonic() >= _rpc_preparation_deadline):
+                message = '远程上下文准备已耗尽同步预算，未发送请求'
+                _raise(message, 'timeout', socket.timeout(message))
             if _rpc_timeout is not None and _elapsed() >= _rpc_timeout:
                 raise socket.timeout('序列化已耗尽 RPC 预算，未发送请求')
             # 执行调用（使用转换后的参数）
@@ -616,6 +636,8 @@ class XMLRPCSerializer:
             _raise(f"XML-RPC调用失败: {type(e).__name__}: {str(e)}",
                    'call', e)
         finally:
+            if _rpc_metrics is not None:
+                _rpc_metrics.update(_transport_diagnostics())
             if (_rpc_timeout is not None and transport is not None and
                     original_timeout is not None):
                 set_timeout = getattr(transport, 'set_timeout', None)

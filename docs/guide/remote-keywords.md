@@ -143,7 +143,10 @@ remote_servers:
       sync_timeout: 30         # 同步恢复总预算
       sync_attempt_timeout: 10 # 单次同步RPC的socket超时
       connect_timeout: 5      # TCP建连超时，适用于该客户端所有RPC
-      sync_retry_count: 2
+      connect_retry_count: 3   # 业务调用建连失败后额外重试3次，共最多4次
+      connect_retry_interval: 0.5 # 建连退避为0.5、1、2秒，单次最多2秒
+      connect_retry_budget: 25 # 业务调用TCP建连及退避的总预算（秒）
+      sync_retry_count: 3       # 变量同步首次失败后额外重试3次
       sync_retry_interval: 0.2
       sync_retry_backoff: 2
       sync_retry_max_interval: 1
@@ -457,7 +460,10 @@ remote_servers:
       sync_timeout: 30         # 同步恢复总预算
       sync_attempt_timeout: 10 # 单次同步RPC的socket超时
       connect_timeout: 5      # TCP建连超时，适用于该客户端所有RPC
-      sync_retry_count: 2      # 首次失败后额外重试 2 次
+      connect_retry_count: 3   # 业务调用最多4次建连尝试
+      connect_retry_interval: 0.5
+      connect_retry_budget: 25
+      sync_retry_count: 3      # 变量同步首次失败后额外重试3次
       sync_retry_interval: 0.2 # 首次重试等待秒数
       sync_retry_backoff: 2    # 后续等待时间的退避倍数
       sync_retry_max_interval: 1
@@ -471,17 +477,40 @@ remote_servers:
 - `sync_config.sync_timeout` 控制上下文同步的恢复总预算，默认不超过 30 秒。
 - `sync_config.sync_attempt_timeout` 默认 10 秒，每次同步使用它与剩余预算的较小值，避免首次超时吃完全部预算。发送给服务端的 `sync_timeout_seconds` 也是该次尝试的预算。
 - `sync_config.connect_timeout` 默认 5 秒，单独限制 TCP 建连，并受当次 RPC 超时约束；建连后恢复 RPC 的读写超时，因此不会把耗时业务关键字的响应等待缩短到 5 秒。该设置也用于 HTTPS 的 TCP 建连；TLS 握手仍受 RPC 超时控制。
+- 业务调用 `run_keyword` / `run_keyword_with_metadata` 默认在 TCP 建连失败后
+  **额外重试 3 次，共最多 4 次尝试**。仅重试 socket 创建期间的超时、连接拒绝、
+  连接重置或网络不可达等瞬时错误；域名不存在、权限错误不重试。
+  `connect_retry_interval` 默认 `0.5` 秒，后续退避为 `1`、`2` 秒，
+  单次退避最多 `2` 秒；`connect_retry_count: 0` 关闭额外重试，最大次数按 `10` 处理。
+- `connect_retry_budget` 默认 `25` 秒，从进入网络传输阶段开始计算，包含建连与退避，
+  每次尝试使用 `connect_timeout` 与剩余预算的较小值，也受当次 RPC timeout 限制。
+  默认单 IP 场景连续四次用完 5 秒建连超时，总等待约 `23.5` 秒。
+  预算不足时可提前结束，不保证一定尝试四次；DNS 解析及多地址解析后的逐地址连接
+  由系统/标准库处理，该预算不是强制取消这些操作的硬实时截止时间。
+  建连成功后恢复原有响应等待超时，TLS 握手不在此建连重试范围内。
+- 业务调用关闭标准库针对 `RemoteDisconnected`、连接重置、断管的整请求自动重放。
+  请求发送中断或等待响应失败时，服务端执行结果可能未知，客户端清理连接并报错，
+  不自动重复执行关键字。下一次 RPC 会按需创建新连接，无需重建整个 ServerProxy。
+  建连重试配置适用于上述两种业务接口；变量同步和只读探活沿用各自恢复策略，
+  避免多层重试次数相乘。
 - 重连能力协商最多使用 2 秒且不超过剩余预算的一半，失败后使用兼容同步接口。
 - 上下文同步属于幂等覆盖操作。遇到连接拒绝、连接重置、网络超时或 HTTP
-  传输中断时，默认在首次失败后额外重试 2 次，并重建连接。等待间隔默认从
+  传输中断时，默认在首次失败后额外重试 3 次（共最多4次同步尝试），并重建连接。等待间隔默认从
   `0.2` 秒开始，按 `2` 倍退避，最大 `1` 秒，另加最多 `0.1` 秒随机抖动。
   所有尝试、退避和重连能力协商共享同一个 `sync_timeout` 预算；次数或预算任一耗尽即失败。预算在各阶段边界检查，socket 超时不是强制取消整个 RPC 的墙钟截止时间。
+  默认总预算仍为30秒，单次同步上限仍为10秒；持续超时可能在第四次尝试前
+  耗尽总预算。显式设置的 `sync_retry_count` 优先于默认值，例如原配置中的
+  `sync_retry_count: 2` 仍只会额外重试2次。
 - `sync_retry_count: 0` 可以关闭同步重试；为避免错误配置制造重试风暴，该值最大
   按 10 处理。认证失败、参数序列化失败、XML-RPC
-  服务端 Fault 和服务端返回的业务错误不会重试。普通远程关键字也不会被自动
-  重试，避免重复执行有副作用的操作。
+  服务端 Fault 和服务端返回的业务错误不会重试。普通远程关键字仅允许上述
+  发送前 TCP 建连重试，已发送请求不会自动重放。
 - `sync_config.realtime_sync_failure_policy` 默认为 `fail`。同步失败时阻止关键字执行，避免远端使用过期变量。需要兼容旧版“尽力同步”行为时可显式设置为 `warn`。
 - 超时错误会同时显示 `elapsed`、`configured_timeout`、`effective_timeout`、调用阶段和客户端请求 ID。协议版本 3 会把请求 ID 和同步超时预算传到服务端，并返回进程锁等待、全局变量写入等阶段耗时；连接 0.36.0/0.36.1 服务端时自动回退兼容接口。传输异常后客户端会丢弃旧连接并在安全的同步重试中重新建连；恢复后重新协商服务端能力。诊断中的 `client_sync_attempts` 和 `client_reconnected` 可确认是否发生过自动恢复。
+- 传输错误另显示 `failure_stage`、`connect_attempts` 和 `connect_elapsed_ms`。
+  `tcp_connect` 表示建连失败，`send_or_tls_handshake` 表示创建 TCP socket 后的
+  发送/TLS 阶段，`response_wait` 表示等待或解析响应。成功调用的 `client_rpc`
+  诊断也包含建连次数和耗时；复用连接时建连次数为 `0`。
 
 远端全局变量文件锁默认最多等待 30 秒，可通过环境变量
 `PYTEST_DSL_GLOBAL_LOCK_TIMEOUT` 调整；进程内变量同步锁默认最多等待

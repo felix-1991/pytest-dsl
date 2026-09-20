@@ -3,8 +3,10 @@ from functools import partial
 import logging
 import math
 import difflib
+import errno
 import os
 import random
+import socket
 import threading
 import time
 import uuid
@@ -58,7 +60,106 @@ class _TimeoutMixin:
     def __init__(self, *args, timeout=None, connect_timeout=5.0, **kwargs):
         self._timeout = timeout
         self._connect_timeout = connect_timeout
+        self.configure_request()
         super().__init__(*args, **kwargs)
+
+    def configure_request(self, *, connect_retry_count=0,
+                          connect_retry_interval=0.5,
+                          connect_retry_budget=25.0, allow_replay=True):
+        """Called under the client RPC lock; policy lasts for one RPC only."""
+        self._connect_retry_count = connect_retry_count
+        self._connect_retry_interval = connect_retry_interval
+        self._connect_retry_budget = connect_retry_budget
+        self._allow_replay = allow_replay
+        self._connect_deadline = None
+        self._connect_attempts = 0
+        self._connect_elapsed_ms = 0.0
+        self._transport_stage = 'prepare'
+
+    def request(self, host, handler, request_body, verbose=False):
+        budget = self._connect_retry_budget
+        if self._timeout is not None:
+            budget = min(budget, self._timeout)
+        self._connect_deadline = time.monotonic() + budget
+        self._transport_stage = 'send'
+        if self._allow_replay:
+            result = super().request(host, handler, request_body, verbose)
+        else:
+            # Transport.request replays on RemoteDisconnected/ECONNRESET/EPIPE,
+            # even if the server may already have executed a business keyword.
+            result = self.single_request(host, handler, request_body, verbose)
+        self._transport_stage = 'complete'
+        return result
+
+    def send_request(self, host, handler, request_body, debug):
+        conn = super().send_request(host, handler, request_body, debug)
+        self._transport_stage = 'response_wait'
+        return conn
+
+    @staticmethod
+    def _is_transient_connect_error(error):
+        return isinstance(error, socket.timeout) or error.errno in {
+            errno.ETIMEDOUT, errno.ECONNREFUSED, errno.ECONNRESET,
+            errno.ECONNABORTED, errno.ENETUNREACH, errno.EHOSTUNREACH,
+            # Winsock codes are not identical to POSIX errno values.
+            10060, 10061, 10054, 10053, 10051, 10065,
+        }
+
+    def _connect_socket(self, create_socket, address, *args, **kwargs):
+        started_at = time.monotonic()
+        read_timeout = self._timeout
+        limit = self._connect_timeout
+        if read_timeout is not None:
+            limit = min(limit, read_timeout)
+        deadline = self._connect_deadline
+        if deadline is None:
+            deadline = started_at + min(
+                self._connect_retry_budget,
+                read_timeout if read_timeout is not None else float('inf'))
+        self._transport_stage = 'tcp_connect'
+        try:
+            for attempt in range(self._connect_retry_count + 1):
+                attempt_timeout = limit
+                if self._connect_retry_count or not self._allow_replay:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise socket.timeout('TCP 建连重试预算耗尽，未发送请求')
+                    attempt_timeout = min(attempt_timeout, remaining)
+                self._effective_timeout = attempt_timeout
+                self._connect_attempts += 1
+                try:
+                    sock = create_socket(address, attempt_timeout, *args, **kwargs)
+                except OSError as exc:
+                    if (attempt >= self._connect_retry_count or
+                            not self._is_transient_connect_error(exc)):
+                        raise
+                    delay = min(2.0, self._connect_retry_interval * 2 ** attempt)
+                    if deadline - time.monotonic() <= delay:
+                        raise
+                    logger.warning(
+                        '远程 TCP 建连失败，准备重试: %s, attempt=%s/%s, '
+                        'delay=%.3fs, error=%s', address, attempt + 1,
+                        self._connect_retry_count + 1, delay, exc)
+                    time.sleep(delay)
+                    continue
+                # Retrying ends before TLS wrapping or any HTTP bytes are sent.
+                self._transport_stage = 'send_or_tls_handshake'
+                try:
+                    sock.settimeout(read_timeout)
+                except Exception:
+                    sock.close()
+                    raise
+                self._effective_timeout = read_timeout
+                return sock
+        finally:
+            self._connect_elapsed_ms += (time.monotonic() - started_at) * 1000
+
+    def get_call_diagnostics(self):
+        return {
+            'transport_stage': self._transport_stage,
+            'connect_attempts': self._connect_attempts,
+            'connect_elapsed_ms': round(self._connect_elapsed_ms, 3),
+        }
 
     def make_connection(self, host):
         conn = super().make_connection(host)
@@ -70,15 +171,7 @@ class _TimeoutMixin:
             create_socket = conn._create_connection
 
             def connect(address, timeout=None, *args, **kwargs):
-                read_timeout = self._timeout
-                connect_timeout = self._connect_timeout
-                if read_timeout is not None:
-                    connect_timeout = min(connect_timeout, read_timeout)
-                self._effective_timeout = connect_timeout
-                sock = create_socket(address, connect_timeout, *args, **kwargs)
-                sock.settimeout(read_timeout)
-                self._effective_timeout = read_timeout
-                return sock
+                return self._connect_socket(create_socket, address, *args, **kwargs)
 
             conn._create_connection = connect
             conn._dsl_socket_factory = connect
@@ -173,9 +266,13 @@ class RemoteKeywordClient:
             'sync_timeout': min(self.timeout, 30.0),
             'sync_attempt_timeout': 10.0,
             'connect_timeout': 5.0,
+            # Business RPCs retry only TCP establishment, never a sent request.
+            'connect_retry_count': 3,
+            'connect_retry_interval': 0.5,
+            'connect_retry_budget': 25.0,
             # 变量同步是幂等覆盖操作，可以对瞬时传输错误做有限重试。
             # 这里的次数指首次调用失败后的额外重试次数。
-            'sync_retry_count': 2,
+            'sync_retry_count': 3,
             'sync_retry_interval': 0.2,
             'sync_retry_backoff': 2.0,
             'sync_retry_max_interval': 1.0,
@@ -193,7 +290,8 @@ class RemoteKeywordClient:
         return lock
 
     def _rpc_call(self, method_name, *args, phase=None, timeout=None,
-                  request_id=None, lock_timeout=None, metrics=None):
+                  request_id=None, lock_timeout=None, metrics=None,
+                  preparation_deadline=None):
         """Serialize access to ServerProxy and add call-stage diagnostics."""
         from pytest_dsl.core.serialization_utils import XMLRPCSerializer
 
@@ -206,6 +304,7 @@ class RemoteKeywordClient:
                        timeout if timeout is not None else self.timeout)
         if not lock.acquire(timeout=max(0.0, float(wait_budget))):
             raise TimeoutError(f'等待远程客户端 RPC 锁超时: {self.alias} ({phase})')
+        configure_request = None
         try:
             if metrics is not None:
                 metrics['client_lock_wait_ms'] = round((time.monotonic() - started_at) * 1000, 3)
@@ -218,6 +317,19 @@ class RemoteKeywordClient:
             if callable(set_connect_timeout):
                 set_connect_timeout(self._positive_timeout(
                     self.sync_config.get('connect_timeout'), 5.0))
+            configure_request = getattr(transport, 'configure_request', None)
+            if callable(configure_request):
+                business_call = method_name in {'run_keyword', 'run_keyword_with_metadata'}
+                configure_request(
+                    connect_retry_count=(self._coerce_retry_number(
+                        self.sync_config.get('connect_retry_count', 3), 3,
+                        integer=True, maximum=10) if business_call else 0),
+                    connect_retry_interval=self._positive_timeout(
+                        self.sync_config.get('connect_retry_interval'), 0.5),
+                    connect_retry_budget=self._positive_timeout(
+                        self.sync_config.get('connect_retry_budget'), 25.0),
+                    allow_replay=not business_call,
+                )
             return XMLRPCSerializer.safe_xmlrpc_call(
                 self.server,
                 method_name,
@@ -225,9 +337,14 @@ class RemoteKeywordClient:
                 _rpc_context=';'.join(context_parts),
                 _rpc_timeout=timeout,
                 _rpc_metrics=metrics,
+                _rpc_preparation_deadline=preparation_deadline,
             )
         finally:
-            lock.release()
+            try:
+                if callable(configure_request):
+                    configure_request()
+            finally:
+                lock.release()
 
     @staticmethod
     def _positive_timeout(value, default):
@@ -282,7 +399,7 @@ class RemoteKeywordClient:
         config = self.sync_config
         return {
             'count': self._coerce_retry_number(
-                config.get('sync_retry_count', 2), 2,
+                config.get('sync_retry_count', 3), 3,
                 integer=True, minimum=0, maximum=10),
             'interval': self._coerce_retry_number(
                 config.get('sync_retry_interval', 0.2), 0.2,
@@ -783,7 +900,9 @@ class RemoteKeywordClient:
                     self.api_key,
                     phase='keyword.execute', request_id=client_request_id,
                     lock_timeout=lock_budget,
-                    metrics=rpc_metrics)
+                    metrics=rpc_metrics,
+                    preparation_deadline=(
+                        call_started_at + sync_budget if scoped_context else None))
             elif self.api_key:
                 result = self._rpc_call(
                     'run_keyword', name, mapped_kwargs, self.api_key,

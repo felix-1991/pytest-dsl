@@ -931,7 +931,7 @@ def test_sync_retry_settings_normalize_invalid_and_excessive_values():
     )
 
     assert client._sync_retry_settings() == {
-        "count": 2,
+        "count": 3,
         "interval": 0.0,
         "backoff": 10.0,
         "max_interval": 60.0,
